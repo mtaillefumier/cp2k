@@ -9,12 +9,13 @@
 #include <limits.h>
 #include <assert.h>
 #include <string.h>
-
+#include <mkl_cblas.h>
+#include <libxsmm.h>
 #include "grid_collocate_replay.h"
 #include "grid_collocate_cpu.h"
 #include "grid_prepare_pab.h"
 #include "grid_common.h"
-
+#include "tensor_local.h"
 
 // *****************************************************************************
 static void grid_prepare_alpha(const double ra[3],
@@ -22,58 +23,51 @@ static void grid_prepare_alpha(const double ra[3],
                                const double rp[3],
                                const int la_max,
                                const int lb_max,
-                               double alpha[3][lb_max+1][la_max+1][la_max+lb_max+1]) {
-
+                               tensor *alpha) // [3][lb_max+1][la_max+1][la_max+lb_max+1]
+{
     // Initialize with zeros.
-    for (int iaxis=0; iaxis<3; iaxis++) {
-    for (int lxb=0; lxb<=lb_max; lxb++) {
-    for (int lxa=0; lxa<=la_max; lxa++) {
-    for (int lxp=0; lxp<=la_max+lb_max; lxp++) {
-        alpha[iaxis][lxb][lxa][lxp] = 0.0;
-    }
-    }
-    }
-    }
+    memset(alpha->data, 0, alpha->alloc_size_ * sizeof(double));
 
     //
     //   compute polynomial expansion coefs -> (x-a)**lxa (x-b)**lxb -> sum_{ls} alpha(ls,lxa,lxb,1)*(x-p)**ls
     //
 
     for (int iaxis=0; iaxis<3; iaxis++) {
-       const double drpa = rp[iaxis] - ra[iaxis];
-       const double drpb = rp[iaxis] - rb[iaxis];
-       for (int lxa=0; lxa<=la_max; lxa++) {
-       for (int lxb=0; lxb<=lb_max; lxb++) {
-          double binomial_k_lxa = 1.0;
-          double a = 1.0;
-          for (int k=0; k<=lxa; k++) {
-             double binomial_l_lxb = 1.0;
-             double b = 1.0;
-             for (int l=0; l<=lxb; l++) {
-                alpha[iaxis][lxb][lxa][lxa-l+lxb-k] += binomial_k_lxa * binomial_l_lxb * a * b;
-                binomial_l_lxb *= ((double)(lxb - l)) / ((double)(l + 1));
-                b *= drpb;
-             }
-             binomial_k_lxa *= ((double)(lxa-k)) / ((double)(k+1));
-             a *= drpa;
-          }
-       }
-       }
+        const double drpa = rp[iaxis] - ra[iaxis];
+        const double drpb = rp[iaxis] - rb[iaxis];
+        for (int lxa=0; lxa<=la_max; lxa++) {
+            for (int lxb=0; lxb<=lb_max; lxb++) {
+                double binomial_k_lxa = 1.0;
+                double a = 1.0;
+                for (int k=0; k<=lxa; k++) {
+                    double binomial_l_lxb = 1.0;
+                    double b = 1.0;
+                    for (int l=0; l<=lxb; l++) {
+                        idx4(alpha[0], iaxis, lxb, lxa, lxa-l+lxb-k) += binomial_k_lxa * binomial_l_lxb * a * b;
+                        binomial_l_lxb *= ((double)(lxb - l)) / ((double)(l + 1));
+                        b *= drpb;
+                    }
+                    binomial_k_lxa *= ((double)(lxa-k)) / ((double)(k+1));
+                    a *= drpa;
+                }
+            }
+        }
     }
 }
 
 // *****************************************************************************
 static void grid_prepare_coef(const int la_max,
-                      const int la_min,
-                      const int lb_max,
-                      const int lb_min,
-                      const int lp,
-                      const double prefactor,
-                      const double alpha[3][lb_max+1][la_max+1][lp+1],
-                      const double pab[ncoset[lb_max]][ncoset[la_max]],
-                      double coef_xyz[lp+1][lp+1][lp+1]) {
+                              const int la_min,
+                              const int lb_max,
+                              const int lb_min,
+                              const int lp,
+                              const double prefactor,
+                              const tensor *alpha, // [3][lb_max+1][la_max+1][lp+1]
+                              const double pab[ncoset[lb_max]][ncoset[la_max]],
+                              tensor *coef_xyz) //[lp+1][lp+1][lp+1]
+{
 
-    memset(coef_xyz, 0, (lp+1)*(lp+1)*(lp+1)*sizeof(double));
+    memset(coef_xyz->data, 0, coef_xyz->alloc_size_ * sizeof(double));
 
     double coef_xyt[lp+1][lp+1];
     double coef_xtt[lp+1];
@@ -97,13 +91,13 @@ static void grid_prepare_coef(const int la_max,
              const int jco = coset(lxb, lyb, lzb);
              const double p_ele = prefactor * pab[jco][ico];
              for (int lxp = 0; lxp<=lxa+lxb; lxp++) {
-                coef_xtt[lxp] += p_ele * alpha[0][lxb][lxa][lxp];
+                 coef_xtt[lxp] += p_ele * idx4(alpha[0], 0, lxb, lxa, lxp);
              }
           }
           }
           for (int lyp = 0; lyp<=lya+lyb; lyp++) {
              for (int lxp = 0; lxp<=lp-lza-lzb-lya-lyb; lxp++) {
-                coef_xyt[lyp][lxp] += alpha[1][lyb][lya][lyp] * coef_xtt[lxp];
+                 coef_xyt[lyp][lxp] += idx4(alpha[0], 1, lyb, lya, lyp) * coef_xtt[lxp];
              }
           }
        }
@@ -111,7 +105,7 @@ static void grid_prepare_coef(const int la_max,
        for (int lzp = 0; lzp<=lza+lzb; lzp++) {
           for (int lyp = 0; lyp<=lp-lza-lzb; lyp++) {
              for (int lxp = 0; lxp<=lp-lza-lzb-lyp; lxp++) {
-                coef_xyz[lzp][lyp][lxp] += alpha[2][lzb][lza][lzp] * coef_xyt[lyp][lxp];
+                 idx3(coef_xyz[0], lzp, lyp, lxp) += idx4(alpha[0], 2, lzb, lza, lzp) * coef_xyt[lyp][lxp];
              }
           }
        }
@@ -128,32 +122,32 @@ static void grid_fill_map(const bool periodic,
                           const int npts,
                           const int ngrid,
                           const int cmax,
-                          int map[2*cmax + 1]) {
-
+                          int map[2*cmax + 1])
+{
     if (periodic) {
-         //for (int i=0; i <= 2*cmax; i++)
-         //    map[i] = mod(cubecenter + i - cmax, npts) + 1;
-         int start = lb_cube;
-         while (true) {
+        //for (int i=0; i <= 2*cmax; i++)
+        //    map[i] = mod(cubecenter + i - cmax, npts) + 1;
+        int start = lb_cube;
+        while (true) {
             const int offset = mod(cubecenter + start, npts)  + 1 - start;
             const int length = min(ub_cube, npts - offset) - start;
             for (int ig=start; ig<=start+length; ig++) {
-               map[ig + cmax] = ig + offset;
+                map[ig + cmax] = ig + offset;
             }
             if (start + length >= ub_cube){
                 break;
             }
             start += length + 1;
-         }
+        }
     } else {
-         // this takes partial grid + border regions into account
-         const int offset = mod(cubecenter + lb_cube + lb_grid, npts) + 1 - lb_cube;
-         // check for out of bounds
-         assert(ub_cube + offset <= ngrid);
-         assert(lb_cube + offset >= 1);
-         for (int ig=lb_cube; ig <= ub_cube; ig++) {
+        // this takes partial grid + border regions into account
+        const int offset = mod(cubecenter + lb_cube + lb_grid, npts) + 1 - lb_cube;
+        // check for out of bounds
+        assert(ub_cube + offset <= ngrid);
+        assert(lb_cube + offset >= 1);
+        for (int ig=lb_cube; ig <= ub_cube; ig++) {
             map[ig + cmax] = ig + offset;
-         }
+        }
     }
 }
 
@@ -165,7 +159,11 @@ static void grid_fill_pol(const double dr,
                           const int lp,
                           const int cmax,
                           const double zetp,
-                          double pol[lp+1][2*cmax+1]) {
+                          double *pol_)
+{
+    tensor pol;
+    initialize_tensor_2(&pol, lp + 1, 2 * cmax + 1);
+    pol.data = pol_;
 //
 //   compute the values of all (x-xp)**lp*exp(..)
 //
@@ -185,8 +183,8 @@ static void grid_fill_pol(const double dr,
           t_exp_min_2 *= t_exp_2;
           double pg = t_exp_min_1;
           // pg  = EXP(-zetp*rpg**2)
-          for (int icoef=0; icoef<=lp; icoef++) {
-              pol[icoef][ig-lb_cube] = pg;
+          for (int icoef=0; icoef <= lp; icoef++) {
+              idx2(pol, icoef, ig - lb_cube) = pg;
               pg *= rpg;
           }
       }
@@ -200,17 +198,288 @@ static void grid_fill_pol(const double dr,
           double pg = t_exp_plus_1;
           // pg  = EXP(-zetp*rpg**2)
           for (int icoef=0; icoef<=lp; icoef++) {
-              pol[icoef][1-ig-lb_cube] = pg;
+              idx2(pol, icoef, 1 - ig - lb_cube) = pg;
               pg *= rpg;
           }
       }
 }
 
+void collocate_core_rectangular(char *scratch,
+                                const int length_[3],
+                                const struct tensor_ *co,
+                                const struct tensor_ *p_alpha_beta_reduced_,
+                                struct tensor_ *Vtmp)
+{
+    if (co->size[0] > 1) {
+        tensor C;
+        tensor xyz_alpha_beta;
+
+        initialize_tensor_3(&C, co->size[0], co->size[1], length_[1]);
+
+        initialize_tensor_3(&xyz_alpha_beta, co->size[1], length_[0], length_[1]);
+
+#if defined(LIBXSMM)
+        C.data = libxsmm_aligned_scratch(sizeof(double) * C.alloc_size_, 0/*auto-alignment*/);
+        xyz_alpha_beta.data = libxsmm_aligned_scratch(sizeof(double) * xyz_alpha_beta.alloc_size_, 0/*auto-alignment*/);
+#else
+        C.data = (double *)scratch;
+        xyz_alpha_beta.data = ((double *)scratch) + C.alloc_size_ * sizeof(double);
+#endif
+
+
+// we can batch this easily
+        // for (int a1 = 0; a1 < co.size(0); a1++) {
+        // we need to replace this with libxsmm
+        cblas_dgemm(CblasRowMajor,
+                    CblasNoTrans,
+                    CblasNoTrans,
+                    co->size[0] * co->size[1],
+                    length_[1],
+                    co->size[2],
+                    1.0,
+                    co->data, // Coef_{alpha,gamma,beta}
+                    co->ld_,
+                    p_alpha_beta_reduced_->data + p_alpha_beta_reduced_->offsets[0], // Y_{beta,j} p_alpha_beta_reduced(1, 0, 0)
+                    p_alpha_beta_reduced_->ld_,
+                    0.0,
+                    C.data, // tmp_{alpha, gamma, j}
+                    C.ld_);
+        // }
+
+        for (int a1 = 0; a1 < co->size[0]; a1++) {
+            cblas_dgemm(CblasRowMajor,
+                        CblasTrans,
+                        CblasNoTrans,
+                        length_[0],
+                        length_[1],
+                        co->size[2],
+                        1.0,
+                        p_alpha_beta_reduced_->data, // I start from (0,0,0) Z_{gamma,k} -> I need to transpose it I want Z_{k,gamma}
+                        p_alpha_beta_reduced_->ld_,
+                        C.data + a1 * C.offsets[0], // &idx3(C, a1, 0, 0), // C_{gamma, j} = Coef_{alpha,gamma,beta} Y_{beta,j} (fixed alpha)
+                        C.ld_,
+                        0.0,
+                        xyz_alpha_beta.data + a1 * xyz_alpha_beta.offsets[0], // contains xyz_{alpha, kj} the order kj is important
+                        xyz_alpha_beta.ld_);
+        }
+
+        cblas_dgemm(CblasRowMajor,
+                    CblasTrans,
+                    CblasNoTrans,
+                    length_[0] * length_[1],
+                    length_[2],
+                    co->size[2],
+                    1.0,
+                    &idx3(xyz_alpha_beta, 0, 0, 0),
+                    xyz_alpha_beta.size[1] * xyz_alpha_beta.ld_,
+                    &idx3(p_alpha_beta_reduced_[0], 2, 0, 0),
+                    p_alpha_beta_reduced_->ld_,
+                    0.0,
+                    &idx3(Vtmp[0], 0, 0, 0),
+                    Vtmp->ld_);
+
+#if defined(SCRATCH)
+        libxsmm_free(C.data);
+        libxsmm_free(xyz_alpha_beta.data);
+#endif
+
+    } else {
+        const double *__restrict pz = &idx3(p_alpha_beta_reduced_[0], 2, 0, 0);
+        const double *__restrict py = &idx3(p_alpha_beta_reduced_[0], 1, 0, 0);
+        const double *__restrict px = &idx3(p_alpha_beta_reduced_[0], 0, 0, 0);
+        double *__restrict dst = &idx3(Vtmp[0], 0, 0, 0);
+        const double coo = idx3 (co[0], 0, 0, 0);
+        for (int z1 = 0; z1 < length_[0]; z1++) {
+            const double tz = coo * pz[z1];
+            for (int y1 = 0; y1 < length_[1]; y1++) {
+                const double tmp = tz * py[y1];
+                for (int x1 = 0; x1 < length_[2]; x1++) {
+                    dst[x1] = tmp * px[x1];
+                }
+                dst += Vtmp->ld_;
+            }
+        }
+    }
+}
+
+#if defined(HANS_ALGO)
+void collocate_core_hans(char *scratch,
+                         const int length_[3],
+                         const tensor *co,
+                         const tensor *p_alpha_beta_reduced_,
+                         tensor *Vtmp)
+{
+
+    tensor C, xyz_alpha_beta;
+    initialize_tensor_2(&C, co.size(1), length_[1]);
+    initialize_tensor_3(&xyz_alpha_beta, co.size(0), length_[0], length_[1]);
+
+#if defined(libxsmm)
+    C.data = libxsmm_aligned_scratch(sizeof(T) * co.size(0) * co.size(1) * length_[1], 0/*auto-alignment*/);
+    xyz_alpha_beta.data = libxsmm_aligned_scratch(sizeof(T) * co.size(0) * length_[0] * length_[1], 0/*auto-alignment*/);
+#else
+    C.data = (double *)
+        mdarray<T, 3, CblasRowMajor> C(co.size(0), co.size(1), length_[1]);
+    mdarray<T, 3, CblasRowMajor> xyz_alpha_beta(co.size(0), length_[0], length_[1]);
+#endif
+    const T *LIBXSMM_RESTRICT abr0 = p_alpha_beta_reduced_.template at<CPU>(0, 0, 0);
+    const T *LIBXSMM_RESTRICT abr1 = p_alpha_beta_reduced_.template at<CPU>(1, 0, 0);
+    const T *LIBXSMM_RESTRICT abr2 = p_alpha_beta_reduced_.template at<CPU>(2, 0, 0);
+#if defined(XSMM)
+  const libxsmm_mmfunction<T> xmm1(LIBXSMM_GEMM_FLAG_NONE, length_[1], co.size(2), co.size(2),
+    p_alpha_beta_reduced_.ld(), co.ld(), /*C.ld()*/length_[1],
+    1/*alpha*/, 0/*beta*/, LIBXSMM_PREFETCH_AUTO);
+  const libxsmm_mmfunction<T> xmm2(LIBXSMM_GEMM_FLAG_TRANS_B, length_[1], length_[0], co.size(2),
+    /*C.ld()*/length_[1], p_alpha_beta_reduced_.ld(), /*xyz_alpha_beta.ld()*/length_[1],
+    1/*alpha*/, 0/*beta*/, LIBXSMM_PREFETCH_AUTO);
+  const libxsmm_mmfunction<T> xmm3(LIBXSMM_GEMM_FLAG_TRANS_B, length_[2], length_[0] * length_[1], co.size(2),
+    p_alpha_beta_reduced_.ld(), /*xyz_alpha_beta.size(1)*/length_[0] * /*xyz_alpha_beta.ld()*/length_[1], Vtmp.ld(),
+    1/*alpha*/, 0/*beta*/, LIBXSMM_PREFETCH_NONE);
+#endif
+  timer.stop("init");
+
+  if (co.size(0) > 1) {
+    timer.start("gemm");
+    const T* bj = co.template at<CPU>(0, 0, 0);
+#if defined(SCRATCH)
+    T* cj = &LIBXSMM_VLA_ACCESS(3, C, 0, 0, 0, co.size(1), length_[1]);
+#else
+    T* cj = C.template at<CPU>(0, 0, 0);
+#endif
+    // run loop excluding the last element
+    for (int a1 = 0; a1 < static_cast<int>(co.size(0) - 1); a1++) {
+      const T *const bi = bj; bj = co.template at<CPU>(a1 + 1, 0, 0);
+#if defined(SCRATCH)
+      T *const ci = cj; cj = &LIBXSMM_VLA_ACCESS(3, C, a1 + 1, 0, 0, co.size(1), length_[1]);
+#else
+      T *const ci = cj; cj = C.template at<CPU>(a1 + 1, 0, 0);
+#endif
+#if defined(XSMM)
+      xmm1(abr1, bi, ci, abr1, bj, cj);
+#else
+      cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
+        co.size(2), length_[1], co.size(2),
+        1.0,
+        bi, // Coef_{alpha,gamma,beta}
+        co.ld(),
+        abr1, // Y_{beta,j}
+        p_alpha_beta_reduced_.ld(),
+        0.0,
+        ci, // tmp_{alpha, gamma, j}
+        /*C.ld()*/length_[1]);
+#endif
+    }
+    // execute remainder with pseudo-prefetch
+#if defined(XSMM)
+    xmm1(abr1, bj, cj, abr1, bj, cj);
+#else
+    cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
+      co.size(2), length_[1], co.size(2),
+      1.0,
+      bj, // Coef_{alpha,gamma,beta}
+      co.ld(),
+      abr1, // Y_{beta,j}
+      p_alpha_beta_reduced_.ld(),
+      0.0,
+      cj, // tmp_{alpha, gamma, j}
+      /*C.ld()*/length_[1]);
+#endif
+
+    // run loop excluding the last element
+#if defined(SCRATCH)
+    T* aj = &LIBXSMM_VLA_ACCESS(3, C, 0, 0, 0, co.size(1), length_[1]);
+    cj = &LIBXSMM_VLA_ACCESS(3, xyz_alpha_beta, 0, 0, 0, length_[0], length_[1]);
+#else
+    T* aj = C.template at<CPU>(0, 0, 0);
+    cj = xyz_alpha_beta.template at<CPU>(0, 0, 0);
+#endif
+    for (int a1 = 0; a1 < static_cast<int>(co.size(0) - 1); a1++) {
+      T *const ai = aj, *const ci = cj;
+#if defined(SCRATCH)
+      aj = &LIBXSMM_VLA_ACCESS(3, C, a1 + 1, 0, 0, co.size(1), length_[1]);
+      cj = &LIBXSMM_VLA_ACCESS(3, xyz_alpha_beta, a1 + 1, 0, 0, length_[0], length_[1]);
+#else
+      aj = C.template at<CPU>(a1 + 1, 0, 0);
+      cj = xyz_alpha_beta.template at<CPU>(a1 + 1, 0, 0);
+#endif
+#if defined(XSMM)
+      xmm2(ai, abr0, ci, aj, abr0, cj);
+#else
+      cblas_dgemm(CblasRowMajor, CblasTrans, CblasNoTrans,
+        length_[0], length_[1], co.size(2),
+        1.0,
+        abr0, // Z_{gamma,k} -> I need to transpose it I want Z_{k,gamma}
+        p_alpha_beta_reduced_.ld(),
+        ai, // C_{gamma, j} = Coef_{alpha,gamma,beta} Y_{beta,j} (fixed alpha)
+        /*C.ld()*/length_[1],
+        0.0,
+        ci, // contains xyz_{alpha, kj} the order kj is important
+        /*xyz_alpha_beta.ld()*/length_[1]);
+#endif
+    }
+    // execute remainder with pseudo-prefetch
+#if defined(XSMM)
+    xmm2(aj, abr0, cj, aj, abr0, cj);
+#else
+    cblas_dgemm(CblasRowMajor, CblasTrans, CblasNoTrans,
+      length_[0], length_[1], co.size(2),
+      1.0,
+      abr0, // Z_{gamma,k} -> I need to transpose it I want Z_{k,gamma}
+      p_alpha_beta_reduced_.ld(),
+      aj, // C_{gamma, j} = Coef_{alpha,gamma,beta} Y_{beta,j} (fixed alpha)
+      /*C.ld()*/length_[1],
+      0.0,
+      cj, // contains xyz_{alpha, kj} the order kj is important
+      /*xyz_alpha_beta.ld()*/length_[1]);
+#endif
+
+#if defined(SCRATCH)
+    cj = &LIBXSMM_VLA_ACCESS(3, xyz_alpha_beta, 0, 0, 0, length_[0], length_[1]);
+#else
+    cj = xyz_alpha_beta.template at<CPU>(0, 0, 0);
+#endif
+#if defined(XSMM)
+    xmm3(abr2, cj, Vtmp.template at<CPU>(0, 0, 0));
+#else
+    cblas_dgemm(CblasRowMajor, CblasTrans, CblasNoTrans,
+      length_[0] * length_[1], length_[2], co.size(2),
+      1.0,
+      cj,
+      /*xyz_alpha_beta.size(1)*/length_[0] * /*xyz_alpha_beta.ld()*/length_[1],
+      abr2,
+      p_alpha_beta_reduced_.ld(),
+      0.0,
+      Vtmp.template at<CPU>(0, 0, 0),
+      Vtmp.ld());
+#endif
+    timer.stop("gemm");
+#if defined(SCRATCH)
+    timer.start("deinit");
+    libxsmm_free(Cdata);
+    libxsmm_free(xyz_data);
+    timer.stop("deinit");
+#endif
+  } else {
+    for (int z1 = 0; z1 < length_[0]; z1++) {
+      const T tz = co(0, 0, 0) * p_alpha_beta_reduced_(0, 0, z1);
+      for (int y1 = 0; y1 < length_[1]; y1++) {
+        const T tmp = tz * p_alpha_beta_reduced_(1, 0, y1);
+        const T *LIBXSMM_RESTRICT src = abr2;
+        T *LIBXSMM_RESTRICT dst = Vtmp.template at<CPU>(z1, y1, 0);
+        for (int x1 = 0; x1 < length_[2]; x1++) {
+          dst[x1] = tmp * src[x1];
+        }
+      }
+    }
+  }
+}
+#endif
+
 // *****************************************************************************
 static void grid_collocate_core(const int lp,
                                 const int cmax,
-                                const double coef_xyz[lp+1][lp+1][lp+1],
-                                const double pol[3][lp+1][2*cmax+1],
+                                const tensor *coef_xyz, // [lp+1][lp+1][lp+1]
+                                const tensor *pol,
                                 const int map[3][2*cmax+1],
                                 const int lb_cube[3],
                                 const int ub_cube[3],
@@ -224,24 +493,29 @@ static void grid_collocate_core(const int lp,
     const int nz = ub_cube[2] - lb_cube[2] + 1;
     const int ny = ub_cube[1] - lb_cube[1] + 1;
     const int nx = ub_cube[0] - lb_cube[0] + 1;
-    double cube[nz][ny][nx];   // Can be large, run with "ulimit -s unlimited".
-    memset(cube, 0, nz*ny*nx*sizeof(double));
 
-    // These loops should be as vectorized as possible.
-    for (int lzp=0; lzp <= lp; lzp++) {
-    for (int lyp=0; lyp <= lp; lyp++) {
-    for (int lxp=0; lxp <= lp; lxp++) {
-        for (int k=0; k < nz; k++) {
-        for (int j=0; j < ny; j++) {
-        for (int i=0; i < nx; i++) {
-            cube[k][j][i] += coef_xyz[lzp][lyp][lxp]
-                             * pol[2][lzp][k] * pol[1][lyp][j] * pol[0][lxp][i];
-        }
-        }
-        }
-    }
-    }
-    }
+    int size_[3] = {nz, ny, nx};
+    tensor cube;
+    initialize_tensor_3(&cube, nz, ny, nx);
+
+#if defined(LIBXSMM)
+    cube.data =  libxsmm_aligned_scratch(sizeof(double) * cube.alloc_size_, 0/*auto-alignment*/);
+    char *tmp = NULL;
+#else
+    cube.data = (double*)scratch;
+    char *tmp = scratch + cube.alloc_size_ * sizeof(double);
+#endif
+    memset(cube.data, 0, cube.alloc_size_ * sizeof(double));
+
+    /* now we can work on collocate separately from the rest using tensor
+     * structure. We need to include Hans rework (C++ -> C)
+     */
+
+    collocate_core_rectangular(NULL, // will need to change that eventually
+                               size_,
+                               coef_xyz,
+                               pol,
+                               &cube);
 
     //
     // Write cube back to large grid taking periodicity and radius into account.
@@ -253,21 +527,23 @@ static void grid_collocate_core(const int lp,
     // the formular distance=(2*index-1)/2.
 
     const int kgmin = ceil(-1e-8 - disr_radius * dh_inv[2][2]);
-    for (int kg=kgmin; kg <= 1-kgmin; kg++) {
+    for (int kg = kgmin; kg <= 1 - kgmin; kg++) {
         const int k = map[2][kg + cmax];   // target location on the grid
-        const int kd = (2*kg - 1) / 2;     // distance from center in grid points
+        const int kd = (2 * kg - 1) / 2;     // distance from center in grid points
         const double kr = kd * dh[2][2];   // distance from center in a.u.
         const double kremain = disr_radius * disr_radius - kr * kr;
         const int jgmin = ceil(-1e-8 - sqrt(max(0.0, kremain)) * dh_inv[1][1]);
-        for (int jg=jgmin; jg <= 1-jgmin; jg++) {
+        for (int jg = jgmin; jg <= 1 - jgmin; jg++) {
             const int j = map[1][jg + cmax];  // target location on the grid
             const int jd = (2*jg - 1) / 2;    // distance from center in grid points
             const double jr = jd * dh[1][1];  // distance from center in a.u.
             const double jremain = kremain - jr * jr;
             const int igmin = ceil(-1e-8 - sqrt(max(0.0, jremain)) * dh_inv[0][0]);
+            double *__restrict dst = &grid[k-1][j-1][0];
+            const double *__restrict src = &idx3(cube, kg - lb_cube[2], jg - lb_cube[1], - lb_cube[0]);
             for (int ig=igmin; ig<=1-igmin; ig++) {
                 const int i = map[0][ig + cmax];  // target location on the grid
-                grid[k-1][j-1][i-1] += cube[kg - lb_cube[2]][jg - lb_cube[1]][ig - lb_cube[0]];
+                dst[i - 1] += src[ig];
             }
         }
     }
@@ -276,7 +552,7 @@ static void grid_collocate_core(const int lp,
 // *****************************************************************************
 static void grid_collocate_ortho(const int lp,
                                  const double zetp,
-                                 const double coef_xyz[lp+1][lp+1][lp+1],
+                                 const tensor *coef_xyz, // [lp+1][lp+1][lp+1]
                                  const double dh[3][3],
                                  const double dh_inv[3][3],
                                  const double rp[3],
@@ -339,15 +615,25 @@ static void grid_collocate_ortho(const int lp,
                       map[i]);
     }
 
-    double pol[3][lp+1][2*cmax+1];
+    /* double pol[3][lp+1][2*cmax+1]; */
+    tensor pol;
+    initialize_tensor_3(&pol, 3, lp + 1, 2 * cmax + 1);
+
+#if defined(LIBXSMM)
+    pol.data =  libxsmm_aligned_scratch(sizeof(double) * pol.alloc_size_, 0/*auto-alignment*/);
+#else
+    pol.data = (double*)tmp;
+    tmp += poly.alloc_size_ * sizeof(double);
+#endif
+
     for (int i=0; i<3; i++) {
-        grid_fill_pol(dh[i][i], roffset[i], lb_cube[i], lp, cmax, zetp, pol[i]);
+        grid_fill_pol(dh[i][i], roffset[i], lb_cube[i], lp, cmax, zetp, pol.data + i * pol.size[1] * pol.ld_);
     }
 
     grid_collocate_core(lp,
                         cmax,
                         coef_xyz,
-                        pol,
+                        &pol,
                         map,
                         lb_cube,
                         ub_cube,
@@ -356,13 +642,17 @@ static void grid_collocate_ortho(const int lp,
                         disr_radius,
                         ngrid,
                         grid);
+
+#if defined(LIBXSMM)
+    libxsmm_free(pol.data);
+#endif
 }
 
 
 // *****************************************************************************
 static void grid_collocate_general(const int lp,
                                    const double zetp,
-                                   const double coef_xyz[lp+1][lp+1][lp+1],
+                                   const tensor *coef_xyz, // [lp+1][lp+1][lp+1]
                                    const double dh[3][3],
                                    const double dh_inv[3][3],
                                    const double rp[3],
@@ -450,7 +740,7 @@ static void grid_collocate_general(const int lp,
                 const int jl = jlx + jly + jlz;
                 const int kl = klx + kly + klz;
                 const int lijk= coef_map[kl][jl][il];
-                coef_ijk[lijk-1] += coef_xyz[lz][ly][lx] *
+                coef_ijk[lijk-1] += idx3(coef_xyz[0], lz, ly, lx) *
                    hmatgridp[ilx][0][0] * hmatgridp[jlx][1][0] * hmatgridp[klx][2][0] *
                    hmatgridp[ily][0][1] * hmatgridp[jly][1][1] * hmatgridp[kly][2][1] *
                    hmatgridp[ilz][0][2] * hmatgridp[jlz][1][2] * hmatgridp[klz][2][2] *
@@ -683,13 +973,22 @@ static void grid_collocate_internal(const bool use_ortho,
     // (current implementation is l**7)
     //
 
-    double alpha[3][lb_max_prep+1][la_max_prep+1][la_max_prep+lb_max_prep+1];
+    tensor alpha;
+    initialize_tensor_4(&alpha, 3, lb_max_prep + 1, la_max_prep + 1, la_max_prep + lb_max_prep + 1);
+#ifdef LIBXSMM
+    alpha.data = libxsmm_aligned_scratch(sizeof(double) * alpha.alloc_size_, 0/*auto-alignment*/);
+#else
+    alpha.data = (double*)tmp;
+    tmp += alpha.alloc_size_ * sizeof(double);
+#endif
+
+
     grid_prepare_alpha(ra,
                        rb,
                        rp,
                        la_max_prep,
                        lb_max_prep,
-                       alpha);
+                       &alpha);
 
     //
     //   compute P_{lxp,lyp,lzp} given P_{lxa,lya,lza,lxb,lyb,lzb} and alpha(ls,lxa,lxb,1)
@@ -699,21 +998,30 @@ static void grid_collocate_internal(const bool use_ortho,
     //
 
     const int lp = la_max_prep + lb_max_prep;
-    double coef_xyz[lp+1][lp+1][lp+1];
+    tensor coef_xyz;
+    initialize_tensor_3(&coef_xyz, lp + 1, lp + 1, lp + 1);
+#ifdef LIBXSMM
+    coef_xyz.data = libxsmm_aligned_scratch(sizeof(double) * coef_xyz.alloc_size_, 0/*auto-alignment*/);
+#else
+    coef_xyz.data = (double*)tmp;
+    tmp += coef_xyz.alloc_size_ * sizeof(double);
+#endif
+
+
     grid_prepare_coef(la_max_prep,
                       la_min_prep,
                       lb_max_prep,
                       lb_min_prep,
                       lp,
                       prefactor,
-                      alpha,
+                      &alpha,
                       pab_prep,
-                      coef_xyz);
+                      &coef_xyz);
 
     if (use_ortho) {
         grid_collocate_ortho(lp,
                              zetp,
-                             coef_xyz,
+                             &coef_xyz,
                              dh,
                              dh_inv,
                              rp,
@@ -726,7 +1034,7 @@ static void grid_collocate_internal(const bool use_ortho,
     } else {
         grid_collocate_general(lp,
                                zetp,
-                               coef_xyz,
+                               &coef_xyz,
                                dh,
                                dh_inv,
                                rp,
@@ -835,11 +1143,11 @@ void grid_collocate_pgf_product_cpu(const bool use_ortho,
                           grid);
 
     for (int i=0; i<ngrid[2]; i++) {
-    for (int j=0; j<ngrid[1]; j++) {
-    for (int k=0; j<ngrid[0]; j++) {
-        grid[i][j][k] += grid_before[i][j][k];
-    }
-    }
+        for (int j=0; j<ngrid[1]; j++) {
+            for (int k=0; j<ngrid[0]; j++) {
+                grid[i][j][k] += grid_before[i][j][k];
+            }
+        }
     }
 #endif
 
