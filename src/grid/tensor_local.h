@@ -13,6 +13,8 @@ typedef struct tensor_ {
     int ld_;
 } tensor;
 
+/* initialize a tensor structure for a tensor of dimension dim <= 4 */
+
 inline void initialize_tensor(struct tensor_ *a, const int dim, const int *const sizes)
 {
     a->dim_ = dim;
@@ -42,7 +44,10 @@ inline void initialize_tensor(struct tensor_ *a, const int dim, const int *const
     }
 
     a->alloc_size_ = a->offsets[0] * a->size[0];
+    return;
 }
+
+/* initialize a tensor structure for a tensor of dimension dim = 2 */
 
 inline void initialize_tensor_2(struct tensor_ *a, int n1, int n2)
 {
@@ -50,11 +55,15 @@ inline void initialize_tensor_2(struct tensor_ *a, int n1, int n2)
     initialize_tensor(a, 2, size_);
 }
 
+/* initialize a tensor structure for a tensor of dimension dim = 2 */
+
 inline void initialize_tensor_3(struct tensor_ *a, int n1, int n2, int n3)
 {
     int size_[3] = {n1, n2, n3};
     initialize_tensor(a, 3, size_);
 }
+
+/* initialize a tensor structure for a tensor of dimension dim = 2 */
 
 inline void initialize_tensor_4(struct tensor_ *a, int n1, int n2, int n3, int n4)
 {
@@ -62,17 +71,13 @@ inline void initialize_tensor_4(struct tensor_ *a, int n1, int n2, int n3, int n
     initialize_tensor(a, 4, size_);
 }
 
+/* initialize a tensor structure for a tensor of dimension dim = 2 */
+
 inline tensor *create_tensor(const int dim, const int *sizes)
 {
     tensor *a = (tensor *)malloc(sizeof(struct tensor_));
     initialize_tensor(a, dim, sizes);
     posix_memalign((void **)&a->data, 16, sizeof(double) * a->alloc_size_);
-}
-
-inline tensor *non_alloc_create_tensor(const int dim, const int *const sizes)
-{
-    tensor *a = malloc(sizeof(struct tensor_));
-    initialize_tensor(a, dim, sizes);
 }
 
 inline size_t tensor_return_memory_size(const struct tensor_ *const a)

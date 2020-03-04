@@ -78,31 +78,31 @@ void grid_collocate_record(const bool use_ortho,
     fprintf(fp, "n2 %i\n", n2);
 
     for (int i=0; i < n2; i++) {
-    for (int j=0; j < n1; j++) {
-        fprintf(fp, "pab %i %i %.*e\n", i, j, D, pab[i][j]);
-    }
+        for (int j=0; j < n1; j++) {
+            fprintf(fp, "pab %i %i %.*e\n", i, j, D, pab[i][j]);
+        }
     }
 
     int ngrid_nonzero = 0;
     for (int i=0; i<ngrid[2]; i++) {
-    for (int j=0; j<ngrid[1]; j++) {
-    for (int k=0; j<ngrid[0]; j++) {
-        if (grid[i][j][k] != 0.0) {
-            ngrid_nonzero++;
+        for (int j=0; j<ngrid[1]; j++) {
+            for (int k=0; j<ngrid[0]; j++) {
+                if (grid[i][j][k] != 0.0) {
+                    ngrid_nonzero++;
+                }
+            }
         }
-    }
-    }
     }
     fprintf(fp, "ngrid_nonzero %i\n", ngrid_nonzero);
 
     for (int i=0; i<ngrid[2]; i++) {
-    for (int j=0; j<ngrid[1]; j++) {
-    for (int k=0; j<ngrid[0]; j++) {
-        if (grid[i][j][k] != 0.0) {
-            fprintf(fp, "grid %i %i %i %.*e\n", i, j, k, D, grid[i][j][k]);
+        for (int j=0; j<ngrid[1]; j++) {
+            for (int k=0; j<ngrid[0]; j++) {
+                if (grid[i][j][k] != 0.0) {
+                    fprintf(fp, "grid %i %i %i %.*e\n", i, j, k, D, grid[i][j][k]);
+                }
+            }
         }
-    }
-    }
     }
     fprintf(fp, "#THE_END\n");
     fclose(fp);
@@ -241,14 +241,14 @@ double grid_collocate_replay(const char* filename, const int cycles){
 
     double pab[n2][n1];
     for (int i=0; i<n2; i++) {
-    for (int j=0; j<n1; j++) {
-        int i2, j2;
-        double value;
-        assert(fgets(line, sizeof(line), fp) != NULL);
-        assert(sscanf(line, "%99s %i %i %le", key, &i2, &j2, &value) == 4);
-        assert(strcmp(key, "pab") == 0 && i == i2 && j==j2);
-        pab[i][j] = value;
-    }
+        for (int j=0; j<n1; j++) {
+            int i2, j2;
+            double value;
+            assert(fgets(line, sizeof(line), fp) != NULL);
+            assert(sscanf(line, "%99s %i %i %le", key, &i2, &j2, &value) == 4);
+            assert(strcmp(key, "pab") == 0 && i == i2 && j==j2);
+            pab[i][j] = value;
+        }
     }
 
     int ngrid_nonzero;
@@ -259,11 +259,11 @@ double grid_collocate_replay(const char* filename, const int cycles){
     // Can be large, run with "ulimit -s unlimited".
     double grid_ref[ngrid[2]][ngrid[1]][ngrid[0]];
     for (int i=0; i<ngrid[2]; i++) {
-    for (int j=0; j<ngrid[1]; j++) {
-    for (int k=0; j<ngrid[0]; j++) {
-        grid_ref[i][j][k] = 0.0;
-    }
-    }
+        for (int j=0; j<ngrid[1]; j++) {
+            for (int k=0; k<ngrid[0]; k++) {
+                grid_ref[i][j][k] = 0.0;
+            }
+        }
     }
 
     for (int n=0; n < ngrid_nonzero; n++) {
@@ -279,13 +279,6 @@ double grid_collocate_replay(const char* filename, const int cycles){
     assert(strcmp(line, "#THE_END\n") == 0);
 
     double grid_test[ngrid[2]][ngrid[1]][ngrid[0]];
-    for (int i=0; i<ngrid[2]; i++) {
-    for (int j=0; j<ngrid[1]; j++) {
-    for (int k=0; j<ngrid[0]; j++) {
-        grid_test[i][j][k] = 0.0;
-    }
-    }
-    }
 
     printf("Cycles:   %e\n", (float)cycles);
 
@@ -305,6 +298,7 @@ double grid_collocate_replay(const char* filename, const int cycles){
                                        dh,
                                        dh_inv,
                                        ra,
+
                                        rab,
                                        npts,
                                        ngrid,
@@ -316,7 +310,7 @@ double grid_collocate_replay(const char* filename, const int cycles){
                                        n1,
                                        n2,
                                        pab,
-                                       grid_test);
+                                       &grid_test[0][0][0]);
     }
 
     struct timespec end_time;
@@ -324,13 +318,15 @@ double grid_collocate_replay(const char* filename, const int cycles){
 
     double max_diff = 0.0;
 
-    for (int i=0; i<ngrid[2]; i++) {
-    for (int j=0; j<ngrid[1]; j++) {
-    for (int k=0; j<ngrid[0]; j++) {
-        const double diff = fabs(grid_test[i][j][k] - cycles * grid_ref[i][j][k]);
-        max_diff = fmax(max_diff, diff);
-    }
-    }
+    for (int i = 0; i < ngrid[2]; i++) {
+        for (int j = 0; j < ngrid[1]; j++) {
+            for (int k = 0; k < ngrid[0]; k++) {
+                printf("(%.3e, %.3e) ", grid_test[i][j][k], (cycles * grid_ref[i][j][k]));
+                const double diff = fabs((grid_test[i][j][k] - (cycles * grid_ref[i][j][k])));
+                max_diff = fmax(max_diff, diff);
+            }
+            printf("\n");
+        }
     }
 
     printf("Max diff: %le\n", max_diff);
