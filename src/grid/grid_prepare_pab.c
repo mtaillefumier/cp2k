@@ -815,16 +815,14 @@ static void grid_prepare_pab_Di2(const int ider,
 
 // *****************************************************************************
 void grid_prepare_get_ldiffs(const int func,
-                             int* la_min_diff,
-                             int* la_max_diff,
-                             int* lb_min_diff,
-                             int* lb_max_diff) {
+                             int* lmin_diff,
+                             int* lmax_diff) {
    switch(func) {
       case GRID_FUNC_AB:
-         *la_max_diff = 0;
-         *la_min_diff = 0;
-         *lb_max_diff = 0;
-         *lb_min_diff = 0;
+         lmax_diff[0] = 0;
+         lmin_diff[0] = 0;
+         lmax_diff[1] = 0;
+         lmin_diff[1] = 0;
          break;
       case GRID_FUNC_DADB:
       case GRID_FUNC_ADBmDAB_X:
@@ -833,10 +831,10 @@ void grid_prepare_get_ldiffs(const int func,
       case GRID_FUNC_DABpADB_X:
       case GRID_FUNC_DABpADB_Y:
       case GRID_FUNC_DABpADB_Z:
-        *la_max_diff = +1;
-        *la_min_diff = -1;
-        *lb_max_diff = +1;
-        *lb_min_diff = -1;
+        lmax_diff[0] = +1;
+        lmin_diff[0] = -1;
+        lmax_diff[1] = +1;
+        lmin_diff[1] = -1;
         break;
       case GRID_FUNC_ARDBmDARB_XX:
       case GRID_FUNC_ARDBmDARB_XY:
@@ -847,18 +845,18 @@ void grid_prepare_get_ldiffs(const int func,
       case GRID_FUNC_ARDBmDARB_ZX:
       case GRID_FUNC_ARDBmDARB_ZY:
       case GRID_FUNC_ARDBmDARB_ZZ:
-         *la_max_diff = +1;  //TODO: mistake???, then we could merge la and lb.
-         *la_min_diff = -1;
-         *lb_max_diff = +2;
-         *lb_min_diff = -1;
+         lmax_diff[0] = +1;  //TODO: mistake???, then we could merge la and lb.
+         lmin_diff[0] = -1;
+         lmax_diff[1] = +2;
+         lmin_diff[1] = -1;
          break;
       case GRID_FUNC_DX:
       case GRID_FUNC_DY:
       case GRID_FUNC_DZ:
-         *la_max_diff = +1;
-         *la_min_diff = -1;
-         *lb_max_diff = +1;
-         *lb_min_diff = -1;
+         lmax_diff[0] = +1;
+         lmin_diff[0] = -1;
+         lmax_diff[1] = +1;
+         lmin_diff[1] = -1;
          break;
       case GRID_FUNC_DXDY:
       case GRID_FUNC_DYDZ:
@@ -866,10 +864,10 @@ void grid_prepare_get_ldiffs(const int func,
       case GRID_FUNC_DXDX:
       case GRID_FUNC_DYDY:
       case GRID_FUNC_DZDZ:
-         *la_max_diff = +2;
-         *la_min_diff = -2;
-         *lb_max_diff = +2;
-         *lb_min_diff = -2;
+         lmax_diff[0] = +2;
+         lmin_diff[0] = -2;
+         lmax_diff[1] = +2;
+         lmin_diff[1] = -2;
          break;
       default:
          assert(false && "Unknown ga_gb_function.");
@@ -880,10 +878,8 @@ void grid_prepare_get_ldiffs(const int func,
 void grid_prepare_pab(const int func,
                       const int o1,
                       const int o2,
-                      const int la_max,
-                      const int la_min,
-                      const int lb_max,
-                      const int lb_min,
+                      const int *lmax,
+                      const int *lmin,
                       const double zeta,
                       const double zetb,
                       const int n1,
@@ -895,132 +891,132 @@ void grid_prepare_pab(const int func,
 
    switch(func) {
       case GRID_FUNC_AB:
-        grid_prepare_pab_AB(o1, o2, la_max, la_min, lb_max, lb_min,
+        grid_prepare_pab_AB(o1, o2, lmax[0], lmin[0], lmax[1], lmin[1],
                             n1, n2, pab, n1_prep, n2_prep, pab_prep);
         break;
       case GRID_FUNC_DADB:
-        grid_prepare_pab_DADB(o1, o2, la_max, la_min, lb_max, lb_min,
+        grid_prepare_pab_DADB(o1, o2, lmax[0], lmin[0], lmax[1], lmin[1],
                               zeta, zetb,
                               n1, n2, pab, n1_prep, n2_prep, pab_prep);
         break;
       case GRID_FUNC_ADBmDAB_X:
-        grid_prepare_pab_ADBmDAB(1, o1, o2, la_max, la_min,
-                                 lb_max, lb_min, zeta, zetb,
+        grid_prepare_pab_ADBmDAB(1, o1, o2, lmax[0], lmin[0],
+                                 lmax[1], lmin[1], zeta, zetb,
                                  n1, n2, pab, n1_prep, n2_prep, pab_prep);
         break;
       case GRID_FUNC_ADBmDAB_Y:
-        grid_prepare_pab_ADBmDAB(2, o1, o2, la_max, la_min,
-                                 lb_max, lb_min, zeta, zetb,
+        grid_prepare_pab_ADBmDAB(2, o1, o2, lmax[0], lmin[0],
+                                 lmax[1], lmin[1], zeta, zetb,
                                  n1, n2, pab, n1_prep, n2_prep, pab_prep);
         break;
       case GRID_FUNC_ADBmDAB_Z:
-        grid_prepare_pab_ADBmDAB(3, o1, o2, la_max, la_min,
-                                 lb_max, lb_min, zeta, zetb,
+        grid_prepare_pab_ADBmDAB(3, o1, o2, lmax[0], lmin[0],
+                                 lmax[1], lmin[1], zeta, zetb,
                                  n1, n2, pab, n1_prep, n2_prep, pab_prep);
         break;
       case GRID_FUNC_ARDBmDARB_XX:
-        grid_prepare_pab_ARDBmDARB(1, 1, o1, o2, la_max, la_min,
-                                   lb_max, lb_min, zeta, zetb,
+        grid_prepare_pab_ARDBmDARB(1, 1, o1, o2, lmax[0], lmin[0],
+                                   lmax[1], lmin[1], zeta, zetb,
                                    n1, n2, pab, n1_prep, n2_prep, pab_prep);
         break;
       case GRID_FUNC_ARDBmDARB_XY:
-        grid_prepare_pab_ARDBmDARB(1, 2, o1, o2, la_max, la_min,
-                                   lb_max, lb_min, zeta, zetb,
+        grid_prepare_pab_ARDBmDARB(1, 2, o1, o2, lmax[0], lmin[0],
+                                   lmax[1], lmin[1], zeta, zetb,
                                    n1, n2, pab, n1_prep, n2_prep, pab_prep);
         break;
       case GRID_FUNC_ARDBmDARB_XZ:
-        grid_prepare_pab_ARDBmDARB(1, 3, o1, o2, la_max, la_min,
-                                   lb_max, lb_min, zeta, zetb,
+        grid_prepare_pab_ARDBmDARB(1, 3, o1, o2, lmax[0], lmin[0],
+                                   lmax[1], lmin[1], zeta, zetb,
                                    n1, n2, pab, n1_prep, n2_prep, pab_prep);
         break;
       case GRID_FUNC_ARDBmDARB_YX:
-        grid_prepare_pab_ARDBmDARB(2, 1, o1, o2, la_max, la_min,
-                                   lb_max, lb_min, zeta, zetb,
+        grid_prepare_pab_ARDBmDARB(2, 1, o1, o2, lmax[0], lmin[0],
+                                   lmax[1], lmin[1], zeta, zetb,
                                    n1, n2, pab, n1_prep, n2_prep, pab_prep);
         break;
       case GRID_FUNC_ARDBmDARB_YY:
-        grid_prepare_pab_ARDBmDARB(2, 2, o1, o2, la_max, la_min,
-                                   lb_max, lb_min, zeta, zetb,
+        grid_prepare_pab_ARDBmDARB(2, 2, o1, o2, lmax[0], lmin[0],
+                                   lmax[1], lmin[1], zeta, zetb,
                                    n1, n2, pab, n1_prep, n2_prep, pab_prep);
         break;
       case GRID_FUNC_ARDBmDARB_YZ:
-        grid_prepare_pab_ARDBmDARB(2, 3, o1, o2, la_max, la_min,
-                                   lb_max, lb_min, zeta, zetb,
+        grid_prepare_pab_ARDBmDARB(2, 3, o1, o2, lmax[0], lmin[0],
+                                   lmax[1], lmin[1], zeta, zetb,
                                    n1, n2, pab, n1_prep, n2_prep, pab_prep);
         break;
       case GRID_FUNC_ARDBmDARB_ZX:
-        grid_prepare_pab_ARDBmDARB(3, 1, o1, o2, la_max, la_min,
-                                   lb_max, lb_min, zeta, zetb,
+        grid_prepare_pab_ARDBmDARB(3, 1, o1, o2, lmax[0], lmin[0],
+                                   lmax[1], lmin[1], zeta, zetb,
                                    n1, n2, pab, n1_prep, n2_prep, pab_prep);
         break;
       case GRID_FUNC_ARDBmDARB_ZY:
-        grid_prepare_pab_ARDBmDARB(3, 2, o1, o2, la_max, la_min,
-                                   lb_max, lb_min, zeta, zetb,
+        grid_prepare_pab_ARDBmDARB(3, 2, o1, o2, lmax[0], lmin[0],
+                                   lmax[1], lmin[1], zeta, zetb,
                                    n1, n2, pab, n1_prep, n2_prep, pab_prep);
         break;
       case GRID_FUNC_ARDBmDARB_ZZ:
-        grid_prepare_pab_ARDBmDARB(3, 3, o1, o2, la_max, la_min,
-                                   lb_max, lb_min, zeta, zetb,
+        grid_prepare_pab_ARDBmDARB(3, 3, o1, o2, lmax[0], lmin[0],
+                                   lmax[1], lmin[1], zeta, zetb,
                                    n1, n2, pab, n1_prep, n2_prep, pab_prep);
         break;
       case GRID_FUNC_DABpADB_X:
-        grid_prepare_pab_DABpADB(1, o1, o2, la_max, la_min,
-                                 lb_max, lb_min, zeta, zetb,
+        grid_prepare_pab_DABpADB(1, o1, o2, lmax[0], lmin[0],
+                                 lmax[1], lmin[1], zeta, zetb,
                                  n1, n2, pab, n1_prep, n2_prep, pab_prep);
         break;
       case GRID_FUNC_DABpADB_Y:
-        grid_prepare_pab_DABpADB(2, o1, o2, la_max, la_min,
-                                 lb_max, lb_min, zeta, zetb,
+        grid_prepare_pab_DABpADB(2, o1, o2, lmax[0], lmin[0],
+                                 lmax[1], lmin[1], zeta, zetb,
                                  n1, n2, pab, n1_prep, n2_prep, pab_prep);
         break;
       case GRID_FUNC_DABpADB_Z:
-        grid_prepare_pab_DABpADB(3, o1, o2, la_max, la_min,
-                                 lb_max, lb_min, zeta, zetb,
+        grid_prepare_pab_DABpADB(3, o1, o2, lmax[0], lmin[0],
+                                 lmax[1], lmin[1], zeta, zetb,
                                  n1, n2, pab, n1_prep, n2_prep, pab_prep);
         break;
       case GRID_FUNC_DX:
-        grid_prepare_pab_Di(1, o1, o2, la_max, la_min,
-                            lb_max, lb_min, zeta, zetb,
+        grid_prepare_pab_Di(1, o1, o2, lmax[0], lmin[0],
+                            lmax[1], lmin[1], zeta, zetb,
                             n1, n2, pab, n1_prep, n2_prep, pab_prep);
         break;
       case GRID_FUNC_DY:
-        grid_prepare_pab_Di(2, o1, o2, la_max, la_min,
-                            lb_max, lb_min, zeta, zetb,
+        grid_prepare_pab_Di(2, o1, o2, lmax[0], lmin[0],
+                            lmax[1], lmin[1], zeta, zetb,
                             n1, n2, pab, n1_prep, n2_prep, pab_prep);
         break;
       case GRID_FUNC_DZ:
-         grid_prepare_pab_Di(3, o1, o2, la_max, la_min,
-                             lb_max, lb_min, zeta, zetb,
+         grid_prepare_pab_Di(3, o1, o2, lmax[0], lmin[0],
+                             lmax[1], lmin[1], zeta, zetb,
                              n1, n2, pab, n1_prep, n2_prep, pab_prep);
         break;
       case GRID_FUNC_DXDY:
-        grid_prepare_pab_DiDj(1, 2, o1, o2, la_max, la_min,
-                              lb_max, lb_min, zeta, zetb,
+        grid_prepare_pab_DiDj(1, 2, o1, o2, lmax[0], lmin[0],
+                              lmax[1], lmin[1], zeta, zetb,
                               n1, n2, pab, n1_prep, n2_prep, pab_prep);
         break;
       case GRID_FUNC_DYDZ:
-        grid_prepare_pab_DiDj(2, 3, o1, o2, la_max, la_min,
-                              lb_max, lb_min, zeta, zetb,
+        grid_prepare_pab_DiDj(2, 3, o1, o2, lmax[0], lmin[0],
+                              lmax[1], lmin[1], zeta, zetb,
                               n1, n2, pab, n1_prep, n2_prep, pab_prep);
         break;
       case GRID_FUNC_DZDX:
-        grid_prepare_pab_DiDj(3, 1, o1, o2, la_max, la_min,
-                              lb_max, lb_min, zeta, zetb,
+        grid_prepare_pab_DiDj(3, 1, o1, o2, lmax[0], lmin[0],
+                              lmax[1], lmin[1], zeta, zetb,
                               n1, n2, pab, n1_prep, n2_prep, pab_prep);
         break;
       case GRID_FUNC_DXDX:
-        grid_prepare_pab_Di2(1, o1, o2, la_max, la_min,
-                             lb_max, lb_min, zeta, zetb,
+        grid_prepare_pab_Di2(1, o1, o2, lmax[0], lmin[0],
+                             lmax[1], lmin[1], zeta, zetb,
                              n1, n2, pab, n1_prep, n2_prep, pab_prep);
         break;
       case GRID_FUNC_DYDY:
-        grid_prepare_pab_Di2(2, o1, o2, la_max, la_min,
-                             lb_max, lb_min, zeta, zetb,
+        grid_prepare_pab_Di2(2, o1, o2, lmax[0], lmin[0],
+                             lmax[1], lmin[1], zeta, zetb,
                              n1, n2, pab, n1_prep, n2_prep, pab_prep);
         break;
       case GRID_FUNC_DZDZ:
-        grid_prepare_pab_Di2(3, o1, o2, la_max, la_min,
-                             lb_max, lb_min, zeta, zetb,
+        grid_prepare_pab_Di2(3, o1, o2, lmax[0], lmin[0],
+                             lmax[1], lmin[1], zeta, zetb,
                              n1, n2, pab, n1_prep, n2_prep, pab_prep);
         break;
       default:

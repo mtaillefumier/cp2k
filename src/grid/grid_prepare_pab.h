@@ -35,18 +35,14 @@
 #define GRID_FUNC_DZDZ 803
 
 void grid_prepare_get_ldiffs(const int func,
-                             int* la_min_diff,
-                             int* la_max_diff,
-                             int* lb_min_diff,
-                             int* lb_max_diff);
+                             int* lmin_diff,
+                             int* lmax_diff);
 
 void grid_prepare_pab(const int func,
                       const int o1,
                       const int o2,
-                      const int la_max,
-                      const int la_min,
-                      const int lb_max,
-                      const int lb_min,
+                      const int *lmax,
+                      const int *lmin,
                       const double zeta,
                       const double zetb,
                       const int n1,

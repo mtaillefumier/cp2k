@@ -1,4 +1,4 @@
-CFLAGS   = -pg -g -O3 -std=c99 -march=native -Wall -Wextra -DLIBXSMM -DHAVE_MKL -I/opt/intel/compilers_and_libraries_2019.0.117/linux/mkl/include
+CFLAGS   = -pg -g -O2 -std=c99 -march=native -Wall -Wextra -DLIBXSMM -DHAVE_MKL -I/opt/intel/compilers_and_libraries_2019.0.117/linux/mkl/include
 CC=gcc
 
 all: grid_collocate_miniapp.x
