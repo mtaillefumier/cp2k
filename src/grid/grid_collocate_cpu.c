@@ -378,7 +378,7 @@ static void grid_prepare_coef_ortho(const int *lmax,
             for (int lzp = 0; lzp<=lza+lzb; lzp++) {
                 for (int lyp = 0; lyp<=lp-lza-lzb; lyp++) {
                     for (int lxp = 0; lxp<=lp-lza-lzb-lyp; lxp++) {
-                        idx3(coef_xyz[0], lxp, lyp, lzp) += idx4(alpha[0], 2, lzb, lza, lzp) * coef_xyt[lyp][lxp];
+                        idx3(coef_xyz[0], lxp, lzp, lyp) += idx4(alpha[0], 2, lzb, lza, lzp) * coef_xyt[lyp][lxp];
                     }
                 }
             }
@@ -560,7 +560,7 @@ void collocate_core_rectangular(char *scratch,
         m2.m = cube->size[0]; // k direction
         m2.n = cube->size[1]; // j direction
         m2.k = co->size[2]; // gamma
-        m2.a = &idx3(p_alpha_beta_reduced_[0], 0, 0, 0); // p_alpha_beta_reduced(0, gamma, j)
+        m2.a = &idx3(p_alpha_beta_reduced_[0], 2, 0, 0); // p_alpha_beta_reduced(0, gamma, j)
         m2.lda = p_alpha_beta_reduced_->ld_;
         m2.b = T.data; // T_{\alpha, \gamma, j}
         m2.ldb = T.ld_;
@@ -584,7 +584,7 @@ void collocate_core_rectangular(char *scratch,
         m3.k = co->size[2]; // alpha
         m3.a = &idx3(W, 0, 0, 0); // W_{\alpha, k, j}
         m3.lda = W.size[1] * W.ld_;
-        m3.b = &idx3(p_alpha_beta_reduced_[0], 2, 0, 0); // p_alpha_beta_reduced(2, alpha, i)
+        m3.b = &idx3(p_alpha_beta_reduced_[0], 0, 0, 0); // p_alpha_beta_reduced(2, alpha, i)
         m3.ldb = p_alpha_beta_reduced_->ld_;
         m3.c = &idx3(cube[0], 0, 0, 0); // cube_{kji}
         m3.ldc = cube->ld_;
