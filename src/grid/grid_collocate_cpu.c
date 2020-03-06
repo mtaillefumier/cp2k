@@ -9,8 +9,15 @@
 #include <limits.h>
 #include <assert.h>
 #include <string.h>
+#if defined(__MKL) || defined(HAVE_MKL)
+#include <mkl.h>
 #include <mkl_cblas.h>
+#endif
+
+#ifdef __LIBXSMM
 #include <libxsmm.h>
+#endif
+
 #include "grid_collocate_replay.h"
 #include "grid_collocate_cpu.h"
 #include "grid_prepare_pab.h"
@@ -506,7 +513,7 @@ void collocate_core_rectangular(char *scratch,
 
         initialize_tensor_3(&W, co->size[1] /* alpha */ , cube->size[0] /* k */, cube->size[1] /* j */);
 
-#if defined(LIBXSMM)
+#if defined(__LIBXSMM)
         T.data = libxsmm_aligned_scratch(sizeof(double) * T.alloc_size_, 0/*auto-alignment*/);
         W.data = libxsmm_aligned_scratch(sizeof(double) * W.alloc_size_, 0/*auto-alignment*/);
 #else
@@ -700,7 +707,7 @@ void collocate_core_rectangular(char *scratch,
                &m3.ldc);
 #endif
 
-#if defined(SCRATCH)
+#if defined(__LIBXSMM)
         libxsmm_free(W.data);
         libxsmm_free(T.data);
 #endif
@@ -841,7 +848,7 @@ static void grid_collocate_core(const tensor *coef_xyz, // [lp+1][lp+1][lp+1]
     tensor cube;
     initialize_tensor_3(&cube, nz, ny, nx);
 
-#if defined(LIBXSMM)
+#if defined(__LIBXSMM)
     cube.data =  libxsmm_aligned_scratch(sizeof(double) * cube.alloc_size_, 0/*auto-alignment*/);
     char *tmp = NULL;
 #else
@@ -869,7 +876,7 @@ static void grid_collocate_core(const tensor *coef_xyz, // [lp+1][lp+1][lp+1]
     // the formular distance=(2*index-1)/2.
     apply_mapping(disr_radius, dh, dh_inv, map, lb_cube, &cube, (pol->size[2] - 1) / 2, grid);
 
-#if defined(LIBXSMM)
+#if defined(__LIBXSMM)
     libxsmm_free(cube.data);
 #endif
 }
@@ -926,7 +933,7 @@ static void grid_collocate_ortho(const double zetp,
     }
 
     // a mapping so that the ig corresponds to the right grid point
-#if defined(LIBXSMM)
+#if defined(__LIBXSMM)
     int* map[3];
     // normally it is 2 * cmax + 1, but for alignment reason it is probably
     // better to align on 16 bytes
@@ -955,7 +962,7 @@ static void grid_collocate_ortho(const double zetp,
     tensor pol;
     initialize_tensor_3(&pol, 3, coef_xyz->size[0], 2 * cmax + 1);
 
-#if defined(LIBXSMM)
+#if defined(__LIBXSMM)
     pol.data =  libxsmm_aligned_scratch(sizeof(double) * pol.alloc_size_, 0/*auto-alignment*/);
 #else
     pol.data = (double*)tmp;
@@ -975,7 +982,7 @@ static void grid_collocate_ortho(const double zetp,
 
     grid_collocate_core(coef_xyz, &pol, map, lb_cube, ub_cube, dh, dh_inv, disr_radius, grid);
 
-#if defined(LIBXSMM)
+#if defined(__LIBXSMM)
     libxsmm_free(pol.data);
     libxsmm_free(map[0]);
 #endif
@@ -1311,7 +1318,7 @@ static void grid_collocate_internal(const bool use_ortho,
 
     tensor alpha;
     initialize_tensor_4(&alpha, 3, lmax_prep[1] + 1, lmax_prep[0] + 1, lmax_prep[0] + lmax_prep[1] + 1);
-#ifdef LIBXSMM
+#ifdef __LIBXSMM
     alpha.data = libxsmm_aligned_scratch(sizeof(double) * alpha.alloc_size_, 0/*auto-alignment*/);
 #else
     alpha.data = (double*)tmp;
@@ -1322,7 +1329,7 @@ static void grid_collocate_internal(const bool use_ortho,
     const int lp = lmax_prep[0] + lmax_prep[1];
     tensor coef_xyz;
     initialize_tensor_3(&coef_xyz, lp + 1, lp + 1, lp + 1);
-#ifdef LIBXSMM
+#ifdef __LIBXSMM
     coef_xyz.data = libxsmm_aligned_scratch(sizeof(double) * coef_xyz.alloc_size_, 0/*auto-alignment*/);
 #else
     coef_xyz.data = (double*)tmp;
@@ -1397,7 +1404,7 @@ static void grid_collocate_internal(const bool use_ortho,
                                grid);
     }
 
-#if defined(LIBXSMM)
+#if defined(__LIBXSMM)
     libxsmm_free(coef_xyz.data);
     libxsmm_free(alpha.data);
 #endif
@@ -1448,7 +1455,7 @@ void grid_collocate_pgf_product_cpu(const bool use_ortho,
 #ifdef __GRID_DUMP_TASKS
     tensor grid_before;
     initialize_tensor_3(&grid_before, ngrid[2], ngrid[1], ngrid[0]);
-#ifdef LIBXSMM
+#ifdef __LIBXSMM
     grid_before.data = libxsmm_aligned_scratch(sizeof(double) * coef_xyz.alloc_size_, 0/*auto-alignment*/);
 #else
     // we have a buffer of 4 M
