@@ -441,7 +441,7 @@ static void grid_fill_pol(const double dr,
                           double *pol_)
 {
     tensor pol;
-    initialize_tensor_2(&pol, lp + 1, 2 * cmax + 2);
+    initialize_tensor_2(&pol, lp + 1, 2 * cmax + 1);
     pol.data = pol_;
 //
 //   compute the values of all (x-xp)**lp*exp(..)
@@ -713,9 +713,9 @@ void collocate_core_rectangular(char *scratch,
 #endif
 
     } else {
-        const double *__restrict pz = &idx3(p_alpha_beta_reduced_[0], 0, 0, 0); /* k indice */
+        const double *__restrict pz = &idx3(p_alpha_beta_reduced_[0], 2, 0, 0); /* k indice */
         const double *__restrict py = &idx3(p_alpha_beta_reduced_[0], 1, 0, 0); /* j indice */
-        const double *__restrict px = &idx3(p_alpha_beta_reduced_[0], 2, 0, 0); /* i indice */
+        const double *__restrict px = &idx3(p_alpha_beta_reduced_[0], 0, 0, 0); /* i indice */
         double *__restrict dst = &idx3(cube[0], 0, 0, 0);
         const double coo = idx3 (co[0], 0, 0, 0);
         for (int z1 = 0; z1 < cube->size[0]; z1++) {
@@ -798,8 +798,9 @@ void apply_mapping(const double disr_radius,
     const int kgmin = ceil(-1e-8 - disr_radius * dh_inv[2][2]);
 
     const double dz = dh[2][2];
-    const double dy = dh_inv[1][1];
-    const double dx = dh_inv[0][0];
+    const double dy = dh[1][1];
+    const double inv_dy = dh_inv[1][1];
+    const double inv_dx = dh_inv[0][0];
     const int *__restrict map_x = map[0];
     const int *__restrict map_y = map[1];
     const int *__restrict map_z = map[2];
@@ -809,13 +810,13 @@ void apply_mapping(const double disr_radius,
         const int kd = (2 * kg - 1) / 2;     // distance from center in grid points
         const double kr = kd * dz;   // distance from center in a.u.
         const double kremain = disr_radius * disr_radius - kr * kr;
-        const int jgmin = ceil(-1e-8 - sqrt(max(0.0, kremain)) * dy);
+        const int jgmin = ceil(-1e-8 - sqrt(max(0.0, kremain)) * inv_dy);
         for (int jg = jgmin; jg <= 1 - jgmin; jg++) {
             const int j = map_y[jg + cmax];  // target location on the grid
             const int jd = (2 * jg - 1) / 2;    // distance from center in grid points
             const double jr = jd * dy;  // distance from center in a.u.
             const double jremain = kremain - jr * jr;
-            const int igmin = ceil(-1e-8 - sqrt(max(0.0, jremain)) * dx);
+            const int igmin = ceil(-1e-8 - sqrt(max(0.0, jremain)) * inv_dx);
             double *__restrict dst = &idx3(grid[0], k - 1, j - 1, 0);
             const double *__restrict src = &idx3(cube[0], kg - lb_cube[2], jg - lb_cube[1], - lb_cube[0]);
             for (int ig = igmin; ig <= 1 - igmin; ig++) {
@@ -953,7 +954,7 @@ static void grid_collocate_ortho(const double zetp,
                       cubecenter[i],
                       lb_grid[i],
                       npts[i],
-                      grid->size[3 - i - 1],
+                      grid->size[i],
                       cmax,
                       map[i]);
     }
@@ -974,9 +975,9 @@ static void grid_collocate_ortho(const double zetp,
     // WARNING : do not reverse the order in pol otherwise you will have to
     // reverse the order in collocate_dgemm as well.
 
-    grid_fill_pol(dh[0][0], roffset[0], lb_cube[0], coef_xyz->size[0] - 1, cmax, zetp, &idx3(pol, 2, 0, 0)); /* i indice */
+    grid_fill_pol(dh[0][0], roffset[0], lb_cube[0], coef_xyz->size[0] - 1, cmax, zetp, &idx3(pol, 0, 0, 0)); /* i indice */
     grid_fill_pol(dh[1][1], roffset[1], lb_cube[1], coef_xyz->size[1] - 1, cmax, zetp, &idx3(pol, 1, 0, 0)); /* j indice */
-    grid_fill_pol(dh[2][2], roffset[2], lb_cube[2], coef_xyz->size[2] - 1, cmax, zetp, &idx3(pol, 0, 0, 0)); /* k indice */
+    grid_fill_pol(dh[2][2], roffset[2], lb_cube[2], coef_xyz->size[2] - 1, cmax, zetp, &idx3(pol, 2, 0, 0)); /* k indice */
 
     // grid[k][j][i]
 
