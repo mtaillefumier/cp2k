@@ -279,7 +279,7 @@ double grid_collocate_replay(const char* filename, const int cycles){
     assert(strcmp(line, "#THE_END\n") == 0);
 
     double grid_test[ngrid[2]][ngrid[1]][ngrid[0]];
-
+    memset(grid_test, 0, sizeof(double) * ngrid[2] * ngrid[1] * ngrid[0]);
     printf("Cycles:   %e\n", (float)cycles);
 
     struct timespec start_time;
@@ -321,9 +321,10 @@ double grid_collocate_replay(const char* filename, const int cycles){
     for (int i = 0; i < ngrid[2]; i++) {
         for (int j = 0; j < ngrid[1]; j++) {
             for (int k = 0; k < ngrid[0]; k++) {
-                printf("(%.3e, %.3e) ", grid_test[i][j][k], ((double)cycles * grid_ref[i][j][k]));
-                const double diff = fabs((grid_test[i][j][k] - (cycles * grid_ref[i][j][k])));
+                printf("(%.3e %.3e) ", grid_test[i][j][k], ((double)cycles * grid_ref[i][j][k]));
+                const double diff = fabs((grid_test[i][j][k] - ((double)cycles * grid_ref[i][j][k])));
                 max_diff = fmax(max_diff, diff);
+                /* printf("%le\n", diff); */
             }
             printf("\n");
         }
