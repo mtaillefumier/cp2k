@@ -3,9 +3,11 @@
  *  Copyright (C) 2000 - 2020  CP2K developers group                         *
  *****************************************************************************/
 
-#include "grid_prepare_pab.h"
 #include <stdbool.h>
 #include <assert.h>
+
+#include "utils.h"
+#include "grid_prepare_pab.h"
 
 // *****************************************************************************
 static void grid_prepare_pab_AB(const int o1,

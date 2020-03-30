@@ -16,7 +16,7 @@ int main(int argc, char *argv[]){
     }
     mkl_set_threading_layer(MKL_THREADING_SEQUENTIAL);
 
-    const int cycles = 50000;  // For better statistics the task is collocated many times.
+    const int cycles = 1;  // For better statistics the task is collocated many times.
     const double max_diff = grid_collocate_replay(argv[1], cycles);
     assert(max_diff < 1e-11 * cycles);
     return 0;
