@@ -166,14 +166,15 @@ inline int compute_cube_properties(const double radius,
     int cmax = 0;
 
     /* seting up the cube parameters */
-
+    const double dx[3] = {dh[2][2], dh[1][1], dh[0][0]};
+    const double dx_inv[3] = {dh_inv[2][2], dh_inv[1][1], dh_inv[0][0]};
     /* cube center */
     for (int i=0; i<3; i++) {
         double dh_inv_rp = 0.0;
         for (int j=0; j<3; j++) {
             dh_inv_rp += dh_inv[j][i] * rp[j];
         }
-        cubecenter[i] = floor(dh_inv_rp);
+        cubecenter[2 - i] = floor(dh_inv_rp);
     }
 
     /* lower and upper bounds */
@@ -183,17 +184,17 @@ inline int compute_cube_properties(const double radius,
     *disr_radius = drmin * max(1, ceil(radius/drmin));
 
     for (int i = 0; i < 3; i++) {
-        lb_cube[i] = ceil(-1e-8 - *disr_radius * dh_inv[i][i]);
+        lb_cube[i] = ceil(-1e-8 - *disr_radius * dx_inv[i]);
         ub_cube[i] = 1 - lb_cube[i];
     }
 
     /* compute the cube size ignoring periodicity */
-    cube_size[0] = ub_cube[2] - lb_cube[2] + 1;
+    cube_size[0] = ub_cube[0] - lb_cube[0] + 1;
     cube_size[1] = ub_cube[1] - lb_cube[1] + 1;
-    cube_size[2] = ub_cube[0] - lb_cube[0] + 1;
+    cube_size[2] = ub_cube[2] - lb_cube[2] + 1;
 
     for (int i=0; i<3; i++) {
-        roffset[i] = rp[i] - ((double) cubecenter[i]) * dh[i][i];
+        roffset[i] = rp[2 - i] - ((double) cubecenter[i]) * dx[i];
     }
 
     for (int i = 0; i < 3; i++) {
@@ -201,4 +202,11 @@ inline int compute_cube_properties(const double radius,
     }
 
     return cmax;
+}
+
+void  return_cube_position(const int *lb_grid, const int *cube_center, const int *lower_boundaries_cube, const int *period, int *const position)
+{
+    position[0] = (lb_grid[0] + cube_center[0] + lower_boundaries_cube[0] + 32 * period[0]) % period[0];
+    position[1] = (lb_grid[1] + cube_center[1] + lower_boundaries_cube[1] + 32 * period[1]) % period[1];
+    position[2] = (lb_grid[2] + cube_center[2] + lower_boundaries_cube[2] + 32 * period[2]) % period[2];
 }

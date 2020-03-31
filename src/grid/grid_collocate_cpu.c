@@ -840,9 +840,9 @@ void collocate_l0(const struct tensor_ *co,
                   const struct tensor_ *p_alpha_beta_reduced_,
                   struct tensor_ *cube)
 {
-    const double *__restrict pz = &idx3(p_alpha_beta_reduced_[0], 2, 0, 0); /* k indice */
+    const double *__restrict pz = &idx3(p_alpha_beta_reduced_[0], 0, 0, 0); /* k indice */
     const double *__restrict py = &idx3(p_alpha_beta_reduced_[0], 1, 0, 0); /* j indice */
-    const double *__restrict px = &idx3(p_alpha_beta_reduced_[0], 0, 0, 0); /* i indice */
+    const double *__restrict px = &idx3(p_alpha_beta_reduced_[0], 2, 0, 0); /* i indice */
     const double coo = idx3 (co[0], 0, 0, 0);
     const double tz1 = pz[0];
 
@@ -1059,7 +1059,7 @@ void collocate_core_rectangular_variant2(char *scratch,
         m2.k = co->size[2]; // alpha
         m2.a = T.data; // T_{\alpha, \gamma, j}
         m2.lda = T.ld_ * co->size[2];
-        m2.b = &idx3(p_alpha_beta_reduced_[0], 0, 0, 0); // X_{alpha, i}  = p_alpha_beta_reduced(0, alpha, i)
+        m2.b = &idx3(p_alpha_beta_reduced_[0], 2, 0, 0); // X_{alpha, i}  = p_alpha_beta_reduced(0, alpha, i)
         m2.ldb = p_alpha_beta_reduced_->ld_;
         m2.c = W.data; // W_{\gamma, j, i}
         m2.ldc = W.ld_;
@@ -1079,7 +1079,7 @@ void collocate_core_rectangular_variant2(char *scratch,
         m3.m = cube->size[0]; // Z_{k \gamma}
         m3.n = cube->size[1] * cube->size[2]; // (ji) direction
         m3.k = co->size[2]; // \gamma
-        m3.a = &idx3(p_alpha_beta_reduced_[0], 2, 0, 0); // p_alpha_beta_reduced(0, alpha, i)
+        m3.a = &idx3(p_alpha_beta_reduced_[0], 0, 0, 0); // p_alpha_beta_reduced(0, alpha, i)
         m3.lda = p_alpha_beta_reduced_->ld_;
         m3.b = &idx3(W, 0, 0, 0); // W_{\gamma, j, i}
         m3.ldb = W.size[1] * W.ld_;
@@ -1307,7 +1307,7 @@ void collocate_core_rectangular_variant3(char *scratch,
         m2.m = cube->size[0]; // k direction
         m2.n = cube->size[1]; // j direction
         m2.k = co->size[2]; // gamma
-        m2.a = &idx3(p_alpha_beta_reduced_[0], 2, 0, 0); // p_alpha_beta_reduced(0, gamma, j)
+        m2.a = &idx3(p_alpha_beta_reduced_[0], 0, 0, 0); // p_alpha_beta_reduced(0, gamma, j)
         m2.lda = p_alpha_beta_reduced_->ld_;
         m2.b = T.data; // T_{\alpha, \gamma, j}
         m2.ldb = T.ld_;
@@ -1331,7 +1331,7 @@ void collocate_core_rectangular_variant3(char *scratch,
         m3.k = co->size[2]; // alpha
         m3.a = &idx3(W, 0, 0, 0); // W_{\alpha, k, j}
         m3.lda = W.size[1] * W.ld_;
-        m3.b = &idx3(p_alpha_beta_reduced_[0], 0, 0, 0); // p_alpha_beta_reduced(2, alpha, i)
+        m3.b = &idx3(p_alpha_beta_reduced_[0], 1, 0, 0); // p_alpha_beta_reduced(2, alpha, i)
         m3.ldb = p_alpha_beta_reduced_->ld_;
         m3.c = &idx3(cube[0], 0, 0, 0); // cube_{kji}
         m3.ldc = cube->ld_;
@@ -1527,9 +1527,9 @@ void collocate_cubic(const double radius,
                      const int *lb_grid,
                      tensor *grid)
 {
-    const int startx = (lb_grid[0] + cube_center[0] + lower_boundaries_cube[0] + 32 * period[0]) % period[0];
+    const int startx = (lb_grid[0] + cube_center[2] + lower_boundaries_cube[2] + 32 * period[0]) % period[0];
     const int starty = (lb_grid[1] + cube_center[1] + lower_boundaries_cube[1] + 32 * period[1]) % period[1];
-    const int startz = (lb_grid[2] + cube_center[2] + lower_boundaries_cube[2] + 32 * period[2]) % period[2];
+    const int startz = (lb_grid[2] + cube_center[0] + lower_boundaries_cube[0] + 32 * period[2]) % period[2];
 
     if ((starty + cube_size[1] <= grid->size[1]) &&
         (startx + cube_size[2] <= grid->size[2]) &&
@@ -1626,9 +1626,9 @@ void integrate_cubic(const double radius,
                      const tensor *grid,
                      tensor *coef)
 {
-    const int startx = (lb_grid[0] + cube_center[0] + lower_boundaries_cube[0] + 32 * period[0]) % period[0];
+    const int startx = (lb_grid[0] + cube_center[2] + lower_boundaries_cube[2] + 32 * period[0]) % period[0];
     const int starty = (lb_grid[1] + cube_center[1] + lower_boundaries_cube[1] + 32 * period[1]) % period[1];
-    const int startz = (lb_grid[2] + cube_center[2] + lower_boundaries_cube[2] + 32 * period[2]) % period[2];
+    const int startz = (lb_grid[2] + cube_center[0] + lower_boundaries_cube[0] + 32 * period[2]) % period[2];
 
     tensor cube;
     initialize_tensor_3(&cube, cube_size[0], cube_size[1], cube_size[2]);
@@ -1721,9 +1721,6 @@ void integrate_cubic(const double radius,
 #endif
 }
 
-
-
-
 /* It is a sub-optimal version of the mapping in case of a cubic cutoff. But is
  * very general and does not depend on the orthorombic nature of the grid. for
  * orthorombic cases, it is faster to apply PCB directly on the polynomials. */
@@ -1739,9 +1736,8 @@ void compute_blocks(collocation_integration *const handler,
                     const int *lb_grid,
                     tensor *grid)
 {
-    const int position[3] = {(lb_grid[0] + cube_center[0] + lower_boundaries_cube[0] + 32 * period[0]) % period[0],
-                             (lb_grid[1] + cube_center[1] + lower_boundaries_cube[1] + 32 * period[1]) % period[1],
-                             (lb_grid[2] + cube_center[2] + lower_boundaries_cube[2] + 32 * period[2]) % period[2]};
+    int position[3];
+    return_cube_position(lb_grid, cube_center, lower_boundaries_cube, period, position);
 
     if ((position[1] + cube_size[1] <= grid->size[1]) &&
         (position[2] + cube_size[2] <= grid->size[2]) &&
@@ -1879,37 +1875,41 @@ void apply_mapping_cubic(const int *lower_boundaries_cube,
                          const int *lb_grid,
                          tensor *grid)
 {
-    const int startx = (lb_grid[0] + cube_center[0] + lower_boundaries_cube[0] + 32 * period[0]) % period[0];
-    const int starty = (lb_grid[1] + cube_center[1] + lower_boundaries_cube[1] + 32 * period[1]) % period[1];
-    const int startz = (lb_grid[2] + cube_center[2] + lower_boundaries_cube[2] + 32 * period[2]) % period[2];
+    int position[3];
+    return_cube_position(lb_grid, cube_center, lower_boundaries_cube, period, position);
 
-    if ((starty + cube->size[1] <= grid->size[1]) &&
-        (startx + cube->size[2] <= grid->size[2]) &&
-        (startz + cube->size[0] <= grid->size[0])) {
+    if ((position[1] + cube->size[1] <= grid->size[1]) &&
+        (position[2] + cube->size[2] <= grid->size[2]) &&
+        (position[0] + cube->size[0] <= grid->size[0])) {
         // it means that the cube is completely inside the grid without touching
         // the grid borders. periodic boundaries conditions are pointless here.
         // we can simply loop over all three dimensions.
 
         // it also consider the case where they are open boundaries
 
-        const int lower_corner[3] = {startz, starty, startx};
-        const int upper_corner[3] = {startz + cube->size[0], starty + cube->size[1], startx + cube->size[2]};
-        const int position[3] = {0, 0, 0};
+        const int lower_corner[3] = {position[0], position[1], position[2]};
+
+        const int upper_corner[3] = {lower_corner[0] + cube->size[0],
+                                     lower_corner[1] + cube->size[1],
+                                     lower_corner[2] + cube->size[2]};
+        const int position1[3] = {0, 0, 0};
 
         add_sub_grid(lower_corner, // lower corner position where the subgrid should placed
                      upper_corner, // upper boundary
-                     position, // starting position of in the subgrid
+                     position1, // starting position of in the subgrid
                      cube, // subgrid
                      grid);
 
         return;
     }
 
-    int z1 = startz;
+    int z1 = position[0];
     int z_offset = 0;
-    const int offset = min(grid->size[2] - startx, cube->size[2]);
-    const int loop_number = (cube->size[2] - offset) / period[0];
-    const int remainder = min(grid->size[2], cube->size[2] - offset - loop_number * period[0]);
+
+    const int offset = min(grid->size[2] - position[2], cube->size[2]);
+    const int loop_number = (cube->size[2] - offset) / period[2];
+    const int remainder = min(grid->size[2], cube->size[2] - offset - loop_number * period[2]);
+
     for (int z = 0; (z < cube->size[0]); z++, z1++) {
 
 
@@ -1917,12 +1917,12 @@ void apply_mapping_cubic(const int *lower_boundaries_cube,
             z1 -= period[2];
 
         const int zmin = z1;
-        for (;((z1 < grid->size[0]) || (z1 < period[0])) && (z < cube->size[0]); z1++, z++);
+        for (;((z1 < grid->size[0]) || (z1 < period[2])) && (z < cube->size[0]); z1++, z++);
         const int zmax = z1;
 
         /* // We have a full plane. */
         if (zmax - zmin) {
-            int y1 = starty;
+            int y1 = position[1];
             int y_offset = 0;
             for (int y = 0; y < cube->size[1]; y++, y1++) {
 
@@ -1946,7 +1946,7 @@ void apply_mapping_cubic(const int *lower_boundaries_cube,
 //#pragma omp simd
 #pragma GCC ivdep
                             for (int x = 0; x < offset; x++)
-                                dst[x + startx] += src[x];
+                                dst[x + position[2]] += src[x];
 
                             int shift = offset;
                             for (int l = 0; l < loop_number; l++) {
@@ -1955,7 +1955,7 @@ void apply_mapping_cubic(const int *lower_boundaries_cube,
                                 for (int x = 0; x < grid->size[2]; x++)
                                     dst[x] += src[shift + x];
 
-                                shift = offset + (l + 1)  * period[0];
+                                shift = offset + (l + 1)  * period[2];
                             }
 //#pragma omp simd
 #pragma GCC ivdep
@@ -1974,7 +1974,7 @@ void apply_mapping_cubic(const int *lower_boundaries_cube,
                 }
             }
             z_offset += (zmax - zmin);
-            if (z1 == period[1])
+            if (z1 == period[0])
                 z1 = -1;
         }
     }
@@ -2050,7 +2050,7 @@ void grid_collocate_ortho(collocation_integration *const handler,
 #endif
     /* memset(map[0], 0, sizeof(int) * 3 * (2 * cmax + 1)); */
 
-    /* /\* compute the mapping *\/ */
+    /* compute the mapping */
     /* for (int i = 0; i < 3; i++) { */
     /*     grid_fill_map(periodic[i], */
     /*                   lb_cube[i], */
@@ -2069,9 +2069,9 @@ void grid_collocate_ortho(collocation_integration *const handler,
     // WARNING : do not reverse the order in pol otherwise you will have to
     // reverse the order in collocate_dgemm as well.
 
-    grid_fill_pol(dh[0][0], roffset[0], lb_cube[0], coef_xyz->size[0] - 1, cmax, zetp, &idx3(pol, 0, 0, 0)); /* i indice */
+    grid_fill_pol(dh[0][0], roffset[2], lb_cube[2], coef_xyz->size[2] - 1, cmax, zetp, &idx3(pol, 2, 0, 0)); /* i indice */
     grid_fill_pol(dh[1][1], roffset[1], lb_cube[1], coef_xyz->size[1] - 1, cmax, zetp, &idx3(pol, 1, 0, 0)); /* j indice */
-    grid_fill_pol(dh[2][2], roffset[2], lb_cube[2], coef_xyz->size[2] - 1, cmax, zetp, &idx3(pol, 2, 0, 0)); /* k indice */
+    grid_fill_pol(dh[2][2], roffset[0], lb_cube[0], coef_xyz->size[0] - 1, cmax, zetp, &idx3(pol, 0, 0, 0)); /* k indice */
 
     if (TEST) {
         tensor pol_folded;
@@ -2112,15 +2112,14 @@ void grid_collocate_ortho(collocation_integration *const handler,
         if ((number_of_non_zero_elements[0] == 0) ||
             (number_of_non_zero_elements[1] == 0) ||
             (number_of_non_zero_elements[2] == 0)) {
-            const int startx = (lb_grid[0] + cubecenter[0] + lb_cube[0] + 32 * npts[0]) % npts[0];
-            const int starty = (lb_grid[1] + cubecenter[1] + lb_cube[1] + 32 * npts[1]) % npts[1];
-            const int startz = (lb_grid[2] + cubecenter[2] + lb_cube[2] + 32 * npts[2]) % npts[2];
+            int position[3];
+            return_cube_position(lb_grid, cubecenter, lb_cube, npts, position);
             printf("We have a problem: Info\n");
             printf("grid size                   : %d %d %d\n", grid->size[0], grid->size[1], grid->size[2]);
             printf("cube size                   : %d %d %d\n", cube_size[0], cube_size[1], cube_size[2]);
             printf("number of non zero elements : %d %d %d\n", number_of_non_zero_elements[0], number_of_non_zero_elements[1], number_of_non_zero_elements[2]);
             printf("cube center                 : %d %d %d\n", cubecenter[0], cubecenter[1], cubecenter[2]);
-            printf("cube center (rel. coord)    : %d %d %d\n", startx, starty, startz);
+            printf("cube center (rel. coord)    : %d %d %d\n", position[0], position[1], position[2]);
             abort();
         }
 
@@ -2133,9 +2132,9 @@ void grid_collocate_ortho(collocation_integration *const handler,
          */
 
         initialize_tensor_3(&cube,
-                            number_of_non_zero_elements[2],
+                            number_of_non_zero_elements[0],
                             number_of_non_zero_elements[1],
-                            number_of_non_zero_elements[0]);
+                            number_of_non_zero_elements[2]);
 
 #if defined(__LIBXSMM)
         cube.data = libxsmm_aligned_scratch(sizeof(double) * cube.alloc_size_, 0/*auto-alignment*/);
@@ -2174,16 +2173,16 @@ void grid_collocate_ortho(collocation_integration *const handler,
 #error "Need implementation"
 #endif
 
-        /* compute_blocks(handler, */
-        /*                lb_cube, */
-        /*                cube_size, */
-        /*                cubecenter, */
-        /*                npts, */
-        /*                coef_xyz, */
-        /*                &pol, */
-        /*                NULL, */
-        /*                lb_grid, */
-        /*                grid); */
+        compute_blocks(handler,
+                       lb_cube,
+                       cube_size,
+                       cubecenter,
+                       npts,
+                       coef_xyz,
+                       &pol,
+                       NULL,
+                       lb_grid,
+                       grid);
         /* collocate_cubic(disr_radius, */
         /*                 dh, */
         /*                 lb_cube, */
@@ -2586,7 +2585,9 @@ void grid_collocate_internal(collocation_integration *const handler,
                             &coef_xyz);
 
     if (use_ortho) {
-
+        const int period[3] = {npts[2], npts[1], npts[0]};
+        const int lb_grid_bis[3] = {lb_grid[2], lb_grid[1], lb_grid[0]};
+        const bool periodic_bis[3] = {periodic[2], periodic[1], periodic[0]};
         // coef[x][z][y]
         grid_prepare_coef_ortho(lmax_prep,
                                 lmin_prep,
@@ -2602,9 +2603,9 @@ void grid_collocate_internal(collocation_integration *const handler,
                              dh,
                              dh_inv,
                              rp,
-                             npts,
-                             lb_grid,
-                             periodic,
+                             period,
+                             lb_grid_bis,
+                             periodic_bis,
                              radius,
                              grid);
     } else {

@@ -150,7 +150,7 @@ void collocate_core_rectangular_variant1(char *scratch,
         m2.m = zmax - zmin; // k direction
         m2.n = ymax - ymin; // j direction
         m2.k = co->size[2]; // gamma
-        m2.a = &idx3(p_alpha_beta_reduced_[0], 2, 0, zoffset); // p_alpha_beta_reduced(0, gamma, j)
+        m2.a = &idx3(p_alpha_beta_reduced_[0], 0, 0, zoffset); // p_alpha_beta_reduced(0, gamma, j)
         m2.lda = p_alpha_beta_reduced_->ld_;
         m2.b = T.data; // T_{\alpha, \gamma, j}
         m2.ldb = T.ld_;
@@ -180,7 +180,7 @@ void collocate_core_rectangular_variant1(char *scratch,
         m3.k = co->size[2]; // alpha
         m3.a = &idx3(W, 0, 0, 0); // W_{\alpha, k, j}
         m3.lda = W.size[1] * W.ld_;
-        m3.b = &idx3(p_alpha_beta_reduced_[0], 0, 0, xoffset); // p_alpha_beta_reduced(2, alpha, i)
+        m3.b = &idx3(p_alpha_beta_reduced_[0], 2, 0, xoffset); // p_alpha_beta_reduced(2, alpha, i)
         m3.ldb = p_alpha_beta_reduced_->ld_;
         m3.c = &idx3(grid[0], 0, 0, 0); // cube_{kji}
         m3.ldc = grid->ld_;
@@ -374,9 +374,9 @@ void collocate_core_rectangular_variant1(char *scratch,
     }
 
     /* l = 0 case */
-    const double *__restrict pz = &idx3(p_alpha_beta_reduced_[0], 2, 0, zoffset); /* k indice */
+    const double *__restrict pz = &idx3(p_alpha_beta_reduced_[0], 0, 0, zoffset); /* k indice */
     const double *__restrict py = &idx3(p_alpha_beta_reduced_[0], 1, 0, yoffset); /* j indice */
-    const double *__restrict px = &idx3(p_alpha_beta_reduced_[0], 0, 0, xoffset); /* i indice */
+    const double *__restrict px = &idx3(p_alpha_beta_reduced_[0], 2, 0, xoffset); /* i indice */
     const double coo = idx3 (co[0], 0, 0, 0);
     const double tz1 = pz[0];
     tensor tmp;
@@ -483,9 +483,9 @@ void apply_mapping(const double disr_radius,
     const double dy = dh[1][1];
     const double inv_dy = dh_inv[1][1];
     const double inv_dx = dh_inv[0][0];
-    const int *__restrict map_x = map[0];
+    const int *__restrict map_x = map[2];
     const int *__restrict map_y = map[1];
-    const int *__restrict map_z = map[2];
+    const int *__restrict map_z = map[0];
 
     for (int kg = kgmin; kg <= 1 - kgmin; kg++) {
         const int k = map_z[kg + cmax];   // target location on the grid
@@ -504,7 +504,7 @@ void apply_mapping(const double disr_radius,
                 continue;
             const int igmin = ceil(-1e-8 - sqrt(max(0.0, jremain)) * inv_dx);
             double *__restrict dst = &idx3(grid[0], k - 1, j - 1, 0);
-            const double *__restrict src = &idx3(cube[0], kg - lb_cube[2], jg - lb_cube[1], - lb_cube[0]);
+            const double *__restrict src = &idx3(cube[0], kg - lb_cube[0], jg - lb_cube[1], - lb_cube[2]);
             for (int ig = igmin; ig <= 1 - igmin; ig++) {
                 const int i = map_x[ig + cmax];  // target location on the grid
                 dst[i - 1] += src[ig];
@@ -523,9 +523,9 @@ void colloc_ortho(const int *non_zero_elements[3],
                   const tensor *pol,
                   tensor *dst)
 {
-    const int *__restrict z_int = non_zero_elements[2];
+    const int *__restrict z_int = non_zero_elements[0];
     const int *__restrict y_int = non_zero_elements[1];
-    const int *__restrict x_int = non_zero_elements[0];
+    const int *__restrict x_int = non_zero_elements[2];
 
     if ((non_zero_elements[2] == 0) || (non_zero_elements[1] == 0) || (non_zero_elements[0] == 0))
         return;
@@ -610,14 +610,16 @@ void apply_mapping_ortho(const int *non_zero_elements[3],
                          const tensor *src,
                          tensor *dst)
 {
-    const int *__restrict z_int = non_zero_elements[2];
+    const int *__restrict z_int = non_zero_elements[0];
     const int *__restrict y_int = non_zero_elements[1];
-    const int *__restrict x_int = non_zero_elements[0];
+    const int *__restrict x_int = non_zero_elements[2];
 
     if ((non_zero_elements[2] == 0) || (non_zero_elements[1] == 0) || (non_zero_elements[0] == 0))
         return;
 
-    if ((number_of_non_zero_elements[2] == dst->size[0]) || (number_of_non_zero_elements[1] == dst->size[1]) || (number_of_non_zero_elements[0] == dst->size[2])) {
+    if ((number_of_non_zero_elements[0] == dst->size[0]) ||
+        (number_of_non_zero_elements[1] == dst->size[1]) ||
+        (number_of_non_zero_elements[2] == dst->size[2])) {
 #if defined(__MKL) || defined(HAVE_CBLAS)
         cblas_daxpy(dst->alloc_size_, 1.0, src->data, 1, dst->data, 1);
 #else
