@@ -3,14 +3,15 @@
 !   Copyright (C) 2000 - 2020  CP2K developers group                                               !
 !--------------------------------------------------------------------------------------------------!
 MODULE grid_api
-   USE grid_collocate,                  ONLY: &
+      USE grid_collocate,                  ONLY: &
         GRID_FUNC_AB, GRID_FUNC_ADBmDAB_X, GRID_FUNC_ADBmDAB_Y, GRID_FUNC_ADBmDAB_Z, &
         GRID_FUNC_ARDBmDARB_XX, GRID_FUNC_ARDBmDARB_XY, GRID_FUNC_ARDBmDARB_XZ, &
         GRID_FUNC_ARDBmDARB_YX, GRID_FUNC_ARDBmDARB_YY, GRID_FUNC_ARDBmDARB_YZ, &
         GRID_FUNC_ARDBmDARB_ZX, GRID_FUNC_ARDBmDARB_ZY, GRID_FUNC_ARDBmDARB_ZZ, &
         GRID_FUNC_DABpADB_X, GRID_FUNC_DABpADB_Y, GRID_FUNC_DABpADB_Z, GRID_FUNC_DADB, &
         GRID_FUNC_DX, GRID_FUNC_DXDX, GRID_FUNC_DXDY, GRID_FUNC_DY, GRID_FUNC_DYDY, &
-        GRID_FUNC_DYDZ, GRID_FUNC_DZ, GRID_FUNC_DZDX, GRID_FUNC_DZDZ, collocate_pgf_product
+        GRID_FUNC_DYDZ, GRID_FUNC_DZ, GRID_FUNC_DZDX, GRID_FUNC_DZDZ, collocate_pgf_product,  &
+        collocate_pgf_create_handle, collocate_pgf_finalize, collocate_pgf_synchronize
    USE grid_integrate,                  ONLY: integrate_pgf_product
 
    IMPLICIT NONE
@@ -47,6 +48,10 @@ MODULE grid_api
    PUBLIC :: GRID_FUNC_DZDZ
 
    PUBLIC :: collocate_pgf_product
+   PUBLIC :: collocate_pgf_create_handle
+   PUBLIC :: collocate_pgf_finalize
+   PUBLIC :: collocate_pgf_synchronize
+
    PUBLIC :: integrate_pgf_product
 
 CONTAINS

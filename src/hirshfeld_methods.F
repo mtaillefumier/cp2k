@@ -22,7 +22,9 @@ MODULE hirshfeld_methods
    USE cube_utils,                      ONLY: cube_info_type
    USE grid_api,                        ONLY: GRID_FUNC_AB,&
                                               collocate_pgf_product,&
-                                              integrate_pgf_product
+                                              integrate_pgf_product,&
+                                              collocate_pgf_create_handle,&
+                                              collocate_pgf_finalize
    USE hirshfeld_types,                 ONLY: get_hirshfeld_info,&
                                               hirshfeld_type,&
                                               set_hirshfeld_info
@@ -63,6 +65,8 @@ MODULE hirshfeld_methods
                                               rs_grid_retain,&
                                               rs_grid_zero,&
                                               rs_pw_transfer
+
+   USE iso_c_binding,                  ONLY: C_PTR
 #include "./base/base_uses.f90"
 
    IMPLICIT NONE
@@ -433,7 +437,7 @@ CONTAINS
       TYPE(pw_pool_type), POINTER                        :: auxbas_pw_pool
       TYPE(realspace_grid_desc_type), POINTER            :: auxbas_rs_desc
       TYPE(realspace_grid_type), POINTER                 :: rs_rho
-
+      TYPE(C_PTR)                                        :: gaussian_handle
       CALL timeset(routineN, handle)
 
       CALL get_qs_env(qs_env=qs_env, atomic_kind_set=atomic_kind_set, cell=cell, &
@@ -449,7 +453,7 @@ CONTAINS
       ALLOCATE (pab(1, 1))
       nthread = 1
       ithread = 0
-
+      gaussian_handle = collocate_pgf_create_handle(0, 1024)
       DO ikind = 1, SIZE(atomic_kind_set)
          numexp = hirshfeld_env%kind_shape_fn(ikind)%numexp
          IF (numexp <= 0) CYCLE
@@ -487,7 +491,7 @@ CONTAINS
                                                  prefactor=1.0_dp, cutoff=0.0_dp)
 
                ! la_max==0 so set lmax_global to 0
-               CALL collocate_pgf_product(0, alpha, 0, 0, 0.0_dp, 0, ra, &
+               CALL collocate_pgf_product(gaussian_handle, 0, alpha, 0, 0, 0.0_dp, 0, ra, &
                                           (/0.0_dp, 0.0_dp, 0.0_dp/), 1.0_dp, pab, 0, 0, rs_rho, &
                                           cell, cube_info, radius=radius, ga_gb_function=GRID_FUNC_AB, &
                                           use_subpatch=.TRUE., subpatch_pattern=subpatch_pattern)
@@ -496,6 +500,7 @@ CONTAINS
 
          DEALLOCATE (cores)
       END DO
+      CALL collocate_pgf_finalize(gaussian_handle)
       DEALLOCATE (pab)
 
       NULLIFY (fnorm)

@@ -228,42 +228,48 @@ void add_collocation_block(struct collocation_integration_ *const handler,
         handler->current_list = handler->list[0];
         handler->working_thread = 0;
         list_collocation = handler->current_list;
+        handler->threads[0] = 0;
+        handler->threads[1] = 0;
         handler->list[0]->first_round = false;
     }
 
     if (list_collocation->number_of_elements_ == list_collocation->total_number_of_elements_) {
         // the list of blocks is full. Launch the computations
-        /* pthread_create(&handler->threads[(handler->working_thread) % 2], NULL, calculate_collocation, list_collocation); */
-        calculate_collocation(list_collocation);
+        pthread_create(&handler->threads[(handler->working_thread) % 2], NULL, calculate_collocation, list_collocation);
         /* wait for the already running thread to finish. It is blocking so.... */
 
+#ifdef PRINT_DEBUG
         printf("Current list %p, next list %p\n",
                handler->list[(handler->working_thread)% 2],
                handler->list[(handler->working_thread + 1)% 2]);
-        /* if (!handler->list[(handler->working_thread + 1)% 2]->first_round) { */
-        /*     int result_code = pthread_join(handler->threads[(handler->working_thread + 1) % 2], NULL); */
-        handler->threads[(handler->working_thread + 1) % 2] = NULL;
-        /* } */
+#endif
+
+        /* The previous list might still be running or is already finished. We
+         * still have to check the status */
+        if (!handler->list[(handler->working_thread + 1)% 2]->first_round) {
+            /* wait for the thread to finish */
+            int result_code = pthread_join(handler->threads[(handler->working_thread + 1) % 2], NULL);
+            handler->threads[(handler->working_thread + 1) % 2] = 0;
+        }
 
         handler->working_thread++;
 
+#ifdef PRINT_DEBUG
+        printf("Number of threads launched %d\n", handler->working_thread);
+#endif
         /* assert(!result_code); */
         if ((list_collocation == handler->list[0]) &&
             ((handler->list[1]->done) || (handler->list[1]->first_round))) {
-            handler->list[1]->first_round = false;
-            printf("Current list:      %p ", handler->current_list);
             /* work is done in the second list. We can use it for storing the block */
             handler->current_list = handler->list[1];
-            printf("Next    list:      %p\n", handler->current_list);
             list_collocation = handler->current_list;
             handler->list[1]->done = false;
+            handler->list[1]->first_round = false;
         } else {
             if ((list_collocation == handler->list[1]) &&
                 ((handler->list[0]->done) || (handler->list[0]->first_round))) {
-                printf("Current list:      %p ", handler->current_list);
                 /* work is done in the second list. We can use it for storing the block */
                 handler->current_list = handler->list[0];
-                printf("Next    list:      %p   elements %d\n", handler->current_list, handler->current_list->number_of_elements_);
                 list_collocation = handler->current_list;
                 handler->list[0]->done = false;
                 handler->list[0]->first_round = false;
@@ -271,7 +277,6 @@ void add_collocation_block(struct collocation_integration_ *const handler,
         }
     }
 
-    printf("Adding one element to the list %p\n", list_collocation);
     int max_size = max(upper_corner[0] - lower_corner[0],
                        max(upper_corner[1] - lower_corner[1],
                            upper_corner[2] - lower_corner[2]));
@@ -309,18 +314,18 @@ void add_collocation_block(struct collocation_integration_ *const handler,
             /* plane z - x */
             memcpy(&idx3(list->Exp, 0, z, 0),
                    &idx3(list->Exp, 0, position1[0] + z, position1[2]),
-                   sizeof(double) * upper_corner[2] - lower_corner[2]);
+                   sizeof(double) * (upper_corner[2] - lower_corner[2]));
             /* plane z - y */
             memcpy(&idx3(list->Exp, 1, z, 0),
                    &idx3(list->Exp, 1, position1[0] + z, position1[1]),
-                   sizeof(double) * upper_corner[1] - lower_corner[1]);
+                   sizeof(double) * (upper_corner[1] - lower_corner[1]));
         }
 
         /* plane y - x */
         for (int y = 0; y < upper_corner[1] - lower_corner[1]; y++) {
             memcpy(&idx3(list->Exp, 2, y, 0),
                    &idx3(list->Exp, 2, position1[1] + y, position1[2]),
-                   sizeof(double) * upper_corner[2] - lower_corner[2]);
+                   sizeof(double) * (upper_corner[2] - lower_corner[2]));
         }
 
     } else {
@@ -341,6 +346,8 @@ void add_collocation_block(struct collocation_integration_ *const handler,
                         max_size);
 #if defined(__LIBXSMM)
     list->pol.data = libxsmm_aligned_scratch(sizeof(double) * list->pol.alloc_size_, 0/*auto-alignment*/);
+    if(list->pol.data == NULL)
+        abort();
 #else
 #endif
 
@@ -356,14 +363,6 @@ void add_collocation_block(struct collocation_integration_ *const handler,
     list->grid.data = grid->data;
     list->initialized_ = 1;
     list_collocation->number_of_elements_++;
-    printf("Grid address %p\n",     list->grid.data);
-    printf("grid size    : %d %d %d\n", list->grid.size[0], list->grid.size[1], list->grid.size[2]);
-    printf("# of elements in the list %p : %d\n", list_collocation, list_collocation->number_of_elements_);
-
-    /* if (list_collocation->number_of_elements_ == list_collocation->total_number_of_elements_) { */
-    /*     // the list of blocks is full. Launch the computations */
-    /*     pthread_create(&handler->threads[(handler->working_thread + 1) % 2], NULL, print_collocation_list, list_collocation); */
-    /* } */
 }
 
 
@@ -416,11 +415,11 @@ void collocate_create_handler(void **gaussian_handler, const int device_id, cons
     (*handler)->list[1]->number_of_elements_ = 0;
     (*handler)->current_list = NULL;
     (*handler)->working_thread = 0;
-    (*handler)->threads[0] = NULL;
-    (*handler)->threads[1] = NULL;
+    (*handler)->threads[0] = 0;
+    (*handler)->threads[1] = 0;
 }
 
-void collocate_finalize(void **gaussian_handler)
+void collocate_synchronize(void **gaussian_handler)
 {
     if (gaussian_handler == NULL) {
         abort();
@@ -432,23 +431,29 @@ void collocate_finalize(void **gaussian_handler)
         abort();
     }
 
-    if ((*handler)->threads[0] != NULL) {
+    if ((*handler)->threads[0] != 0) {
         int result_code = pthread_join((*handler)->threads[0], NULL);
-        (*handler)->threads[0] = NULL;
+        (*handler)->threads[0] = 0;
     } else {
         if ((*handler)->list[0]->number_of_elements_ > 0) {
             calculate_collocation((*handler)->list[0]);
         }
     }
 
-    if ((*handler)->threads[1] != NULL) {
+    if ((*handler)->threads[1] != 0) {
         int result_code = pthread_join((*handler)->threads[1], NULL);
-        (*handler)->threads[1] = NULL;
+        (*handler)->threads[1] = 0;
     } else {
         if ((*handler)->list[1]->number_of_elements_ > 0) {
             calculate_collocation((*handler)->list[1]);
         }
     }
+}
+
+void collocate_finalize(void **gaussian_handler)
+{
+    collocate_synchronize(gaussian_handler);
+    struct collocation_integration_ **handler = (struct collocation_integration_ **)gaussian_handler;
 
     destroy_collocation_list((*handler)->list[0]);
     destroy_collocation_list((*handler)->list[1]);
@@ -462,8 +467,12 @@ void *calculate_collocation(struct collocation_list_ *const list_)
 {
     int position[3] = {0, 0, 0};
     /* these can be treated independently */
+    assert(list_->number_of_elements_ > 0);
+
+    /* printf("calculate_collocation : List %p\n", list_); */
+
     for (int i = 0; i < list_->number_of_elements_; i++) {
-        print_collocation_block(list_->list + i);
+        /* print_collocation_block(list_->list + i); */
         collocate_core_rectangular_variant2(NULL,
                                             &list_->list[i].coefs,
                                             &list_->list[i].pol,
@@ -480,26 +489,11 @@ void *calculate_collocation(struct collocation_list_ *const list_)
     }
 
     release_collocation_block_memory(list_);
+#ifdef PRINT_DEBUG
     printf("list number of elements (reset) %d\n", list_->number_of_elements_);
+#endif
     list_->done = true;
     return NULL;
-}
-
-
-void collocation_calculate(void **gaussian_handler)
-{
-    if (gaussian_handler == NULL) {
-        abort();
-    }
-
-    struct collocation_integration_ **handler = (struct collocation_integration_ **)gaussian_handler;
-
-    if (*handler == NULL) {
-        abort();
-    }
-
-    calculate_collocation((*handler)->list[0]);
-    calculate_collocation((*handler)->list[1]);
 }
 
 
@@ -2183,6 +2177,7 @@ void grid_collocate_ortho(collocation_integration *const handler,
                        NULL,
                        lb_grid,
                        grid);
+
         /* collocate_cubic(disr_radius, */
         /*                 dh, */
         /*                 lb_cube, */
@@ -2194,14 +2189,14 @@ void grid_collocate_ortho(collocation_integration *const handler,
         /*                 lb_grid, */
         /*                 grid); */
 
-        collocate_core_rectangular_variant2(NULL, // will need to change that eventually.
-                                            // pointer to scratch memory
-                                            coef_xyz,
-                                            &pol,
-                                            &cube);
+        /* collocate_core_rectangular_variant2(NULL, // will need to change that eventually. */
+        /*                                     // pointer to scratch memory */
+        /*                                     coef_xyz, */
+        /*                                     &pol, */
+        /*                                     &cube); */
 
         /* apply_mapping(disr_radius, dh, dh_inv, map, lb_cube, &cube, cmax, grid); */
-        apply_mapping_cubic(lb_cube, cubecenter, npts, &cube, lb_grid, grid);
+        /* apply_mapping_cubic(lb_cube, cubecenter, npts, &cube, lb_grid, grid); */
     }
 
 #if defined(__LIBXSMM)
@@ -2677,8 +2672,7 @@ void integrate_ortho(const int la_max,
 }
 
 // *****************************************************************************
-void grid_collocate_pgf_product_cpu(/* void *const handler, */
-                                    const bool use_ortho,
+void grid_collocate_pgf_product_cpu(const bool use_ortho,
                                     const int func,
                                     const int la_max,
                                     const int la_min,
@@ -2741,7 +2735,10 @@ void grid_collocate_pgf_product_cpu(/* void *const handler, */
     memset(grid.data, 0, sizeof(double) grid.alloc_size_);
 #endif
 
-    grid_collocate_internal(NULL,
+    void *gaussian_handler =  NULL;
+    collocate_create_handler(&gaussian_handler, 0, 32);
+
+    grid_collocate_internal(gaussian_handler,
                             use_ortho,
                             func,
                             lmax,
@@ -2762,6 +2759,7 @@ void grid_collocate_pgf_product_cpu(/* void *const handler, */
                             pab_size,
                             pab,
                             &grid);
+    collocate_finalize(&gaussian_handler);
 
 #ifdef __GRID_DUMP_TASKS
 

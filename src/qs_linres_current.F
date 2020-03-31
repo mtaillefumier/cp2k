@@ -127,7 +127,8 @@ MODULE qs_linres_current
                                               rs_distribute_matrix,&
                                               task_list_inner_loop
    USE task_list_types,                 ONLY: reallocate_tasks,&
-                                              task_type
+        task_type
+   USE iso_c_bindings,                  ONLY: C_PTR
 #include "./base/base_uses.f90"
 
    IMPLICIT NONE
@@ -636,6 +637,7 @@ CONTAINS
       TYPE(realspaces_grid_p_type), DIMENSION(:), &
          POINTER                                         :: rs_gauge
       TYPE(task_type), DIMENSION(:), POINTER             :: tasks
+      TYPE(C_PTR)                                        :: gaussian_handle
 
       NULLIFY (qs_kind, cell, dft_control, orb_basis_set, rs_rho, &
                qs_kind_set, sab_orb, particle_set, rs_current, pw_env, &
@@ -952,6 +954,8 @@ CONTAINS
       ENDIF
 
       ithread = 0
+      gaussian_handle = collocate_pgf_create_handle(0, 1024)
+
       jpab_a => jpabt_a(:, :, ithread)
       jpab_b => jpabt_b(:, :, ithread)
       jpab_c => jpabt_c(:, :, ithread)
@@ -1134,7 +1138,7 @@ CONTAINS
                                            ra=ra, rb=rb, rp=rp, zetp=zetp, eps=eps_rho_rspace, &
                                            prefactor=prefactor, cutoff=1.0_dp)
 
-         CALL collocate_pgf_product(la_max(iset), zeta(ipgf, iset), &
+         CALL collocate_pgf_product(gaussian_handle, la_max(iset), zeta(ipgf, iset), &
                                     la_min(iset), lb_max(jset), zetb(jpgf, jset), lb_min(jset), &
                                     ra, rab, scale, jpab_a, na1 - 1, nb1 - 1, &
                                     rs_current(igrid_level)%rs_grid, cell, cube_info(igrid_level), &
@@ -1143,7 +1147,7 @@ CONTAINS
             ! here the decontracted mat_jb_{ab} is multiplied by
             !     f_{ab} = g_{a} * g_{b} ! THIS GOES OUTSIDE THE LOOP !
             IF (scale2 .NE. 0.0_dp) THEN
-               CALL collocate_pgf_product(la_max(iset), zeta(ipgf, iset), &
+               CALL collocate_pgf_product(gaussian_handle, la_max(iset), zeta(ipgf, iset), &
                                           la_min(iset), lb_max(jset), zetb(jpgf, jset), lb_min(jset), &
                                           ra, rab, scale2, jpab_d, na1 - 1, nb1 - 1, &
                                           rs_rho(igrid_level)%rs_grid, cell, cube_info(igrid_level), &
@@ -1154,14 +1158,17 @@ CONTAINS
             !             (dg_{a}/dr)_{idir} (d(r) - R_{b})_{iiB} g_{b}
             scale = 1.0_dp
             current_env%rs_buf(igrid_level)%rs_grid%r(:, :, :) = 0.0_dp
-            CALL collocate_pgf_product(la_max(iset), zeta(ipgf, iset), &
+            CALL collocate_pgf_product(gaussian_handle, la_max(iset), zeta(ipgf, iset), &
                                        la_min(iset), lb_max(jset), zetb(jpgf, jset), lb_min(jset), &
                                        ra, rab, scale, jpab_b, na1 - 1, nb1 - 1, &
                                        cell=cell, cube_info=cube_info(igrid_level), &
                                        radius=radius, &
                                        ga_gb_function=adbmdab_func, &
                                        rsgrid=current_env%rs_buf(igrid_level)%rs_grid)
-            CALL collocate_gauge_ortho(rsgrid=current_env%rs_buf(igrid_level)%rs_grid, &
+            ! force work to be done
+            CALL collocate_pgf_synchronize(gaussian_handle)
+
+            CALL collocate_gauge_ortho(gaussian_handle, rsgrid=current_env%rs_buf(igrid_level)%rs_grid, &
                                        rsbuf=rs_current(igrid_level)%rs_grid, &
                                        rsgauge=rs_gauge(iiiB)%rs(igrid_level)%rs_grid, &
                                        cube_info=cube_info(igrid_level), radius=radius, &
@@ -1173,14 +1180,17 @@ CONTAINS
             !             (dg_{a}/dr)_{idir} (d(r) - R_{b})_{iiB} g_{b}
             scale = -1.0_dp
             current_env%rs_buf(igrid_level)%rs_grid%r(:, :, :) = 0.0_dp
-            CALL collocate_pgf_product(la_max(iset), zeta(ipgf, iset), &
+            CALL collocate_pgf_product(gaussian_handle, la_max(iset), zeta(ipgf, iset), &
                                        la_min(iset), lb_max(jset), zetb(jpgf, jset), lb_min(jset), &
                                        ra, rab, scale, jpab_c, na1 - 1, nb1 - 1, &
                                        cell=cell, cube_info=cube_info(igrid_level), &
                                        radius=radius, &
                                        ga_gb_function=adbmdab_func, &
                                        rsgrid=current_env%rs_buf(igrid_level)%rs_grid)
-            CALL collocate_gauge_ortho(rsgrid=current_env%rs_buf(igrid_level)%rs_grid, &
+            ! force work to be done
+            CALL collocate_pgf_synchronize(gaussian_handle)
+
+            CALL collocate_gauge_ortho(gaussian_handle, rsgrid=current_env%rs_buf(igrid_level)%rs_grid, &
                                        rsbuf=rs_current(igrid_level)%rs_grid, &
                                        rsgauge=rs_gauge(iiB)%rs(igrid_level)%rs_grid, &
                                        cube_info=cube_info(igrid_level), radius=radius, &
@@ -1191,7 +1201,7 @@ CONTAINS
             !     f_{ab} = g_{a} (r - R_{b})_{iiB} (dg_{b}/dr)_{idir} -
             !             (dg_{a}/dr)_{idir} (r - R_{b})_{iiB} g_{b}
             scale = 1.0_dp
-            CALL collocate_pgf_product(la_max(iset), zeta(ipgf, iset), &
+            CALL collocate_pgf_product(gaussian_hnadle, la_max(iset), zeta(ipgf, iset), &
                                        la_min(iset), lb_max(jset), zetb(jpgf, jset), lb_min(jset), &
                                        ra, rab, scale, jpab_b, na1 - 1, nb1 - 1, &
                                        rs_current(igrid_level)%rs_grid, cell, cube_info(igrid_level), &
@@ -1201,7 +1211,7 @@ CONTAINS
             !     f_{ab} = -g_{a} (r - R_{b})_{iiB} (dg_{b}/dr)_{idir} +
             !             (dg_{a}/dr)_{idir} (r - R_{b})_{iiB} g_{b}
             scale = -1.0_dp
-            CALL collocate_pgf_product(la_max(iset), zeta(ipgf, iset), &
+            CALL collocate_pgf_product(gaussian_hnadle, la_max(iset), zeta(ipgf, iset), &
                                        la_min(iset), lb_max(jset), zetb(jpgf, jset), lb_min(jset), &
                                        ra, rab, scale, jpab_c, na1 - 1, nb1 - 1, &
                                        rs_current(igrid_level)%rs_grid, cell, cube_info(igrid_level), &
@@ -1210,6 +1220,8 @@ CONTAINS
          ENDIF
 
       END DO loop_tasks
+
+      CALL collocate_pgf_finalize(gaussian_handle)
       !
       ! Scale the density with the gauge rho * ( r - d(r) ) if needed
       IF (do_igaim) THEN

@@ -59,7 +59,7 @@ MODULE qs_collocate_density
         GRID_FUNC_AB, GRID_FUNC_DABpADB_X, GRID_FUNC_DABpADB_Y, GRID_FUNC_DABpADB_Z, &
         GRID_FUNC_DADB, GRID_FUNC_DX, GRID_FUNC_DXDX, GRID_FUNC_DXDY, GRID_FUNC_DY, &
         GRID_FUNC_DYDY, GRID_FUNC_DYDZ, GRID_FUNC_DZ, GRID_FUNC_DZDX, GRID_FUNC_DZDZ, &
-        collocate_pgf_product
+        collocate_pgf_product, collocate_pgf_create_handle, collocate_pgf_finalize
    USE input_constants,                 ONLY: &
         orb_dx2, orb_dxy, orb_dy2, orb_dyz, orb_dz2, orb_dzx, orb_px, orb_py, orb_pz, orb_s
    USE kinds,                           ONLY: default_string_length,&
@@ -110,7 +110,7 @@ MODULE qs_collocate_density
    USE task_list_methods,               ONLY: rs_distribute_matrix
    USE task_list_types,                 ONLY: task_list_type,&
                                               task_type
-
+   USE iso_c_binding,                   ONLY: C_PTR
 !$ USE OMP_LIB, ONLY: omp_get_max_threads, omp_get_thread_num, omp_get_num_threads
 
 #include "./base/base_uses.f90"
@@ -171,7 +171,7 @@ CONTAINS
       TYPE(pw_pool_type), POINTER                        :: auxbas_pw_pool
       TYPE(qs_kind_type), DIMENSION(:), POINTER          :: qs_kind_set
       TYPE(realspace_grid_type), POINTER                 :: rs_rho
-
+      TYPE(C_PTR)                                        :: gaussian_handle
       CALL timeset(routineN, handle)
 
       NULLIFY (cell, dft_control, pab, particle_set, atomic_kind_set, &
@@ -193,6 +193,7 @@ CONTAINS
 
       eps_rho_rspace = dft_control%qs_control%eps_rho_rspace
 
+      gaussian_handle = collocate_pgf_create_handle(0, 1024)
       DO ikind = 1, SIZE(atomic_kind_set)
          CALL get_atomic_kind(atomic_kind_set(ikind), natom=natom, atom_list=atom_list)
          CALL get_qs_kind(qs_kind_set(ikind), gth_potential=gth_potential)
@@ -299,7 +300,7 @@ CONTAINS
                                                  pab=pab, o1=0, o2=0, &  ! without map_consistent
                                                  prefactor=1.0_dp, cutoff=0.0_dp)
 
-               CALL collocate_pgf_product(ni, 1/(2*alpha**2), 0, 0, 0.0_dp, 0, ra, &
+               CALL collocate_pgf_product(gaussian_handle, ni, 1/(2*alpha**2), 0, 0, 0.0_dp, 0, ra, &
                                           (/0.0_dp, 0.0_dp, 0.0_dp/), 1.0_dp, pab, 0, 0, rs_rho, &
                                           cell, cube_info, ga_gb_function=GRID_FUNC_AB, radius=radius, &
                                           use_subpatch=.TRUE., subpatch_pattern=subpatch_pattern)
@@ -311,7 +312,7 @@ CONTAINS
          END DO
 
       END DO
-
+      CALL collocate_pgf_finalize(gaussian_handle)
       IF (ASSOCIATED(cores)) THEN
          DEALLOCATE (cores)
       END IF
@@ -354,6 +355,7 @@ CONTAINS
       TYPE(pw_pool_type), POINTER                        :: auxbas_pw_pool
       TYPE(qs_kind_type), DIMENSION(:), POINTER          :: qs_kind_set
       TYPE(realspace_grid_type), POINTER                 :: rs_rho
+      TYPE(C_PTR)                                        :: gaussian_handle
 
       CALL timeset(routineN, handle)
 
@@ -375,6 +377,8 @@ CONTAINS
       CALL rs_grid_zero(rs_rho)
 
       eps_rho_rspace = dft_control%qs_control%eps_rho_rspace
+
+      gaussian_handle = collocate_pgf_create_handle(0, 1024)
 
       DO ikind = 1, SIZE(atomic_kind_set)
          CALL get_atomic_kind(atomic_kind_set(ikind), natom=natom, atom_list=atom_list)
@@ -478,7 +482,7 @@ CONTAINS
                                                  pab=pab, o1=0, o2=0, &  ! without map_consistent
                                                  prefactor=1.0_dp, cutoff=0.0_dp)
 
-               CALL collocate_pgf_product(ni, alpha, 0, 0, 0.0_dp, 0, ra, &
+               CALL collocate_pgf_product(gaussian_handle, ni, alpha, 0, 0, 0.0_dp, 0, ra, &
                                           (/0.0_dp, 0.0_dp, 0.0_dp/), 1.0_dp, pab, 0, 0, rs_rho, &
                                           cell, cube_info, radius=radius, ga_gb_function=GRID_FUNC_AB, &
                                           use_subpatch=.TRUE., subpatch_pattern=subpatch_pattern)
@@ -489,7 +493,7 @@ CONTAINS
          DEALLOCATE (pab)
 
       END DO
-
+      CALL collocate_pgf_finalize(gaussian_handle)
       IF (ASSOCIATED(cores)) THEN
          DEALLOCATE (cores)
       END IF
@@ -557,6 +561,7 @@ CONTAINS
       TYPE(qs_kind_type), DIMENSION(:), POINTER          :: qs_kind_set
       TYPE(realspace_grid_p_type), DIMENSION(:), POINTER :: rs_rho
       TYPE(realspace_grid_type), POINTER                 :: rs_grid
+      TYPE(C_PTR)                                        :: gaussian_handle
 
       NULLIFY (aci, atomic_kind_set, qs_kind_set, atom_list, cell, &
                cube_info, dft_control, first_sgfa, gridlevel_info, la_max, &
@@ -606,6 +611,9 @@ CONTAINS
       offset = 0
       my_pos = mgrid_rspace(1)%pw%pw_grid%para%my_pos
       group_size = mgrid_rspace(1)%pw%pw_grid%para%group_size
+
+
+      gaussian_handle = collocate_pgf_create_handle(0, 1024)
 
       DO ikind = 1, SIZE(atomic_kind_set)
 
@@ -683,7 +691,7 @@ CONTAINS
                                                           zetp=zeta(ipgf, iset), eps=eps_rho_rspace, &
                                                           prefactor=1.0_dp, cutoff=1.0_dp)
 
-                        CALL collocate_pgf_product(la_max=la_max(iset), &
+                        CALL collocate_pgf_product(gaussian_handle, la_max=la_max(iset), &
                                                    zeta=zeta(ipgf, iset), &
                                                    la_min=la_min(iset), &
                                                    lb_max=0, zetb=0.0_dp, lb_min=0, &
@@ -702,7 +710,6 @@ CONTAINS
             DEALLOCATE (map_it)
          END DO
       END DO
-
       DEALLOCATE (pab)
 
       ! process the one-center terms
@@ -796,7 +803,7 @@ CONTAINS
                                                                    zetp=zetp, eps=eps_rho_rspace, &
                                                                    prefactor=1.0_dp, cutoff=1.0_dp)
 
-                                 CALL collocate_pgf_product( &
+                                 CALL collocate_pgf_product(gaussian_handle, &
                                     la_max(iset), zeta(ipgf, iset), la_min(iset), &
                                     la_max(jset), zeta(jpgf, jset), la_min(jset), &
                                     ra, (/0.0_dp, 0.0_dp, 0.0_dp/), 1.0_dp, pab, na1, nb1, &
@@ -814,6 +821,8 @@ CONTAINS
          END DO
          DEALLOCATE (pab, work)
       END IF
+
+      CALL collocate_pgf_finalize(gaussian_handle)
 
       CALL pw_zero(lri_rho_g%pw)
       CALL pw_zero(lri_rho_r%pw)
@@ -877,6 +886,7 @@ CONTAINS
       TYPE(pw_pool_type), POINTER                        :: auxbas_pw_pool
       TYPE(qs_kind_type), DIMENSION(:), POINTER          :: qs_kind_set
       TYPE(realspace_grid_type), POINTER                 :: rs_rho
+      TYPE(C_PTR)                                        :: gaussian_handle
 
       CALL timeset(routineN, handle)
       NULLIFY (cell, dft_control, pab, atomic_kind_set, qs_kind_set, particle_set, &
@@ -901,6 +911,7 @@ CONTAINS
       CALL rs_grid_zero(rs_rho)
 
       eps_rho_rspace = dft_control%qs_control%eps_rho_rspace
+      gaussian_handle = collocate_pgf_create_handle(0, 1024)
 
       DO ikind = 1, SIZE(atomic_kind_set)
          CALL get_atomic_kind(atomic_kind_set(ikind), natom=natom, atom_list=atom_list)
@@ -944,7 +955,7 @@ CONTAINS
                                                  pab=pab, o1=0, o2=0, &  ! without map_consistent
                                                  prefactor=-1.0_dp, cutoff=0.0_dp)
 
-               CALL collocate_pgf_product(0, alpha, 0, 0, 0.0_dp, 0, ra, &
+               CALL collocate_pgf_product(gaussian_handle, 0, alpha, 0, 0, 0.0_dp, 0, ra, &
                                           (/0.0_dp, 0.0_dp, 0.0_dp/), -1.0_dp, pab, 0, 0, rs_rho, &
                                           cell, cube_info, radius=radius, ga_gb_function=GRID_FUNC_AB, &
                                           use_subpatch=.TRUE., subpatch_pattern=subpatch_pattern)
@@ -953,6 +964,8 @@ CONTAINS
          ENDIF
 
       END DO
+
+      CALL collocate_pgf_finalize(gaussian_handle)
 
       IF (ASSOCIATED(cores)) THEN
          DEALLOCATE (cores)
@@ -1004,6 +1017,7 @@ CONTAINS
       TYPE(pw_p_type)                                    :: rhoc_r
       TYPE(pw_pool_type), POINTER                        :: auxbas_pw_pool
       TYPE(realspace_grid_type), POINTER                 :: rs_rho
+      TYPE(C_PTR)                                        :: gaussian_handle
 
       CALL timeset(routineN, handle)
       NULLIFY (cell, dft_control, pab, pw_env, rs_rho, auxbas_pw_pool)
@@ -1018,6 +1032,8 @@ CONTAINS
                       auxbas_pw_pool=auxbas_pw_pool)
       CALL rs_grid_retain(rs_rho)
       CALL rs_grid_zero(rs_rho)
+
+      gaussian_handle = collocate_pgf_create_handle(0, 1024)
 
       eps_rho_rspace = dft_control%qs_control%eps_rho_rspace
       pab(1, 1) = 1.0_dp
@@ -1045,13 +1061,15 @@ CONTAINS
                                            pab=pab, o1=0, o2=0, &  ! without map_consistent
                                            prefactor=1.0_dp, cutoff=0.0_dp)
 
-         CALL collocate_pgf_product(0, qs_env%qmmm_env_qm%image_charge_pot%eta, &
+         CALL collocate_pgf_product(gaussian_handle, 0, qs_env%qmmm_env_qm%image_charge_pot%eta, &
                                     0, 0, 0.0_dp, 0, ra, (/0.0_dp, 0.0_dp, 0.0_dp/), 1.0_dp, pab, 0, 0, rs_rho, &
                                     cell, pw_env%cube_info(1), radius=radius, ga_gb_function=GRID_FUNC_AB, &
                                     use_subpatch=.TRUE., subpatch_pattern=subpatch_pattern)
       ENDIF
 
       DEALLOCATE (pab)
+
+      CALL collocate_pgf_finalize(gaussian_handle)
 
       CALL pw_pool_create_pw(auxbas_pw_pool, rhoc_r%pw, &
                              use_data=REALDATA3D, in_space=REALSPACE)
@@ -1100,7 +1118,7 @@ CONTAINS
       TYPE(pw_p_type)                                    :: rhoc_r
       TYPE(pw_pool_type), POINTER                        :: auxbas_pw_pool
       TYPE(realspace_grid_type), POINTER                 :: rs_rho
-
+      TYPE(C_PTR)                                        :: gaussian_handle
       CALL timeset(routineN, handle)
 
       NULLIFY (cell, dft_control, pab, pw_env, rs_rho, auxbas_pw_pool, cores)
@@ -1115,6 +1133,8 @@ CONTAINS
                       auxbas_pw_pool=auxbas_pw_pool)
       CALL rs_grid_retain(rs_rho)
       CALL rs_grid_zero(rs_rho)
+
+      gaussian_handle = collocate_pgf_create_handle(0, 1024)
 
       eps_rho_rspace = dft_control%qs_control%eps_rho_rspace
       pab(1, 1) = 1.0_dp
@@ -1151,12 +1171,13 @@ CONTAINS
                                               pab=pab, o1=0, o2=0, &  ! without map_consistent
                                               prefactor=coeff(iatom), cutoff=0.0_dp)
 
-            CALL collocate_pgf_product( &
+            CALL collocate_pgf_product(gaussian_handle, &
                0, qs_env%qmmm_env_qm%image_charge_pot%eta, &
                0, 0, 0.0_dp, 0, ra, (/0.0_dp, 0.0_dp, 0.0_dp/), coeff(iatom), pab, 0, 0, rs_rho, &
                cell, pw_env%cube_info(1), radius=radius, ga_gb_function=GRID_FUNC_AB, &
                use_subpatch=.TRUE., subpatch_pattern=subpatch_pattern)
          ENDDO
+         CALL collocate_pgf_finalize(gaussian_handle)
       ENDIF
 
       DEALLOCATE (pab, cores)
@@ -1210,7 +1231,7 @@ CONTAINS
       TYPE(pw_p_type)                                    :: rhoc_r
       TYPE(pw_pool_type), POINTER                        :: auxbas_pw_pool
       TYPE(realspace_grid_type), POINTER                 :: rs_rho
-
+      TYPE(C_PTR)                                        :: gaussian_handle
       CALL timeset(routineN, handle)
       NULLIFY (cell, dft_control, pab, pw_env, rs_rho, auxbas_pw_pool, &
                particle_set)
@@ -1242,6 +1263,7 @@ CONTAINS
       ENDIF
 
       IF (npme .GT. 0) THEN
+         gaussian_handle = collocate_pgf_create_handle(0, 1024)
          ra(:) = pbc(particle_set(iatom)%r, cell)
          subpatch_pattern = 0
          radius = exp_radius_very_extended(la_min=0, la_max=0, &
@@ -1251,12 +1273,12 @@ CONTAINS
                                            pab=pab, o1=0, o2=0, &  ! without map_consistent
                                            prefactor=1.0_dp, cutoff=0.0_dp)
 
-         CALL collocate_pgf_product(0, eta, 0, 0, 0.0_dp, 0, ra, &
+         CALL collocate_pgf_product(gaussian_handle, 0, eta, 0, 0, 0.0_dp, 0, ra, &
                                     (/0.0_dp, 0.0_dp, 0.0_dp/), 1.0_dp, pab, 0, 0, rs_rho, &
                                     cell, pw_env%cube_info(1), radius=radius, ga_gb_function=GRID_FUNC_AB, &
                                     use_subpatch=.TRUE., subpatch_pattern=subpatch_pattern)
+         CALL collocate_pgf_finalize(gaussian_handle)
       ENDIF
-
       DEALLOCATE (pab)
 
       CALL pw_pool_create_pw(auxbas_pw_pool, rhoc_r%pw, &
@@ -1309,7 +1331,7 @@ CONTAINS
       TYPE(pw_p_type)                                    :: rhoc_r
       TYPE(pw_pool_type), POINTER                        :: auxbas_pw_pool
       TYPE(realspace_grid_type), POINTER                 :: rs_rho
-
+      TYPE(C_PTR)                                        :: gaussian_handle
       CALL timeset(routineN, handle)
 
       NULLIFY (cell, cores, dft_control, pab, pw_env, rs_rho, auxbas_pw_pool, &
@@ -1347,6 +1369,7 @@ CONTAINS
       ENDDO
 
       IF (npme .GT. 0) THEN
+         gaussian_handle = collocate_pgf_create_handle(0, 1024)
          DO j = 1, npme
             iatom = cores(j)
             ra(:) = pbc(particle_set(iatom)%r, cell)
@@ -1358,12 +1381,13 @@ CONTAINS
                                               pab=pab, o1=0, o2=0, &  ! without map_consistent
                                               prefactor=coeff(iatom), cutoff=0.0_dp)
 
-            CALL collocate_pgf_product( &
+            CALL collocate_pgf_product( gaussian_handle, &
                0, eta, &
                0, 0, 0.0_dp, 0, ra, (/0.0_dp, 0.0_dp, 0.0_dp/), coeff(iatom), pab, 0, 0, rs_rho, &
                cell, pw_env%cube_info(1), radius=radius, ga_gb_function=GRID_FUNC_AB, &
                use_subpatch=.TRUE., subpatch_pattern=subpatch_pattern)
          ENDDO
+         CALL collocate_pgf_finalize(gaussian_handle)
       ENDIF
 
       DEALLOCATE (pab, cores)
@@ -1460,7 +1484,7 @@ CONTAINS
       TYPE(realspace_grid_type)                          :: threadlocal_rsgrid
       TYPE(task_list_type), POINTER                      :: task_list, task_list_soft
       TYPE(task_type), DIMENSION(:), POINTER             :: tasks
-
+      TYPE(C_PTR)                                        :: gaussian_handle
       CALL timeset(routineN, handle)
 
       CPASSERT(PRESENT(matrix_p) .OR. PRESENT(matrix_p_kp))
@@ -1659,10 +1683,16 @@ CONTAINS
 !$OMP          PRIVATE(nsetb,nsgfb,sphi_b,zetb,p_block,found,prefactor,radius), &
 !$OMP          PRIVATE(atom_pair_changed,ncoa,sgfa,ncob,sgfb,rab,rab2,ra,rb,rp,zetp,f), &
 !$OMP          PRIVATE(na1,na2,nb1,nb2,scale,use_subpatch,rab_inv,ithread,lb,ub,n,nw), &
-!$OMP          PRIVATE(itask,nz,nxy,nzsize,nrlevel,nblock,lbw,lbr,nr,threadlocal_rsgrid)
+!$OMP          PRIVATE(itask,nz,nxy,nzsize,nrlevel,nblock,lbw,lbr,nr,threadlocal_rsgrid), &
+!$OMP          PRIVATE(gaussian_handle)
 
       ithread = 0
 !$    ithread = omp_get_thread_num()
+
+      ! create an handle for each omp thread. By default the queue if 1024 blocks
+
+      gaussian_handle =  collocate_pgf_create_handle(0, 1024)
+
       pab => pabt(:, :, ithread)
       work => workt(:, :, ithread)
 
@@ -1816,7 +1846,7 @@ CONTAINS
             ENDIF
 
             IF (iatom <= jatom) THEN
-               CALL collocate_pgf_product( &
+               CALL collocate_pgf_product(gaussian_handle, &
                   la_max(iset), zeta(ipgf, iset), la_min(iset), &
                   lb_max(jset), zetb(jpgf, jset), lb_min(jset), &
                   ra, rab, scale, pab, na1 - 1, nb1 - 1, &
@@ -1827,7 +1857,7 @@ CONTAINS
                   subpatch_pattern=tasks(itask)%subpatch_pattern)
             ELSE
                rab_inv = -rab
-               CALL collocate_pgf_product( &
+               CALL collocate_pgf_product(gaussian_handle, &
                   lb_max(jset), zetb(jpgf, jset), lb_min(jset), &
                   la_max(iset), zeta(ipgf, iset), la_min(iset), &
                   rb, rab_inv, scale, pab, nb1 - 1, na1 - 1, &
@@ -1840,6 +1870,9 @@ CONTAINS
          END DO loop_tasks
          END DO loop_pairs
 !$OMP END DO
+
+!     wait for all computation to complete and release memory. GPU IS NOT RESET
+         CALL collocate_pgf_finalize(gaussian_handle)
 
          ! Now sum the thread-local grids back into the rs_grid
          ! (in parallel, each thread writes to a section of the rs_grid at a time)
@@ -1873,6 +1906,7 @@ CONTAINS
 !$OMP BARRIER
          END DO
 
+
          ! Copy final result from first local grid to rs_grid
          lb = (nz*ithread)/nthread
          ub = (nz*(ithread + 1))/nthread - 1
@@ -1885,7 +1919,8 @@ CONTAINS
          CALL daxpy(nxy*nzsize, 1.0_dp, lgrid%r(lbr, 0), 1, &
                     rs_rho(igrid_level)%rs_grid%r(:, :, lb:ub), 1)
 !$OMP BARRIER
-      END DO loop_gridlevels
+                 END DO loop_gridlevels
+
 !$OMP END PARALLEL
 
       !   *** Release work storage ***
@@ -1968,7 +2003,7 @@ CONTAINS
       TYPE(realspace_grid_p_type), DIMENSION(:), POINTER :: rs_rho
       TYPE(task_list_type), POINTER                      :: task_list, task_list_soft
       TYPE(task_type), DIMENSION(:), POINTER             :: tasks
-
+      TYPE(C_PTR)                                        :: gaussian_handle
       CALL timeset(routineN, handle)
 
       CPASSERT(PRESENT(matrix_p) .OR. PRESENT(matrix_p_kp))
@@ -2085,6 +2120,7 @@ CONTAINS
       ithread = 0
       pab => pabt(:, :, ithread)
       work => workt(:, :, ithread)
+      gaussian_handle =  collocate_pgf_create_handle(0, 1024)
 
       loop_xyz: DO idir = 1, 3
 
@@ -2248,7 +2284,7 @@ CONTAINS
 
             IF (iatom <= jatom) THEN
                CALL collocate_pgf_product( &
-                  la_max(iset), zeta(ipgf, iset), la_min(iset), &
+               gaussian_handle, la_max(iset), zeta(ipgf, iset), la_min(iset), &
                   lb_max(jset), zetb(jpgf, jset), lb_min(jset), &
                   ra, rab, scale, pab, na1 - 1, nb1 - 1, &
                   rs_rho(igrid_level)%rs_grid, cell, cube_info(igrid_level), &
@@ -2257,7 +2293,7 @@ CONTAINS
             ELSE
                rab_inv = -rab
                CALL collocate_pgf_product( &
-                  lb_max(jset), zetb(jpgf, jset), lb_min(jset), &
+               gaussian_handle, lb_max(jset), zetb(jpgf, jset), lb_min(jset), &
                   la_max(iset), zeta(ipgf, iset), la_min(iset), &
                   rb, rab_inv, scale, pab, nb1 - 1, na1 - 1, &
                   rs_rho(igrid_level)%rs_grid, cell, cube_info(igrid_level), &
@@ -2270,8 +2306,9 @@ CONTAINS
          CALL density_rs2pw_basic(pw_env, rs_rho, drho(idir), drho_gspace(idir))
 
       END DO loop_xyz
+      CALL collocate_pgf_finalize(gaussian_handle)
 
-      !   *** Release work storage ***
+!     *** Release work storage ***
       IF (ASSOCIATED(rs_rho)) THEN
          DO i = 1, SIZE(rs_rho)
             CALL rs_grid_release(rs_rho(i)%rs_grid)
@@ -2355,7 +2392,7 @@ CONTAINS
       TYPE(pw_p_type), DIMENSION(:), POINTER             :: mgrid_gspace, mgrid_rspace
       TYPE(pw_pool_p_type), DIMENSION(:), POINTER        :: pw_pools
       TYPE(REALSPACE_GRID_P_TYPE), DIMENSION(:), POINTER :: rs_rho
-
+      TYPE(C_PTR)                                        :: gaussian_handle
       IF (PRESENT(basis_type)) THEN
          my_basis_type = basis_type
       ELSE
@@ -2414,6 +2451,8 @@ CONTAINS
       my_pos = mgrid_rspace(1)%pw%pw_grid%para%my_pos
       group_size = mgrid_rspace(1)%pw%pw_grid%para%group_size
       ALLOCATE (where_is_the_point(0:group_size - 1))
+
+      gaussian_handle =  collocate_pgf_create_handle(0, 1024)
 
       DO iatom = 1, natom
          ikind = particle_set(iatom)%atomic_kind%kind_number
@@ -2485,7 +2524,8 @@ CONTAINS
                                                     zetp=zeta(ipgf, iset), eps=eps_rho_rspace, &
                                                     prefactor=1.0_dp, cutoff=1.0_dp)
 
-                  CALL collocate_pgf_product(la_max(iset), zeta(ipgf, iset), la_min(iset), &
+                                                    CALL collocate_pgf_product(gaussian_handle, &
+                                                    la_max(iset), zeta(ipgf, iset), la_min(iset), &
                                              0, 0.0_dp, 0, &
                                              ra, (/0.0_dp, 0.0_dp, 0.0_dp/), &
                                              scale, pab, na1 - 1, 0, rs_rho(igrid_level)%rs_grid, &
@@ -2500,6 +2540,8 @@ CONTAINS
          END DO
 
       END DO
+
+      CALL collocate_pgf_finalize(gaussian_handle)
 
       DO igrid_level = 1, gridlevel_info%ngrid_levels
          CALL rs_pw_transfer(rs_rho(igrid_level)%rs_grid, &

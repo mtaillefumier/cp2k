@@ -25,7 +25,9 @@ MODULE qs_cdft_methods
    USE cp_realspace_grid_cube,          ONLY: cp_cube_to_pw
    USE cube_utils,                      ONLY: cube_info_type
    USE grid_api,                        ONLY: GRID_FUNC_AB,&
-                                              collocate_pgf_product
+      collocate_pgf_product,
+      collocate_pgf_create_handle,
+      collocate_pgf_finalize
    USE hirshfeld_types,                 ONLY: get_hirshfeld_info,&
                                               hirshfeld_type,&
                                               set_hirshfeld_info
@@ -1187,6 +1189,7 @@ CONTAINS
       TYPE(realspace_grid_desc_type), POINTER            :: auxbas_rs_desc
       TYPE(realspace_grid_p_type), DIMENSION(:), POINTER :: rs_single
       TYPE(realspace_grid_type), POINTER                 :: rs_rho_all, rs_rho_constr
+      TYPE(C_PTR)                                        :: gaussian_handle
 
       NULLIFY (atom_list, cores, pab, atomic_kind_set, cell, dft_control, &
                hirshfeld_env, particle_set, pw_env, fnorm, auxbas_pw_pool, &
@@ -1290,7 +1293,7 @@ CONTAINS
                                                     pab=pab, o1=0, o2=0, &  ! without map_consistent
                                                     prefactor=1.0_dp, cutoff=0.0_dp)
 
-                  CALL collocate_pgf_product(0, alpha, 0, 0, 0.0_dp, 0, ra, &
+                  CALL collocate_pgf_product(gaussian_handle, 0, alpha, 0, 0, 0.0_dp, 0, ra, &
                                              (/0.0_dp, 0.0_dp, 0.0_dp/), 1.0_dp, pab, 0, 0, &
                                              rs_rho_all, cell, cube_info, radius=radius, &
                                              ga_gb_function=GRID_FUNC_AB, use_subpatch=.TRUE., &
@@ -1302,7 +1305,7 @@ CONTAINS
                                                               pab=pab, o1=0, o2=0, &  ! without map_consistent
                                                               prefactor=coefficients(atom_a), cutoff=0.0_dp)
 
-                     CALL collocate_pgf_product(0, alpha, 0, 0, 0.0_dp, 0, ra, &
+                     CALL collocate_pgf_product(gaussian_handle, 0, alpha, 0, 0, 0.0_dp, 0, ra, &
                                                 (/0.0_dp, 0.0_dp, 0.0_dp/), coefficients(atom_a), &
                                                 pab, 0, 0, rs_rho_constr, cell, cube_info, &
                                                 radius=radius_constr, &
@@ -1310,23 +1313,20 @@ CONTAINS
                                                 subpatch_pattern=subpatch_pattern)
                   END IF
                   IF (cdft_control%atomic_charges .AND. igroup == 1) THEN
-                     IF (compute_charge(atom_a)) THEN
-                        DO iatom = 1, cdft_control%natoms
-                           IF (atom_a == cdft_control%atoms(iatom)) EXIT
-                        END DO
-                        CPASSERT(iatom <= cdft_control%natoms)
-                        CALL collocate_pgf_product(0, alpha, 0, 0, 0.0_dp, 0, ra, &
-                                                   (/0.0_dp, 0.0_dp, 0.0_dp/), 1.0_dp, pab, 0, 0, &
-                                                   rs_single(iatom)%rs_grid, cell, cube_info, radius=radius, &
-                                                   ga_gb_function=GRID_FUNC_AB, use_subpatch=.TRUE., &
-                                                   subpatch_pattern=subpatch_pattern)
-                     END IF
+                     IF (compute_charge(atom_a)) &
+                          CALL collocate_pgf_product(gaussian_handle, 0, alpha, 0, 0, 0.0_dp, 0, ra, &
+                          (/0.0_dp, 0.0_dp, 0.0_dp/), 1.0_dp, pab, 0, 0, &
+                          rs_single(iatom)%rs_grid, cell, cube_info, radius=radius, &
+                          ga_gb_function=GRID_FUNC_AB, use_subpatch=.TRUE., &
+                          subpatch_pattern=subpatch_pattern)
                   END IF
                END DO
             END DO
             DEALLOCATE (cores)
          END DO
          DEALLOCATE (pab)
+
+         CALL collocate_pgf_finalize(gaussian_handle)
 
          ! Transfer rs_rho_all to the correct grid and save it
          CALL get_hirshfeld_info(hirshfeld_env, fnorm=fnorm)

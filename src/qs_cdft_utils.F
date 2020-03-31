@@ -30,7 +30,9 @@ MODULE qs_cdft_utils
    USE cp_realspace_grid_cube,          ONLY: cp_pw_to_cube
    USE cp_units,                        ONLY: cp_unit_from_cp2k
    USE grid_api,                        ONLY: GRID_FUNC_AB,&
-                                              collocate_pgf_product
+        collocate_pgf_product,
+   collocate_pgf_create_handle,
+   collocate_pgf_finalize
    USE hirshfeld_methods,               ONLY: create_shape_function
    USE hirshfeld_types,                 ONLY: create_hirshfeld_type,&
                                               hirshfeld_type,&
@@ -131,7 +133,7 @@ CONTAINS
       TYPE(qs_subsys_type), POINTER                      :: subsys
       TYPE(realspace_grid_type), POINTER                 :: rs_cavity
       TYPE(section_vals_type), POINTER                   :: cdft_constraint_section
-
+      TYPE(C_PTR)                                        :: gaussian_handle
       NULLIFY (cores, stride, atom_list, cell, para_env, dft_control, &
                particle_set, logger, cdft_constraint_section, qs_kind_set, &
                particles, subsys, pab, pw_env, rs_cavity, cavity_env, &
@@ -150,6 +152,8 @@ CONTAINS
       becke_control => cdft_control%becke_control
       group => cdft_control%group
       in_memory = .FALSE.
+
+
       IF (cdft_control%save_pot) THEN
          in_memory = becke_control%in_memory
       END IF
@@ -220,6 +224,8 @@ CONTAINS
          ALLOCATE (becke_control%vector_buffer%position_vecs(3, natom))
       END IF
       ALLOCATE (becke_control%vector_buffer%R12(natom, natom))
+      gaussian_handle = collocate_pgf_create_handle(0, 1024)
+
       ! Calculate pairwise distances between each atom pair
       DO i = 1, 3
          cell_v(i) = cell%hmat(i, i)
@@ -382,7 +388,7 @@ CONTAINS
                                                        pab=pab, o1=0, o2=0, &  ! without map_consistent
                                                        prefactor=1.0_dp, cutoff=0.0_dp)
 
-                     CALL collocate_pgf_product(0, alpha, 0, 0, 0.0_dp, 0, ra, &
+                     CALL collocate_pgf_product(gaussian_handle, 0, alpha, 0, 0, 0.0_dp, 0, ra, &
                                                 (/0.0_dp, 0.0_dp, 0.0_dp/), 1.0_dp, &
                                                 pab, 0, 0, rs_cavity, cell, pw_env%cube_info(1), &
                                                 radius=radius, ga_gb_function=GRID_FUNC_AB, &
@@ -393,6 +399,8 @@ CONTAINS
             DEALLOCATE (cores)
          END DO
          DEALLOCATE (pab)
+         collocate_pgf_finalize(gaussian_handle)
+
          CALL pw_pool_create_pw(auxbas_pw_pool, becke_control%cavity%pw, &
                                 use_data=REALDATA3D, in_space=REALSPACE)
          CALL rs_pw_transfer(rs_cavity, becke_control%cavity%pw, rs2pw)

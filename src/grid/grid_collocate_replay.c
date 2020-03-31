@@ -284,7 +284,7 @@ double grid_collocate_replay(const char* filename, const int cycles){
 
     struct timespec start_time;
     clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start_time);
-    void *gaussian_handler =  NULL;
+    /* void *gaussian_handler =  NULL; */
     /* collocate_create_handler(&gaussian_handler, 0, 16); */
     for (int i=0; i < cycles ; i++) {
         grid_collocate_pgf_product_cpu(/* gaussian_handler, */
@@ -315,6 +315,7 @@ double grid_collocate_replay(const char* filename, const int cycles){
     }
 
     /* collocate_finalize(&gaussian_handler); */
+
 
     struct timespec end_time;
     clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &end_time);

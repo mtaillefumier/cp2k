@@ -21,7 +21,7 @@ MODULE grid_collocate
 
    CHARACTER(len=*), PARAMETER, PRIVATE :: moduleN = 'grid_collocate'
 
-   PUBLIC :: collocate_pgf_product
+      PUBLIC :: collocate_pgf_product, collocate_pgf_create_handle, collocate_pgf_finalize, collocate_pgf_synchronize
 
    INTEGER, PARAMETER, PUBLIC :: GRID_FUNC_AB = 100
    INTEGER, PARAMETER, PUBLIC :: GRID_FUNC_DADB = 200
@@ -51,6 +51,57 @@ MODULE grid_collocate
    INTEGER, PARAMETER, PUBLIC :: GRID_FUNC_DZDZ = 803
 
 CONTAINS
+      SUBROUTINE collocate_pgf_synchronize(gaussian_handle)
+      USE ISO_C_BINDING, ONLY: C_PTR
+      TYPE(C_PTR), INTENT(INOUT)                       :: gaussian_handle
+
+      INTERFACE
+         SUBROUTINE collocate_pgf_synchronize_aux(gaussian_handle)&
+         &BIND(C, name="collocate_synchronize")
+         IMPORT C_PTR
+         TYPE(C_PTR), VALUE                           :: gaussian_handle
+         END SUBROUTINE
+      END INTERFACE
+
+      CALL collocate_pgf_synchronize(gaussian_handle)
+    END SUBROUTINE collocate_pgf_synchronize
+      function collocate_pgf_create_handle(device_id, number_of_gaussian) result(gaussian_handle)
+      USE ISO_C_BINDING, ONLY: C_BOOL,&
+      C_DOUBLE,&
+      C_INT,&
+      C_LOC,&
+      C_PTR
+      INTEGER, INTENT(IN)                              :: device_id
+      INTEGER, INTENT(IN)                              :: number_of_gaussian
+      TYPE(C_PTR)                       :: gaussian_handle
+
+      INTERFACE
+         function collocate_pgf_create_handle_aux(device_id, number_of_gaussian) result(gaussian_handle)&
+         &BIND(C, name="collocate_create_handle")
+         IMPORT C_PTR, C_INT
+         INTEGER(KIND=C_INT), intent(in)                    :: device_id
+         INTEGER(KIND=C_INT), intent(in)                    :: number_of_gaussian
+         TYPE(C_PTR) :: gaussian_handle
+         END function
+      END INTERFACE
+
+      gaussian_handle = collocate_pgf_create_handle_aux(device_id, number_of_gaussian)
+      END function
+
+      SUBROUTINE collocate_pgf_finalize(gaussian_handle)
+      USE ISO_C_BINDING, ONLY: C_PTR
+      TYPE(C_PTR), INTENT(INOUT)                       :: gaussian_handle
+
+      INTERFACE
+         SUBROUTINE collocate_pgf_finalize_aux(gaussian_handle)&
+         &BIND(C, name="collocate_finalize")
+         IMPORT C_PTR
+         TYPE(C_PTR), VALUE                           :: gaussian_handle
+         END SUBROUTINE
+      END INTERFACE
+
+      CALL collocate_pgf_finalize_aux(gaussian_handle)
+      END SUBROUTINE
 
 ! **************************************************************************************************
 !> \brief low level collocation of primitive gaussian functions
@@ -74,13 +125,15 @@ CONTAINS
 !> \param use_subpatch ...
 !> \param subpatch_pattern ...
 ! **************************************************************************************************
-   SUBROUTINE collocate_pgf_product(la_max, zeta, la_min, &
+      SUBROUTINE collocate_pgf_product(gaussian_handle, &
+                                    la_max, zeta, la_min, &
                                     lb_max, zetb, lb_min, &
                                     ra, rab, scale, pab, o1, o2, &
                                     rsgrid, cell, cube_info, &
                                     ga_gb_function, radius, &
                                     use_subpatch, subpatch_pattern)
 
+      TYPE(C_PTR), INTENT(INOUT)                         :: gaussian_handle
       INTEGER, INTENT(IN)                                :: la_max
       REAL(KIND=dp), INTENT(IN)                          :: zeta
       INTEGER, INTENT(IN)                                :: la_min, lb_max
@@ -107,7 +160,8 @@ CONTAINS
       LOGICAL(KIND=C_BOOL), DIMENSION(3), TARGET         :: periodic
       REAL(KIND=dp), DIMENSION(:, :, :), POINTER         :: grid
       INTERFACE
-         SUBROUTINE grid_collocate_pgf_product_cpu(use_ortho, func, &
+         SUBROUTINE grid_collocate_pgf_product_cpu(gaussian_handle, &
+                                                   use_ortho, func, &
                                                    la_max, la_min, lb_max, lb_min, &
                                                    zeta, zetb, rscale, &
                                                    dh, dh_inv, ra, rab, npts, ngrid, lb_grid, &
@@ -116,6 +170,7 @@ CONTAINS
                                                    grid) &
             BIND(C, name="grid_collocate_pgf_product_cpu")
             IMPORT :: C_PTR, C_INT, C_DOUBLE, C_BOOL
+            TYPE(C_PTR), VALUE                        :: gaussian_handle
             LOGICAL(KIND=C_BOOL), VALUE               :: use_ortho
             INTEGER(KIND=C_INT), VALUE                :: func
             INTEGER(KIND=C_INT), VALUE                :: la_max
@@ -199,7 +254,8 @@ CONTAINS
       CPASSERT(IS_CONTIGUOUS(grid))
 #endif
 
-      CALL grid_collocate_pgf_product_cpu(use_ortho=LOGICAL(use_ortho, KIND=C_BOOL), &
+      CALL grid_collocate_pgf_product_cpu(gaussian_handle, &
+                                          use_ortho=LOGICAL(use_ortho, KIND=C_BOOL), &
                                           func=ga_gb_function, &
                                           la_max=la_max, &
                                           la_min=la_min, &

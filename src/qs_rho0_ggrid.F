@@ -15,7 +15,9 @@ MODULE qs_rho0_ggrid
    USE cube_utils,                      ONLY: cube_info_type
    USE gaussian_gridlevels,             ONLY: gaussian_gridlevel
    USE grid_api,                        ONLY: GRID_FUNC_AB,&
-                                              collocate_pgf_product
+      collocate_pgf_product,&
+      collocate_pgf_finalize,&
+      collocate_pgf_create_handle
    USE kinds,                           ONLY: dp,&
                                               int_8
    USE mathconstants,                   ONLY: dfac,&
@@ -67,6 +69,7 @@ MODULE qs_rho0_ggrid
         rs_pw_transfer
    USE util,                            ONLY: get_limit
    USE virial_types,                    ONLY: virial_type
+      USE ISO_C_BINDING,                   ONLY: C_PTR
 #include "./base/base_uses.f90"
 
    IMPLICIT NONE
@@ -125,6 +128,7 @@ CONTAINS
       TYPE(realspace_grid_desc_type), POINTER            :: desc
       TYPE(realspace_grid_p_type), DIMENSION(:), POINTER :: grids
       TYPE(realspace_grid_type), POINTER                 :: rs_grid
+      TYPE(C_PTR)                                        :: gaussian_handle
 
       CALL timeset(routineN, handle)
 
@@ -176,6 +180,8 @@ CONTAINS
 
       ALLOCATE (pab(nch_max, 1))
 
+      gaussian_handle = collocate_pgf_create_handle(0, 1024)
+
       DO ikind = 1, SIZE(atomic_kind_set)
          CALL get_atomic_kind(atomic_kind_set(ikind), atom_list=atom_list, natom=nat)
          CALL get_qs_kind(qs_kind_set(ikind), paw_atom=paw_atom)
@@ -220,7 +226,7 @@ CONTAINS
 
             ra(:) = pbc(particle_set(iatom)%r, cell)
 
-            CALL collocate_pgf_product( &
+            CALL collocate_pgf_product(gaussian_handle, &
                l0_ikind, zet0, 0, 0, 0.0_dp, 0, &
                ra, (/0.0_dp, 0.0_dp, 0.0_dp/), 1.0_dp, pab, 0, 0, &
                rs_grid, cell, cube_info(igrid), ga_gb_function=GRID_FUNC_AB, radius=rpgf0, &
@@ -229,7 +235,7 @@ CONTAINS
          END DO !  j
 
       END DO ! ikind
-
+      CALL collocate_pgf_finalize(gaussian_handle)
       IF (ASSOCIATED(cores)) THEN
          DEALLOCATE (cores)
       END IF
