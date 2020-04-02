@@ -19,7 +19,8 @@
 
 
 // *****************************************************************************
-void grid_collocate_record(const bool use_ortho,
+void grid_collocate_record(const bool sequential,
+                           const bool use_ortho,
                            const int func,
                            const int la_max,
                            const int la_min,
@@ -111,7 +112,7 @@ void grid_collocate_record(const bool use_ortho,
 }
 
 // *****************************************************************************
-double grid_collocate_replay(const char* filename, const int cycles){
+double grid_collocate_replay(const char* filename, const int cycles, const int num_blocks, const bool sequential){
     printf("Task:     %s\n", filename);
     FILE *fp = fopen(filename, "r");
     assert(fp != NULL && "Could not open task file.");
@@ -283,11 +284,11 @@ double grid_collocate_replay(const char* filename, const int cycles){
     printf("Cycles:   %e\n", (float)cycles);
 
     struct timespec start_time;
-    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start_time);
-    /* void *gaussian_handler =  NULL; */
-    /* collocate_create_handler(&gaussian_handler, 0, 16); */
+    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &start_time);
+    void *gaussian_handle =  NULL;
+    gaussian_handle= collocate_create_handle(0, num_blocks, sequential);
     for (int i=0; i < cycles ; i++) {
-        grid_collocate_pgf_product_cpu(/* gaussian_handler, */
+        grid_collocate_pgf_product_cpu(gaussian_handle,
                                        use_ortho,
                                        func,
                                        la_max,
@@ -314,21 +315,20 @@ double grid_collocate_replay(const char* filename, const int cycles){
                                        &grid_test[0][0][0]);
     }
 
-    /* collocate_finalize(&gaussian_handler); */
-
+    collocate_finalize(gaussian_handle);
 
     struct timespec end_time;
-    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &end_time);
+    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &end_time);
 
     double max_diff = 0.0;
 
     for (int i = 0; i < ngrid[2]; i++) {
         for (int j = 0; j < ngrid[1]; j++) {
             for (int k = 0; k < ngrid[0]; k++) {
-                printf("(%.3e %.3e) ", grid_test[i][j][k], ((double)cycles * grid_ref[i][j][k]));
+                printf("(%.6e %.6e) ", grid_test[i][j][k], ((double)cycles * grid_ref[i][j][k]));
                 const double diff = fabs((grid_test[i][j][k] - ((double)cycles * grid_ref[i][j][k])));
                 max_diff = fmax(max_diff, diff);
-                /* printf("%le\n", diff); */
+                printf("%le\n", diff);
             }
             printf("\n");
         }
@@ -338,6 +338,7 @@ double grid_collocate_replay(const char* filename, const int cycles){
 
     const double delta_sec = (end_time.tv_sec - start_time.tv_sec) + 1e-9 * (end_time.tv_nsec - start_time.tv_nsec);
     printf("Time:     %le sec\n", delta_sec);
+    fclose(fp);
 
     return 0.0;
 }

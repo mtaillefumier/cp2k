@@ -61,7 +61,7 @@ MODULE qs_linres_current
         GRID_FUNC_ARDBmDARB_XX, GRID_FUNC_ARDBmDARB_XY, GRID_FUNC_ARDBmDARB_XZ, &
         GRID_FUNC_ARDBmDARB_YX, GRID_FUNC_ARDBmDARB_YY, GRID_FUNC_ARDBmDARB_YZ, &
         GRID_FUNC_ARDBmDARB_ZX, GRID_FUNC_ARDBmDARB_ZY, GRID_FUNC_ARDBmDARB_ZZ, &
-        collocate_pgf_product
+        collocate_pgf_product, collocate_pgf_finalize, collocate_pgf_create_handle, collocate_pgf_synchronize
    USE input_constants,                 ONLY: current_gauge_atom
    USE input_section_types,             ONLY: section_get_ivals,&
                                               section_get_lval,&
@@ -128,7 +128,7 @@ MODULE qs_linres_current
                                               task_list_inner_loop
    USE task_list_types,                 ONLY: reallocate_tasks,&
         task_type
-   USE iso_c_bindings,                  ONLY: C_PTR
+   USE iso_c_binding,                  ONLY: C_PTR
 #include "./base/base_uses.f90"
 
    IMPLICIT NONE
@@ -1168,7 +1168,7 @@ CONTAINS
             ! force work to be done
             CALL collocate_pgf_synchronize(gaussian_handle)
 
-            CALL collocate_gauge_ortho(gaussian_handle, rsgrid=current_env%rs_buf(igrid_level)%rs_grid, &
+            CALL collocate_gauge_ortho(rsgrid=current_env%rs_buf(igrid_level)%rs_grid, &
                                        rsbuf=rs_current(igrid_level)%rs_grid, &
                                        rsgauge=rs_gauge(iiiB)%rs(igrid_level)%rs_grid, &
                                        cube_info=cube_info(igrid_level), radius=radius, &
@@ -1190,7 +1190,7 @@ CONTAINS
             ! force work to be done
             CALL collocate_pgf_synchronize(gaussian_handle)
 
-            CALL collocate_gauge_ortho(gaussian_handle, rsgrid=current_env%rs_buf(igrid_level)%rs_grid, &
+            CALL collocate_gauge_ortho(rsgrid=current_env%rs_buf(igrid_level)%rs_grid, &
                                        rsbuf=rs_current(igrid_level)%rs_grid, &
                                        rsgauge=rs_gauge(iiB)%rs(igrid_level)%rs_grid, &
                                        cube_info=cube_info(igrid_level), radius=radius, &
@@ -1201,7 +1201,7 @@ CONTAINS
             !     f_{ab} = g_{a} (r - R_{b})_{iiB} (dg_{b}/dr)_{idir} -
             !             (dg_{a}/dr)_{idir} (r - R_{b})_{iiB} g_{b}
             scale = 1.0_dp
-            CALL collocate_pgf_product(gaussian_hnadle, la_max(iset), zeta(ipgf, iset), &
+            CALL collocate_pgf_product(gaussian_handle, la_max(iset), zeta(ipgf, iset), &
                                        la_min(iset), lb_max(jset), zetb(jpgf, jset), lb_min(jset), &
                                        ra, rab, scale, jpab_b, na1 - 1, nb1 - 1, &
                                        rs_current(igrid_level)%rs_grid, cell, cube_info(igrid_level), &
@@ -1211,7 +1211,7 @@ CONTAINS
             !     f_{ab} = -g_{a} (r - R_{b})_{iiB} (dg_{b}/dr)_{idir} +
             !             (dg_{a}/dr)_{idir} (r - R_{b})_{iiB} g_{b}
             scale = -1.0_dp
-            CALL collocate_pgf_product(gaussian_hnadle, la_max(iset), zeta(ipgf, iset), &
+            CALL collocate_pgf_product(gaussian_handle, la_max(iset), zeta(ipgf, iset), &
                                        la_min(iset), lb_max(jset), zetb(jpgf, jset), lb_min(jset), &
                                        ra, rab, scale, jpab_c, na1 - 1, nb1 - 1, &
                                        rs_current(igrid_level)%rs_grid, cell, cube_info(igrid_level), &

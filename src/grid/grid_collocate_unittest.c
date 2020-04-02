@@ -21,7 +21,7 @@ static int run_test(const char cp2k_root_dir[], const char task_file[]) {
     assert(strcat(filename, "src/grid/sample_tasks/") != NULL);
     assert(strcat(filename, task_file) != NULL);
 
-    const double max_diff = grid_collocate_replay(filename, 1);
+    const double max_diff = grid_collocate_replay(filename, 1, 16, false);
     if (max_diff > 1e-16) {
         printf("Max diff too high, test failed.\n");
         return 1;

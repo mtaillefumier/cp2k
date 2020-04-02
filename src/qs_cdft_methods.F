@@ -25,8 +25,8 @@ MODULE qs_cdft_methods
    USE cp_realspace_grid_cube,          ONLY: cp_cube_to_pw
    USE cube_utils,                      ONLY: cube_info_type
    USE grid_api,                        ONLY: GRID_FUNC_AB,&
-      collocate_pgf_product,
-      collocate_pgf_create_handle,
+      collocate_pgf_product,&
+      collocate_pgf_create_handle,&
       collocate_pgf_finalize
    USE hirshfeld_types,                 ONLY: get_hirshfeld_info,&
                                               hirshfeld_type,&
@@ -80,6 +80,7 @@ MODULE qs_cdft_methods
    USE realspace_grid_types,            ONLY: &
         realspace_grid_desc_type, realspace_grid_p_type, realspace_grid_type, rs2pw, &
         rs_grid_create, rs_grid_release, rs_grid_retain, rs_grid_zero, rs_pw_transfer
+   USE iso_c_binding,                   ONLY: C_PTR
 #include "./base/base_uses.f90"
 
    IMPLICIT NONE

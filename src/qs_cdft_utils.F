@@ -30,9 +30,9 @@ MODULE qs_cdft_utils
    USE cp_realspace_grid_cube,          ONLY: cp_pw_to_cube
    USE cp_units,                        ONLY: cp_unit_from_cp2k
    USE grid_api,                        ONLY: GRID_FUNC_AB,&
-        collocate_pgf_product,
-   collocate_pgf_create_handle,
-   collocate_pgf_finalize
+        collocate_pgf_product,&
+        collocate_pgf_create_handle,&
+        collocate_pgf_finalize
    USE hirshfeld_methods,               ONLY: create_shape_function
    USE hirshfeld_types,                 ONLY: create_hirshfeld_type,&
                                               hirshfeld_type,&
@@ -76,6 +76,7 @@ MODULE qs_cdft_utils
                                               rs_grid_retain,&
                                               rs_grid_zero,&
                                               rs_pw_transfer
+   USE iso_c_binding,                   ONLY: C_PTR
 #include "./base/base_uses.f90"
 
    IMPLICIT NONE
@@ -399,7 +400,7 @@ CONTAINS
             DEALLOCATE (cores)
          END DO
          DEALLOCATE (pab)
-         collocate_pgf_finalize(gaussian_handle)
+         CALL collocate_pgf_finalize(gaussian_handle)
 
          CALL pw_pool_create_pw(auxbas_pw_pool, becke_control%cavity%pw, &
                                 use_data=REALDATA3D, in_space=REALSPACE)

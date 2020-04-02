@@ -701,3 +701,92 @@ void apply_mapping_ortho(const int *non_zero_elements[3],
         }
     }
 }
+
+
+/*         tensor pol_folded; */
+
+/*         /\* indicate the position of the non zero elements in all three directions. */
+/*          * Its length is max of the linear grid dimensions *\/ */
+/*         int *non_zero_elements[3]; */
+
+/*         /\* number of non zero elements in each direction. *\/ */
+/*         int number_of_non_zero_elements[3]; */
+
+/*         int size_max = max(grid->size[0], */
+/*                            max(grid->size[1], */
+/*                                grid->size[2])); */
+
+/* #if defined(__LIBXSMM) */
+/*         non_zero_elements[0] = libxsmm_aligned_scratch(sizeof(double) * 3 * size_max, 0/\*auto-alignment*\/); */
+/* #else */
+/* #error "Need implementation" */
+/* #endif */
+
+/*         non_zero_elements[1] = non_zero_elements[0] + size_max; */
+/*         non_zero_elements[2] = non_zero_elements[1] + size_max; */
+
+/*         /\* folds the polynomials and compute the number of non zero elements at the */
+/*          * same time. It also reorders the data such that adding them to the grid is */
+/*          * simple *\/ */
+/*         apply_pcb_orthogonal_case(cubecenter, */
+/*                                   cube_size, */
+/*                                   npts, */
+/*                                   grid->size, */
+/*                                   lb_grid, */
+/*                                   &pol, */
+/*                                   non_zero_elements, */
+/*                                   number_of_non_zero_elements, */
+/*                                   &pol_folded); */
+
+/*         if ((number_of_non_zero_elements[0] == 0) || */
+/*             (number_of_non_zero_elements[1] == 0) || */
+/*             (number_of_non_zero_elements[2] == 0)) { */
+/*             int position[3]; */
+/*             return_cube_position(lb_grid, cubecenter, lb_cube, npts, position); */
+/*             printf("We have a problem: Info\n"); */
+/*             printf("grid size                   : %d %d %d\n", grid->size[0], grid->size[1], grid->size[2]); */
+/*             printf("cube size                   : %d %d %d\n", cube_size[0], cube_size[1], cube_size[2]); */
+/*             printf("number of non zero elements : %d %d %d\n", number_of_non_zero_elements[0], number_of_non_zero_elements[1], number_of_non_zero_elements[2]); */
+/*             printf("cube center                 : %d %d %d\n", cubecenter[0], cubecenter[1], cubecenter[2]); */
+/*             printf("cube center (rel. coord)    : %d %d %d\n", position[0], position[1], position[2]); */
+/*             abort(); */
+/*         } */
+
+/*         // grid[k][j][i] */
+
+/*         /\* */
+/*          * initialize the cube containing the cartesian product of the polynomials */
+/*          * yes it is reverse order. it is natural to have xyz but we store things in */
+/*          * the format zyx. the cube containing the result is stored as C_{z,y,x} */
+/*          *\/ */
+
+/*         initialize_tensor_3(&cube, */
+/*                             number_of_non_zero_elements[0], */
+/*                             number_of_non_zero_elements[1], */
+/*                             number_of_non_zero_elements[2]); */
+
+/* #if defined(__LIBXSMM) */
+/*         cube.data = libxsmm_aligned_scratch(sizeof(double) * cube.alloc_size_, 0/\*auto-alignment*\/); */
+/* #else */
+/* #error "Need implementation" */
+/* #endif */
+
+/*         collocate_core_rectangular_variant2(NULL, // will need to change that eventually. */
+/*                                             // pointer to scratch memory */
+/*                                             coef_xyz, */
+/*                                             &pol_folded, */
+/*                                             &cube); */
+
+/*         // */
+/*         // Write cube back to large grid taking periodicity and radius into account. */
+/*         // */
+
+/*         apply_mapping_ortho(non_zero_elements, */
+/*                             number_of_non_zero_elements, */
+/*                             &cube, */
+/*                             grid); */
+
+/* #if defined(__LIBXSMM) */
+/*         libxsmm_free(pol_folded.data); */
+/*         libxsmm_free(non_zero_elements[0]); */
+/* #endif */

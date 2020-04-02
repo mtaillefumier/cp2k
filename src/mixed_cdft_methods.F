@@ -54,8 +54,8 @@ MODULE mixed_cdft_methods
                                               use_qmmmx,&
                                               use_qs_force
    USE grid_api,                        ONLY: GRID_FUNC_AB,&
-        collocate_pgf_product,
-   collocate_pgf_create_handle,
+        collocate_pgf_product,&
+   collocate_pgf_create_handle,&
    collocate_pgf_finalize
    USE hirshfeld_methods,               ONLY: create_shape_function
    USE hirshfeld_types,                 ONLY: hirshfeld_type
@@ -124,7 +124,8 @@ MODULE mixed_cdft_methods
                                               rs_grid_retain,&
                                               rs_grid_zero,&
                                               rs_pw_transfer
-   USE util,                            ONLY: sort
+                                              USE util,                            ONLY: sort
+                                              USE iso_c_binding, ONLY:C_PTR
 #include "./base/base_uses.f90"
 
    IMPLICIT NONE

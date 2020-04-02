@@ -26,9 +26,29 @@
 #include "tensor_local.h"
 #include "utils.h"
 #include "coefficients.h"
+#include "thpool.h"
 
 #define TEST 0
 #define BLOCKSIZE 2
+
+size_t realloc_tensor(void *const old_mem_ptr, const size_t old_mem_size, const size_t mem_size, void **data)
+{
+    if ((old_mem_size != 0) && (old_mem_ptr == NULL))
+        abort();
+
+    if (old_mem_size > mem_size) {
+        *data = old_mem_ptr;
+        return old_mem_size;
+    }
+
+    if ((old_mem_size != 0) && (old_mem_ptr != NULL))
+        free(old_mem_ptr);
+
+    if (posix_memalign(data, 32, sizeof(double) * mem_size) != 0)
+        abort();
+
+    return mem_size;
+}
 
 extern void collocate_core_rectangular_variant1(char *scratch,
                                                 const int zmin,
@@ -98,6 +118,11 @@ typedef struct collocation_block_ {
     int lower_corner[3];
     int upper_corner[3];
     int initialized_;
+    /* first block indicating a new gaussian pair */
+    /* this mean that the full cube will be computed. */
+    /* the next blocks will only store the positions etc... */
+
+    bool new_gaussian_pair_;
 } collocation_block;
 
 typedef struct collocation_list_ {
@@ -107,30 +132,68 @@ typedef struct collocation_list_ {
     bool done;
     bool first_round;
     int initialized_;
+    size_t cube_alloc_size;
+    size_t coef_alloc_size;
+    size_t alpha_alloc_size;
+    size_t pol_alloc_size;
 } collocation_list;
 
 typedef struct collocation_integration_ {
+    /* GPU device id. should replace this with GPU UID */
+    int gpu_id;
+
+    /*
+      Do we want the batched or the serial mode. The difference between the two
+      modes is that in one case group of gaussians are treated collectively
+      while they are treated one by one in the other case. When the GPU mode is
+      activated then the batch mode is also activated.
+    */
+    bool sequential_mode;
+
+    /* two lists containing information about the computations to do. Only
+     * allocated when the serial is off */
     struct collocation_list_ *list[2];
-    pthread_t threads[2];
+
+    /* current list to be filled */
     struct collocation_list_ *current_list;
+
+    /* Just for debugging */
     int working_thread;
+
+    /* number of gaussians block in each list */
     int number_of_gaussian;
+
+    /* structure for handling the thread pool */
+    threadpool thpool;
+
+    /* some scratch storage to avoid malloc / free all the time */
+    tensor alpha;
+    tensor pol;
+    tensor coef;
+
+    /* Only allocated in sequential mode */
+    tensor cube;
+
+    size_t cube_alloc_size;
+    size_t coef_alloc_size;
+    size_t alpha_alloc_size;
+    size_t pol_alloc_size;
+
 } collocation_integration;
 
 void *print_collocation_list(void *const handler);
 collocation_list *create_collocation_list(const int num_elem, const int integration);
 void destroy_collocation_list(struct collocation_list_ *list_collocation);
 void print_collocation_block(const struct collocation_block_ *const list);
-void add_collocation_block(struct collocation_integration_ *const handler,
+void add_collocation_block(struct collocation_integration_ *const handle,
+                           const int *cube_size,
                            const int *position,
                            const int *lower_corner,
                            const int *upper_corner,
-                           const tensor *coef,
                            const tensor *Exp,
-                           const tensor *pol,
                            tensor *grid);
 void release_collocation_block_memory(struct collocation_list_ *const list_collocation);
-void *calculate_collocation(struct collocation_list_ *const list_);
+void calculate_collocation(void *const list_);
 
 /*
  * create a collocation list of a fixed number of elements
@@ -140,18 +203,21 @@ void *calculate_collocation(struct collocation_list_ *const list_);
  */
 collocation_list *create_collocation_list(const int num_elem, const int integration)
 {
-
     struct collocation_list_ *list = (struct collocation_list_ *) malloc(sizeof(struct collocation_list_));
     list->total_number_of_elements_ = num_elem;
 
     list->list = (struct collocation_block_ *) malloc(sizeof(struct collocation_block_) * list->total_number_of_elements_);
-
+    memset(list->list, 0, sizeof(struct collocation_block_) * list->total_number_of_elements_);
     if (!list->list)
         abort();
 
     list->number_of_elements_ = 0;
     list->first_round = true;
     list->done = 0;
+    list->cube_alloc_size = 0;
+    list->alpha_alloc_size = 0;
+    list->coef_alloc_size = 0;
+    list->pol_alloc_size = 0;
     return list;
 }
 
@@ -201,13 +267,31 @@ void *print_collocation_list(void *const handler)
     return NULL;
 }
 
+void mark_collocation_new_pair(struct collocation_integration_ *const handler)
+{
+    if(handler == NULL) {
+        abort();
+    }
+
+
+    struct collocation_list_ *list_collocation = handler->current_list;
+
+    if (handler->current_list == NULL) {
+        list_collocation = handler->list[0];
+    }
+
+    if (list_collocation->number_of_elements_ < list_collocation->total_number_of_elements_) {
+        struct collocation_block_ *list = &list_collocation->list[list_collocation->number_of_elements_];
+        list->new_gaussian_pair_ = true;
+    }
+}
+
 void add_collocation_block(struct collocation_integration_ *const handler,
+                           const int *cube_size,
                            const int *position,
                            const int *lower_corner,
                            const int *upper_corner,
-                           const tensor *coef,
                            const tensor *Exp,
-                           const tensor *pol,
                            tensor *grid)
 {
     int position1[3];
@@ -228,137 +312,109 @@ void add_collocation_block(struct collocation_integration_ *const handler,
         handler->current_list = handler->list[0];
         handler->working_thread = 0;
         list_collocation = handler->current_list;
-        handler->threads[0] = 0;
-        handler->threads[1] = 0;
         handler->list[0]->first_round = false;
+        handler->list[1]->first_round = true;
+        handler->list[1]->cube_alloc_size = 0;
+        handler->list[0]->cube_alloc_size = 0;
     }
 
     if (list_collocation->number_of_elements_ == list_collocation->total_number_of_elements_) {
-        // the list of blocks is full. Launch the computations
-        pthread_create(&handler->threads[(handler->working_thread) % 2], NULL, calculate_collocation, list_collocation);
-        /* wait for the already running thread to finish. It is blocking so.... */
+        /* the list of blocks is full. Two steps
+         *
+         * 1) wait for the thread pool to finish currently processed jobs. If
+         * the list is small for instance, it might take more time to process is
+         * than to create it. So we have to wait before switching
 
-#ifdef PRINT_DEBUG
-        printf("Current list %p, next list %p\n",
-               handler->list[(handler->working_thread)% 2],
-               handler->list[(handler->working_thread + 1)% 2]);
-#endif
+         * 2) start the new one
+         * 3) swap the working lists
+         */
 
-        /* The previous list might still be running or is already finished. We
-         * still have to check the status */
-        if (!handler->list[(handler->working_thread + 1)% 2]->first_round) {
-            /* wait for the thread to finish */
-            int result_code = pthread_join(handler->threads[(handler->working_thread + 1) % 2], NULL);
-            handler->threads[(handler->working_thread + 1) % 2] = 0;
+        /* step one : wait */
+        if (!handler->sequential_mode) {
+            thpool_wait(handler->thpool);
+
+            /* do not permute the two lines because otherwise the code waits for the */
+            /*        two queues to finish */
+
+            /*            step two */
+            thpool_add_work(handler->thpool, (void*)calculate_collocation, (void*)list_collocation);
+        } else {
+            calculate_collocation(list_collocation);
         }
 
         handler->working_thread++;
 
-#ifdef PRINT_DEBUG
-        printf("Number of threads launched %d\n", handler->working_thread);
-#endif
-        /* assert(!result_code); */
-        if ((list_collocation == handler->list[0]) &&
-            ((handler->list[1]->done) || (handler->list[1]->first_round))) {
+
+        /* we only have two lists */
+        if (list_collocation == handler->list[0]) {
             /* work is done in the second list. We can use it for storing the block */
             handler->current_list = handler->list[1];
-            list_collocation = handler->current_list;
             handler->list[1]->done = false;
             handler->list[1]->first_round = false;
+            handler->list[1]->list[0].new_gaussian_pair_ = true;
         } else {
-            if ((list_collocation == handler->list[1]) &&
-                ((handler->list[0]->done) || (handler->list[0]->first_round))) {
-                /* work is done in the second list. We can use it for storing the block */
-                handler->current_list = handler->list[0];
-                list_collocation = handler->current_list;
-                handler->list[0]->done = false;
-                handler->list[0]->first_round = false;
-            }
+            /* work is done in the first list. We can use it for storing the block */
+            handler->current_list = handler->list[0];
+            handler->list[0]->done = false;
+            handler->list[0]->first_round = false;
+            /* the first element is indicated as a new gaussian pair. It might
+             * involve recomputing the cube but it avoids interference between
+             * the two lists */
+            handler->list[0]->list[0].new_gaussian_pair_ = true;
         }
+
+        /* again do not permute this. It should be last */
+        list_collocation = handler->current_list;
+        list_collocation->cube_alloc_size = 0;
     }
 
-    int max_size = max(upper_corner[0] - lower_corner[0],
-                       max(upper_corner[1] - lower_corner[1],
-                           upper_corner[2] - lower_corner[2]));
     struct collocation_block_ *list = &list_collocation->list[list_collocation->number_of_elements_];
-    /* starting point for the polynomials */
+
+/* starting point for the polynomials */
     list->position[0] = position1[0];
     list->position[1] = position1[1];
     list->position[2] = position1[2];
+
     list->lower_corner[0] = lower_corner[0];
     list->lower_corner[1] = lower_corner[1];
     list->lower_corner[2] = lower_corner[2];
+
     list->upper_corner[0] = upper_corner[0];
     list->upper_corner[1] = upper_corner[1];
     list->upper_corner[2] = upper_corner[2];
-    initialize_tensor_3(&list->coefs, coef->size[0], coef->size[1], coef->size[2]);
-#if defined(__LIBXSMM)
-    list->coefs.data = libxsmm_aligned_scratch(sizeof(double) * list->coefs.alloc_size_, 0/*auto-alignment*/);
-#else
-#error
-#endif
 
-    memcpy(list->coefs.data, coef->data, sizeof(double) * list->coefs.alloc_size_);
+    list->Exp.data = NULL;
+    list->pol.data = NULL;
+    list->cube.data = NULL;
 
-    if (Exp != NULL) {
-        int maxi[3] = {max(upper_corner[1] - lower_corner[1], upper_corner[2] - lower_corner[2]),
-                       max(upper_corner[1] - lower_corner[1], upper_corner[0] - lower_corner[0]),
-                       max(upper_corner[0] - lower_corner[0], upper_corner[2] - lower_corner[2])};
-
-        int second_max_size = (max_size == maxi[0]) * (max(maxi[1], maxi[2])) +
-            (max_size == maxi[1]) * (max(maxi[0], maxi[2])) +
-            (max_size == maxi[2]) * (max(maxi[1], maxi[0]));
-        initialize_tensor_3(&list->Exp, 3, second_max_size, max_size);
-        list->Exp.data = Exp->data;
-        for (int z = 0; z < upper_corner[0] - lower_corner[0]; z++) {
-            /* plane z - x */
-            memcpy(&idx3(list->Exp, 0, z, 0),
-                   &idx3(list->Exp, 0, position1[0] + z, position1[2]),
-                   sizeof(double) * (upper_corner[2] - lower_corner[2]));
-            /* plane z - y */
-            memcpy(&idx3(list->Exp, 1, z, 0),
-                   &idx3(list->Exp, 1, position1[0] + z, position1[1]),
-                   sizeof(double) * (upper_corner[1] - lower_corner[1]));
-        }
-
-        /* plane y - x */
-        for (int y = 0; y < upper_corner[1] - lower_corner[1]; y++) {
-            memcpy(&idx3(list->Exp, 2, y, 0),
-                   &idx3(list->Exp, 2, position1[1] + y, position1[2]),
-                   sizeof(double) * (upper_corner[2] - lower_corner[2]));
-        }
-
-    } else {
-        list->Exp.data = NULL;
-    }
+    /* I do not allocate memory yet. It will be done when we do the actual calculations */
     initialize_tensor_3(&list->cube,
-                        upper_corner[0] - lower_corner[0],
-                        upper_corner[1] - lower_corner[1],
-                        upper_corner[2] - lower_corner[2]);
-#if defined(__LIBXSMM)
-    list->cube.data = libxsmm_aligned_scratch(sizeof(double) * list->cube.alloc_size_, 0/*auto-alignment*/);
-#else
-#error "need implementation"
-#endif
-    initialize_tensor_3(&list->pol,
-                        pol->size[0],
-                        pol->size[1],
-                        max_size);
-#if defined(__LIBXSMM)
-    list->pol.data = libxsmm_aligned_scratch(sizeof(double) * list->pol.alloc_size_, 0/*auto-alignment*/);
-    if(list->pol.data == NULL)
-        abort();
-#else
-#endif
+                        cube_size[0],
+                        cube_size[1],
+                        cube_size[2]);
 
-    for (int d = 0; d < 3; d++) {
-        for (int l = 0; l < pol->size[1]; l++) {
-            memcpy(&idx3(list->pol, d, l, 0),
-                   &idx3(pol[0], d, l, position1[d]),
-                   (upper_corner[d] - lower_corner[d]) *sizeof(double));
+    /* compute the size of the largest cube */
+    list_collocation->cube_alloc_size = max(list_collocation->cube_alloc_size, list->cube.alloc_size_);
+
+    if (list->new_gaussian_pair_) {
+        initialize_tensor_3(&list->coefs, handler->coef.size[0], handler->coef.size[1], handler->coef.size[2]);
+        list->coefs.data = handler->coef.data;
+
+        if (Exp != NULL) {
+            initialize_tensor_3(&list->Exp, Exp->size[0], Exp->size[1], Exp->size[2]);
+            list->Exp.data = Exp->data;
         }
+
+        initialize_tensor_3(&list->pol,
+                            handler->pol.size[0],
+                            handler->pol.size[1],
+                            handler->pol.size[2]);
+
+        list->pol.data = handler->pol.data;
+
     }
 
+    /* we could put that in handle ? */
     initialize_tensor_3(&list->grid, grid->size[0], grid->size[1], grid->size[2]);
     list->grid.data = grid->data;
     list->initialized_ = 1;
@@ -375,10 +431,6 @@ void release_collocation_block_memory(struct collocation_list_ *list_collocation
             libxsmm_free(list_collocation->list[i].pol.data);
         if (list_collocation->list[i].coefs.data)
             libxsmm_free(list_collocation->list[i].coefs.data);
-        if (list_collocation->list[i].cube.data)
-            libxsmm_free(list_collocation->list[i].cube.data);
-
-
         if (list_collocation->list[i].Exp.data) {
             libxsmm_free(list_collocation->list[i].Exp.data);
         }
@@ -388,112 +440,148 @@ void release_collocation_block_memory(struct collocation_list_ *list_collocation
         list_collocation->list[i].Exp.data = NULL;
         list_collocation->list[i].pol.data = NULL;
         list_collocation->list[i].coefs.data = NULL;
-        list_collocation->list[i].cube.data = NULL;
+        list_collocation->list[i].new_gaussian_pair_ = false;
         list_collocation->list->initialized_ = 0;
+        list_collocation->cube_alloc_size = 0;
+        list_collocation->coef_alloc_size = 0;
+        list_collocation->alpha_alloc_size = 0;
     }
     list_collocation->done = false;
     list_collocation->number_of_elements_ = 0;
 }
 
-void collocate_create_handler(void **gaussian_handler, const int device_id, const int number_of_gaussian)
+void *collocate_create_handle(const int device_id, const int number_of_gaussian, const bool batched_mode)
 {
-    struct collocation_integration_ **handler = (struct collocation_integration_ **)gaussian_handler;
-    *handler = (struct collocation_integration_ *) malloc(sizeof(struct collocation_integration_));
+    struct collocation_integration_ *handle = NULL;
+    handle = (struct collocation_integration_ *) malloc(sizeof(struct collocation_integration_));
 
-    if (*handler == NULL) {
+    if (handle == NULL) {
         abort();
     }
 
-    (*handler)->list[0] = create_collocation_list(number_of_gaussian, 0);
-    (*handler)->list[1] = create_collocation_list(number_of_gaussian, 0);
-    (*handler)->number_of_gaussian = number_of_gaussian;
-    (*handler)->list[0]->initialized_ = 0;
-    (*handler)->list[1]->initialized_ = 0;
-    (*handler)->list[0]->done = 0;
-    (*handler)->list[1]->done = 0;
-    (*handler)->list[0]->number_of_elements_ = 0;
-    (*handler)->list[1]->number_of_elements_ = 0;
-    (*handler)->current_list = NULL;
-    (*handler)->working_thread = 0;
-    (*handler)->threads[0] = 0;
-    (*handler)->threads[1] = 0;
+    handle->gpu_id = device_id;
+
+    handle->sequential_mode = !batched_mode;
+
+    handle->thpool = thpool_init(2);
+
+    handle->list[0] = create_collocation_list(number_of_gaussian, 0);
+    handle->list[1] = create_collocation_list(number_of_gaussian, 0);
+    handle->number_of_gaussian = number_of_gaussian;
+    handle->list[0]->initialized_ = 0;
+    handle->list[1]->initialized_ = 0;
+    handle->list[0]->done = 0;
+    handle->list[1]->done = 0;
+    handle->list[0]->number_of_elements_ = 0;
+    handle->list[1]->number_of_elements_ = 0;
+    handle->current_list = NULL;
+    handle->working_thread = 0;
+    handle->alpha.data = NULL;
+    handle->coef.data = NULL;
+    handle->cube.data = NULL;
+    handle->pol.data = NULL;
+    handle->coef_alloc_size = 0;
+    handle->alpha_alloc_size = 0;
+    handle->cube_alloc_size = 0;
+    handle->pol_alloc_size = 0;
+    return (void*)handle;
 }
 
-void collocate_synchronize(void **gaussian_handler)
+void collocate_synchronize(void *gaussian_handler)
 {
     if (gaussian_handler == NULL) {
         abort();
     }
 
-    struct collocation_integration_ **handler = (struct collocation_integration_ **)gaussian_handler;
+    struct collocation_integration_ *handler = (struct collocation_integration_ *)gaussian_handler;
 
-    if (*handler == NULL) {
+    if (handler == NULL) {
         abort();
     }
 
-    if ((*handler)->threads[0] != 0) {
-        int result_code = pthread_join((*handler)->threads[0], NULL);
-        (*handler)->threads[0] = 0;
-    } else {
-        if ((*handler)->list[0]->number_of_elements_ > 0) {
-            calculate_collocation((*handler)->list[0]);
-        }
+    if (handler->sequential_mode)
+        return;
+
+    thpool_wait(handler->thpool);
+
+    if ((handler->list[0]->number_of_elements_ > 0) && (!handler->list[0]->done)) {
+        calculate_collocation(handler->list[0]);
     }
 
-    if ((*handler)->threads[1] != 0) {
-        int result_code = pthread_join((*handler)->threads[1], NULL);
-        (*handler)->threads[1] = 0;
-    } else {
-        if ((*handler)->list[1]->number_of_elements_ > 0) {
-            calculate_collocation((*handler)->list[1]);
-        }
+    if ((handler->list[1]->number_of_elements_ > 0) && (!handler->list[1]->done)) {
+        calculate_collocation(handler->list[1]);
     }
 }
 
-void collocate_finalize(void **gaussian_handler)
+void collocate_finalize(void *gaussian_handle)
 {
-    collocate_synchronize(gaussian_handler);
-    struct collocation_integration_ **handler = (struct collocation_integration_ **)gaussian_handler;
+    collocate_synchronize(gaussian_handle);
+    struct collocation_integration_ *handle = (struct collocation_integration_ *)gaussian_handle;
 
-    destroy_collocation_list((*handler)->list[0]);
-    destroy_collocation_list((*handler)->list[1]);
+    destroy_collocation_list(handle->list[0]);
+    destroy_collocation_list(handle->list[1]);
 
-    free(*handler);
+    free(handle->alpha.data);
+    handle->alpha.data = NULL;
+    handle->coef.data = NULL;
 
-    handler = NULL;
+    /* release the thread pool */
+    if (!handle->sequential_mode)
+        thpool_destroy(handle->thpool);
+    else {
+        free(handle->coef.data);
+        free(handle->pol.data);
+        free(handle->cube.data);
+    }
+
+    free(handle);
+
+    handle = NULL;
 }
 
-void *calculate_collocation(struct collocation_list_ *const list_)
+void calculate_collocation(void *const in)
 {
-    int position[3] = {0, 0, 0};
-    /* these can be treated independently */
-    assert(list_->number_of_elements_ > 0);
+    struct collocation_list_ *const list_ = (struct collocation_list_ *)in;
 
-    /* printf("calculate_collocation : List %p\n", list_); */
+    double *scratch = libxsmm_aligned_scratch(sizeof(double) * (list_->cube_alloc_size), 0/*auto-alignment*/);
 
     for (int i = 0; i < list_->number_of_elements_; i++) {
+
         /* print_collocation_block(list_->list + i); */
-        collocate_core_rectangular_variant2(NULL,
-                                            &list_->list[i].coefs,
-                                            &list_->list[i].pol,
-                                            &list_->list[i].cube);
-    }
 
-    /* It is essentially a sequential thing on cpu */
-    for (int i = 0; i < list_->number_of_elements_; i++) {
+        list_->list[i].cube.data = scratch;
+
+        if (list_->list[i].new_gaussian_pair_) {
+            collocate_core_rectangular_variant2(NULL,
+                                                &list_->list[i].coefs,
+                                                &list_->list[i].pol,
+                                                &list_->list[i].cube);
+
+#if defined(__LIBXSMM)
+            libxsmm_free(list_->list[i].pol.data);
+            list_->list[i].pol.data = NULL;
+            libxsmm_free(list_->list[i].coefs.data);
+            list_->list[i].coefs.data = NULL;
+
+            if (list_->list[i].Exp.data) {
+                libxsmm_free(list_->list[i].Exp.data);
+                list_->list[i].Exp.data = NULL;
+            }
+#endif
+        }
+
         add_sub_grid(list_->list[i].lower_corner, // lower corner position where the subgrid should placed
                      list_->list[i].upper_corner, // upper boundary
-                     NULL, // starting position of in the subgrid
+                     list_->list[i].position, // starting position of in the subgrid
                      &list_->list[i].cube, // subgrid
                      &list_->list[i].grid);
     }
 
-    release_collocation_block_memory(list_);
-#ifdef PRINT_DEBUG
-    printf("list number of elements (reset) %d\n", list_->number_of_elements_);
-#endif
     list_->done = true;
-    return NULL;
+    list_->number_of_elements_ = 0;
+
+    libxsmm_free(scratch);
+    return;
 }
 
 
@@ -1510,8 +1598,7 @@ void collocate_core_rectangular_variant3(char *scratch,
     }
 }
 
-void collocate_cubic(const double radius,
-                     const double dh[3][3],
+void collocate_cubic(const double dh[3][3],
                      const int *lower_boundaries_cube,
                      const int *cube_center,
                      const int *cube_size,
@@ -1675,8 +1762,11 @@ void integrate_cubic(const double radius,
                             const int lower_corner[3] = {zmin, ymin, xmin};
                             const int upper_corner[3] = {zmax, ymax, xmax};
                             const int position[3] = {zoffset, yoffset, xoffset};
-                            extract_sub_grid(lower_corner, upper_corner,
-                                             position, grid, &cube);
+                            extract_sub_grid(lower_corner,
+                                             upper_corner,
+                                             position,
+                                             grid,
+                                             &cube);
                         }
                         xoffset += xmax - xmin;
                         if (x1 == period[0])
@@ -1724,14 +1814,13 @@ void compute_blocks(collocation_integration *const handler,
                     const int *cube_size,
                     const int *cube_center,
                     const int *period,
-                    const tensor *co,
-                    const tensor *pol,
                     const tensor *Exp,
                     const int *lb_grid,
                     tensor *grid)
 {
     int position[3];
     return_cube_position(lb_grid, cube_center, lower_boundaries_cube, period, position);
+    mark_collocation_new_pair(handler);
 
     if ((position[1] + cube_size[1] <= grid->size[1]) &&
         (position[2] + cube_size[2] <= grid->size[2]) &&
@@ -1747,12 +1836,11 @@ void compute_blocks(collocation_integration *const handler,
                                      position[2] + cube_size[2]};
 
         add_collocation_block(handler,
+                              cube_size,
                               NULL,
                               position,
                               upper_corner,
-                              co,
                               Exp,
-                              pol,
                               grid);
         return;
     }
@@ -1803,12 +1891,11 @@ void compute_blocks(collocation_integration *const handler,
                                                          xmax};
 
                             add_collocation_block(handler,
+                                                  cube_size,
                                                   position2,
                                                   lower_corner,
                                                   upper_corner,
-                                                  co,
                                                   Exp,
-                                                  pol,
                                                   grid);
 
                             x_offset += (xmax - xmin);
@@ -1977,7 +2064,6 @@ void apply_mapping_cubic(const int *lower_boundaries_cube,
 // *****************************************************************************
 void grid_collocate_ortho(collocation_integration *const handler,
                           const double zetp,
-                          const tensor *coef_xyz,
                           const double dh[3][3],
                           const double dh_inv[3][3],
                           const double rp[3],
@@ -2010,8 +2096,6 @@ void grid_collocate_ortho(collocation_integration *const handler,
      * boundaries conditions
      */
 
-    tensor pol, cube;
-
     /* seting up the cube parameters */
     int cmax = compute_cube_properties(radius,
                                        dh,
@@ -2025,185 +2109,53 @@ void grid_collocate_ortho(collocation_integration *const handler,
                                        cube_size);
 
     /* initialize the multidimensional array containing the polynomials */
-    initialize_tensor_3(&pol, 3, coef_xyz->size[0], 2 * cmax + 1);
+    initialize_tensor_3(&handler->pol, 3, handler->coef.size[0], 2 * cmax + 1);
 
-/* a mapping so that the ig corresponds to the right grid point */
+    /* allocate memory for the polynomial and the cube */
+
+    if (handler->sequential_mode) {
+        initialize_tensor_3(&handler->cube,
+                            cube_size[0],
+                            cube_size[1],
+                            cube_size[2]);
+
+        realloc_tensor(handler->cube.data, handler->cube_alloc_size, handler->cube.alloc_size_, (void **)&handler->cube.data);
+        realloc_tensor(handler->pol.data, handler->pol_alloc_size, handler->pol.alloc_size_,  (void **)&handler->pol.data);
+    } else {
 #if defined(__LIBXSMM)
-    pol.data = libxsmm_aligned_scratch(sizeof(double) * pol.alloc_size_, 0/*auto-alignment*/);
-
-    // normally it is 2 * cmax + 1, but for alignment reason it is probably
-    // better to align on 16 bytes
-
-    //
-    //  map[0] =  libxsmm_aligned_scratch(sizeof(int) * 3 * (2 * cmax + 1), 0/*auto-alignment*/);
-    //  map[1] = map[0] + (2 * cmax + 1);
-    //  map[2] = map[1] + (2 * cmax + 1);
-    //
+        handler->pol.data = libxsmm_aligned_scratch(sizeof(double) * handler->pol.alloc_size_, 0/*auto-alignment*/);
 #else
-    int map[3][2 * cmax + 1];
+#error
 #endif
-    /* memset(map[0], 0, sizeof(int) * 3 * (2 * cmax + 1)); */
-
-    /* compute the mapping */
-    /* for (int i = 0; i < 3; i++) { */
-    /*     grid_fill_map(periodic[i], */
-    /*                   lb_cube[i], */
-    /*                   ub_cube[i], */
-    /*                   cubecenter[i], */
-    /*                   lb_grid[i], */
-    /*                   npts[i], */
-    /*                   grid->size[i], */
-    /*                   cmax, */
-    /*                   map[i]); */
-    /* } */
-
+    }
 
     /* compute the polynomials */
 
     // WARNING : do not reverse the order in pol otherwise you will have to
     // reverse the order in collocate_dgemm as well.
 
-    grid_fill_pol(dh[0][0], roffset[2], lb_cube[2], coef_xyz->size[2] - 1, cmax, zetp, &idx3(pol, 2, 0, 0)); /* i indice */
-    grid_fill_pol(dh[1][1], roffset[1], lb_cube[1], coef_xyz->size[1] - 1, cmax, zetp, &idx3(pol, 1, 0, 0)); /* j indice */
-    grid_fill_pol(dh[2][2], roffset[0], lb_cube[0], coef_xyz->size[0] - 1, cmax, zetp, &idx3(pol, 0, 0, 0)); /* k indice */
+    grid_fill_pol(dh[0][0], roffset[2], lb_cube[2], handler->coef.size[2] - 1, cmax, zetp, &idx3(handler->pol, 2, 0, 0)); /* i indice */
+    grid_fill_pol(dh[1][1], roffset[1], lb_cube[1], handler->coef.size[1] - 1, cmax, zetp, &idx3(handler->pol, 1, 0, 0)); /* j indice */
+    grid_fill_pol(dh[2][2], roffset[0], lb_cube[0], handler->coef.size[0] - 1, cmax, zetp, &idx3(handler->pol, 0, 0, 0)); /* k indice */
 
-    if (TEST) {
-        tensor pol_folded;
-
-        /* indicate the position of the non zero elements in all three directions.
-         * Its length is max of the linear grid dimensions */
-        int *non_zero_elements[3];
-
-        /* number of non zero elements in each direction. */
-        int number_of_non_zero_elements[3];
-
-        int size_max = max(grid->size[0],
-                           max(grid->size[1],
-                               grid->size[2]));
-
-#if defined(__LIBXSMM)
-        non_zero_elements[0] = libxsmm_aligned_scratch(sizeof(double) * 3 * size_max, 0/*auto-alignment*/);
-#else
-#error "Need implementation"
-#endif
-
-        non_zero_elements[1] = non_zero_elements[0] + size_max;
-        non_zero_elements[2] = non_zero_elements[1] + size_max;
-
-        /* folds the polynomials and compute the number of non zero elements at the
-         * same time. It also reorders the data such that adding them to the grid is
-         * simple */
-        apply_pcb_orthogonal_case(cubecenter,
-                                  cube_size,
-                                  npts,
-                                  grid->size,
-                                  lb_grid,
-                                  &pol,
-                                  non_zero_elements,
-                                  number_of_non_zero_elements,
-                                  &pol_folded);
-
-        if ((number_of_non_zero_elements[0] == 0) ||
-            (number_of_non_zero_elements[1] == 0) ||
-            (number_of_non_zero_elements[2] == 0)) {
-            int position[3];
-            return_cube_position(lb_grid, cubecenter, lb_cube, npts, position);
-            printf("We have a problem: Info\n");
-            printf("grid size                   : %d %d %d\n", grid->size[0], grid->size[1], grid->size[2]);
-            printf("cube size                   : %d %d %d\n", cube_size[0], cube_size[1], cube_size[2]);
-            printf("number of non zero elements : %d %d %d\n", number_of_non_zero_elements[0], number_of_non_zero_elements[1], number_of_non_zero_elements[2]);
-            printf("cube center                 : %d %d %d\n", cubecenter[0], cubecenter[1], cubecenter[2]);
-            printf("cube center (rel. coord)    : %d %d %d\n", position[0], position[1], position[2]);
-            abort();
-        }
-
-        // grid[k][j][i]
-
-        /*
-         * initialize the cube containing the cartesian product of the polynomials
-         * yes it is reverse order. it is natural to have xyz but we store things in
-         * the format zyx. the cube containing the result is stored as C_{z,y,x}
-         */
-
-        initialize_tensor_3(&cube,
-                            number_of_non_zero_elements[0],
-                            number_of_non_zero_elements[1],
-                            number_of_non_zero_elements[2]);
-
-#if defined(__LIBXSMM)
-        cube.data = libxsmm_aligned_scratch(sizeof(double) * cube.alloc_size_, 0/*auto-alignment*/);
-#else
-#error "Need implementation"
-#endif
-
+    if (handler->sequential_mode) {
         collocate_core_rectangular_variant2(NULL, // will need to change that eventually.
                                             // pointer to scratch memory
-                                            coef_xyz,
-                                            &pol_folded,
-                                            &cube);
+                                            &handler->coef,
+                                            &handler->pol,
+                                            &handler->cube);
 
-        //
-        // Write cube back to large grid taking periodicity and radius into account.
-        //
-
-        apply_mapping_ortho(non_zero_elements,
-                            number_of_non_zero_elements,
-                            &cube,
-                            grid);
-
-#if defined(__LIBXSMM)
-        libxsmm_free(pol_folded.data);
-        libxsmm_free(non_zero_elements[0]);
-#endif
-    /* see comments in the function to have a idea of what is going on */
+        apply_mapping_cubic(lb_cube, cubecenter, npts, &handler->cube, lb_grid, grid);
     } else {
-        initialize_tensor_3(&cube,
-                            cube_size[0],
-                            cube_size[1],
-                            cube_size[2]);
-#if defined(__LIBXSMM)
-        cube.data = libxsmm_aligned_scratch(sizeof(double) * cube.alloc_size_, 0/*auto-alignment*/);
-#else
-#error "Need implementation"
-#endif
-
         compute_blocks(handler,
                        lb_cube,
                        cube_size,
                        cubecenter,
                        npts,
-                       coef_xyz,
-                       &pol,
                        NULL,
                        lb_grid,
                        grid);
-
-        /* collocate_cubic(disr_radius, */
-        /*                 dh, */
-        /*                 lb_cube, */
-        /*                 cubecenter, */
-        /*                 cube_size, */
-        /*                 npts, */
-        /*                 coef_xyz, */
-        /*                 &pol, */
-        /*                 lb_grid, */
-        /*                 grid); */
-
-        /* collocate_core_rectangular_variant2(NULL, // will need to change that eventually. */
-        /*                                     // pointer to scratch memory */
-        /*                                     coef_xyz, */
-        /*                                     &pol, */
-        /*                                     &cube); */
-
-        /* apply_mapping(disr_radius, dh, dh_inv, map, lb_cube, &cube, cmax, grid); */
-        /* apply_mapping_cubic(lb_cube, cubecenter, npts, &cube, lb_grid, grid); */
     }
-
-#if defined(__LIBXSMM)
-    libxsmm_free(cube.data);
-    libxsmm_free(pol.data);
-    /* libxsmm_free(map[0]); */
-#endif
 }
 
 // *****************************************************************************
@@ -2534,25 +2486,34 @@ void grid_collocate_internal(collocation_integration *const handler,
     // (current implementation is l**7)
     //
 
-    tensor alpha;
-    initialize_tensor_4(&alpha, 3, lmax_prep[1] + 1, lmax_prep[0] + 1, lmax_prep[0] + lmax_prep[1] + 1);
-#ifdef __LIBXSMM
-    alpha.data = libxsmm_aligned_scratch(sizeof(double) * alpha.alloc_size_, 0/*auto-alignment*/);
-#else
-    alpha.data = (double*)tmp;
-    tmp += alpha.alloc_size_ * sizeof(double);
-#endif
+    /* precuationary tail since I probably intitialize data to NULL when I
+     * initialize a new tensor. I want to keep the memory (I put a ridiculous
+     * amount already) */
 
+    void *tmp = handler->alpha.data;
+    initialize_tensor_4(&handler->alpha, 3, lmax_prep[1] + 1, lmax_prep[0] + 1, lmax_prep[0] + lmax_prep[1] + 1);
+    handler->alpha_alloc_size = realloc_tensor(tmp,
+                                                handler->alpha_alloc_size,
+                                                handler->alpha.alloc_size_,
+                                               (void **)&(handler->alpha.data));
 
     const int lp = lmax_prep[0] + lmax_prep[1];
-    tensor coef_xyz;
-    initialize_tensor_3(&coef_xyz, lp + 1, lp + 1, lp + 1);
-#ifdef __LIBXSMM
-    coef_xyz.data = libxsmm_aligned_scratch(sizeof(double) * coef_xyz.alloc_size_, 0/*auto-alignment*/);
+
+    tmp = handler->coef.data;
+    initialize_tensor_3(&(handler->coef), lp + 1, lp + 1, lp + 1);
+
+    if (handler->sequential_mode) {
+        handler->coef_alloc_size = realloc_tensor(tmp,
+                                                  handler->coef_alloc_size,
+                                                  handler->coef.alloc_size_,
+                                                  (void **)&(handler->coef.data));
+    } else {
+#if defined(__LIBXSMM)
+        handler->coef.data = libxsmm_aligned_scratch(sizeof(double) * handler->coef.alloc_size_, 0/*auto-alignment*/);
 #else
-    coef_xyz.data = (double*)tmp;
-    tmp += coef_xyz.alloc_size_ * sizeof(double);
+#error
 #endif
+    }
 
     // initialy cp2k stores coef_xyz as coef[z][y][x]. this is fine but I
     // need them to be stored as
@@ -2561,7 +2522,7 @@ void grid_collocate_internal(collocation_integration *const handler,
                        rb,
                        rp,
                        lmax_prep,
-                       &alpha);
+                       &handler->alpha);
 
     //
     //   compute P_{lxp,lyp,lzp} given P_{lxa,lya,lza,lxb,lyb,lzb} and alpha(ls,lxa,lxb,1)
@@ -2575,9 +2536,9 @@ void grid_collocate_internal(collocation_integration *const handler,
                             lmin_prep,
                             lp,
                             prefactor,
-                            &alpha,
+                            &handler->alpha,
                             pab_prep,
-                            &coef_xyz);
+                            &handler->coef);
 
     if (use_ortho) {
         const int period[3] = {npts[2], npts[1], npts[0]};
@@ -2588,13 +2549,12 @@ void grid_collocate_internal(collocation_integration *const handler,
                                 lmin_prep,
                                 lp,
                                 prefactor,
-                                &alpha,
+                                &handler->alpha,
                                 pab_prep,
-                                &coef_xyz);
+                                &handler->coef);
 
         grid_collocate_ortho(handler,
                              zetp,
-                             &coef_xyz,
                              dh,
                              dh_inv,
                              rp,
@@ -2610,15 +2570,15 @@ void grid_collocate_internal(collocation_integration *const handler,
                           lmin_prep,
                           lp,
                           prefactor,
-                          &alpha,
+                          &handler->alpha,
                           pab_prep,
-                          &coef_xyz);
+                          &handler->coef);
 // initialy cp2k stores coef_xyz as coef[z][y][x]. this is fine but I
         // need them to be stored as
 
         grid_collocate_general(lp,
                                zetp,
-                               &coef_xyz,
+                               &handler->coef,
                                dh,
                                dh_inv,
                                rp,
@@ -2628,12 +2588,8 @@ void grid_collocate_internal(collocation_integration *const handler,
                                radius,
                                ngrid,
                                grid);
-    }
 
-#if defined(__LIBXSMM)
-    libxsmm_free(coef_xyz.data);
-    libxsmm_free(alpha.data);
-#endif
+    }
 }
 
 void integrate_ortho(const int la_max,
@@ -2672,7 +2628,8 @@ void integrate_ortho(const int la_max,
 }
 
 // *****************************************************************************
-void grid_collocate_pgf_product_cpu(const bool use_ortho,
+void grid_collocate_pgf_product_cpu(void *const handle,
+                                    const bool use_ortho,
                                     const int func,
                                     const int la_max,
                                     const int la_min,
@@ -2717,7 +2674,7 @@ void grid_collocate_pgf_product_cpu(const bool use_ortho,
     tensor grid_before;
     initialize_tensor_3(&grid_before, ngrid[2], ngrid[1], ngrid[0]);
 #ifdef __LIBXSMM
-    grid_before.data = libxsmm_aligned_scratch(sizeof(double) * coef_xyz.alloc_size_, 0/*auto-alignment*/);
+    grid_before.data = libxsmm_aligned_scratch(sizeof(double) * grid_before.alloc_size_, 0/*auto-alignment*/);
 #else
     // we have a buffer of 4 M
     posix_memalign((void**)&scratch, sizeof(double) * 1024 * 1024 * 4);
@@ -2735,10 +2692,7 @@ void grid_collocate_pgf_product_cpu(const bool use_ortho,
     memset(grid.data, 0, sizeof(double) grid.alloc_size_);
 #endif
 
-    void *gaussian_handler =  NULL;
-    collocate_create_handler(&gaussian_handler, 0, 32);
-
-    grid_collocate_internal(gaussian_handler,
+    grid_collocate_internal(handle,
                             use_ortho,
                             func,
                             lmax,
@@ -2759,8 +2713,6 @@ void grid_collocate_pgf_product_cpu(const bool use_ortho,
                             pab_size,
                             pab,
                             &grid);
-    collocate_finalize(&gaussian_handler);
-
 #ifdef __GRID_DUMP_TASKS
 
     grid_collocate_record(use_ortho,

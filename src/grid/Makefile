@@ -6,16 +6,13 @@ all: grid_collocate_miniapp.x
 grid_collocate_cpu.o: grid_prepare_pab.o mapping.o
 grid_collocate_replay.o: grid_collocate_cpu.o
 
-mapping.o : mapping.ispc
-	ispc -O2 mapping.ispc -o mapping.o
-
 %.o: %.c
 	$(CC) -c $(CFLAGS) $<
 
-grid_collocate_miniapp.x: grid_collocate_miniapp.o grid_collocate_replay.o grid_collocate_cpu.o grid_prepare_pab.o mapping.o tmp.o utils.o
+grid_collocate_miniapp.x: grid_collocate_miniapp.o grid_collocate_replay.o grid_collocate_cpu.o grid_prepare_pab.o tmp.o utils.o thpool.o
 	$(CC) $(CFLAGS) -o $@ $^ -lxsmmnoblas -lxsmm -lmkl_rt -lm
 
 clean:
-	rm -fv grid_*.o grid_*.x utils.o tmp.o
+	rm -fv grid_*.o grid_*.x utils.o tmp.o thpool.o
 
 #EOF

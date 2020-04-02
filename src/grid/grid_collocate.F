@@ -63,7 +63,7 @@ CONTAINS
          END SUBROUTINE
       END INTERFACE
 
-      CALL collocate_pgf_synchronize(gaussian_handle)
+      CALL collocate_pgf_synchronize_aux(gaussian_handle)
     END SUBROUTINE collocate_pgf_synchronize
       function collocate_pgf_create_handle(device_id, number_of_gaussian) result(gaussian_handle)
       USE ISO_C_BINDING, ONLY: C_BOOL,&
@@ -79,8 +79,8 @@ CONTAINS
          function collocate_pgf_create_handle_aux(device_id, number_of_gaussian) result(gaussian_handle)&
          &BIND(C, name="collocate_create_handle")
          IMPORT C_PTR, C_INT
-         INTEGER(KIND=C_INT), intent(in)                    :: device_id
-         INTEGER(KIND=C_INT), intent(in)                    :: number_of_gaussian
+         INTEGER(KIND=C_INT), value                    :: device_id
+         INTEGER(KIND=C_INT), value                    :: number_of_gaussian
          TYPE(C_PTR) :: gaussian_handle
          END function
       END INTERFACE

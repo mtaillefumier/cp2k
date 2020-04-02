@@ -17,6 +17,9 @@ typedef struct tensor_ {
 
 inline void initialize_tensor(struct tensor_ *a, const int dim, const int *const sizes)
 {
+    if (a == NULL)
+        return;
+
     a->dim_ = dim;
     for (int d = 0; d < dim; d++)
         a->size[d] = sizes[d];
@@ -45,12 +48,16 @@ inline void initialize_tensor(struct tensor_ *a, const int dim, const int *const
 
     a->alloc_size_ = a->offsets[0] * a->size[0];
     return;
+    a->data = NULL;
 }
 
 /* initialize a tensor structure for a tensor of dimension dim = 2 */
 
 inline void initialize_tensor_2(struct tensor_ *a, int n1, int n2)
 {
+    if (a == NULL)
+        return;
+
     int size_[2] = {n1, n2};
     initialize_tensor(a, 2, size_);
 }
@@ -59,6 +66,8 @@ inline void initialize_tensor_2(struct tensor_ *a, int n1, int n2)
 
 inline void initialize_tensor_3(struct tensor_ *a, int n1, int n2, int n3)
 {
+    if (a == NULL)
+        return;
     int size_[3] = {n1, n2, n3};
     initialize_tensor(a, 3, size_);
 }
@@ -67,6 +76,8 @@ inline void initialize_tensor_3(struct tensor_ *a, int n1, int n2, int n3)
 
 inline void initialize_tensor_4(struct tensor_ *a, int n1, int n2, int n3, int n4)
 {
+    if (a == NULL)
+        return;
     int size_[4] = {n1, n2, n3, n4};
     initialize_tensor(a, 4, size_);
 }
@@ -76,32 +87,49 @@ inline void initialize_tensor_4(struct tensor_ *a, int n1, int n2, int n3, int n
 inline tensor *create_tensor(const int dim, const int *sizes)
 {
     tensor *a = (tensor *)malloc(sizeof(struct tensor_));
+
+    if (a == NULL)
+        abort();
+
     initialize_tensor(a, dim, sizes);
-    posix_memalign((void **)&a->data, 16, sizeof(double) * a->alloc_size_);
+    if(posix_memalign((void **)&a->data, 16, sizeof(double) * a->alloc_size_) != 0)
+        abort();
 }
 
 inline size_t tensor_return_memory_size(const struct tensor_ *const a)
 {
+    if (a == NULL)
+        abort();
+
     return a->alloc_size_;
 }
 
 inline void tensor_assign_memory(struct tensor_ *a, void *data)
 {
+    if (a == NULL)
+        abort();
     a->data = data;
 }
 
 inline int tensor_get_leading_dimension(struct tensor_ *a)
 {
+    if (a == NULL)
+        abort();
     return a->ld_;
 }
 
 inline int tensor_set_leading_dimension(struct tensor_ *a, const int ld)
 {
+    if (a == NULL)
+        abort();
     a->ld_ = ld;
 }
 
 inline void recompute_tensor_offsets(tensor *a)
 {
+    if (a == NULL)
+        abort();
+
     switch(a->dim_) {
     case 4: {
         a->offsets[0] = a->ld_ * a->size[1] * a->size[2];
@@ -121,8 +149,8 @@ inline void recompute_tensor_offsets(tensor *a)
     case 1:
         break;
     }
-
 }
+
 
 #define idx4(a, i, j, k, l) a.data[ (i) * a.offsets[0] + (j) * a.offsets[1] + (k) * a.offsets[2] + (l)]
 #define idx3(a, i, j, k) a.data[(i) * a.offsets[0] + (j) * a.offsets[1] + (k)]

@@ -9,9 +9,11 @@
 extern "C" {
 #endif
 
-    void collocate_create_handler(void **gaussian_handler, const int device_id, const int number_of_gaussian);
-    void collocate_finalize(void **gaussian_handler);
-    void collocation_calculate(void **gaussian_handler);
+    void *collocate_create_handle(const int device_id, const int number_of_gaussian, const bool sequential_mode);
+    void collocate_finalize(void *gaussian_handle);
+    void collocation_calculate(void *gaussian_handle);
+    void collocate_synchronize(void *gaussian_handle);
+
 //******************************************************************************
 // \brief Collocates a single task. A task consists of a pair of atoms each
 //        with a position, Gaussian exponent, and a range of angular momentum.
@@ -40,7 +42,7 @@ extern "C" {
 //
 // \param grid The output grid array to collocate into.
 //******************************************************************************
-    void grid_collocate_pgf_product_cpu(/* void *const handler, */
+    void grid_collocate_pgf_product_cpu(void *const handle,
                                         const bool use_ortho,
                                         const int func,
                                         const int la_max,
