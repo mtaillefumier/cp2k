@@ -287,6 +287,7 @@ double grid_collocate_replay(const char* filename, const int cycles, const int n
     clock_gettime(CLOCK_THREAD_CPUTIME_ID, &start_time);
     void *gaussian_handle =  NULL;
     gaussian_handle= collocate_create_handle(0, num_blocks, sequential);
+
     for (int i=0; i < cycles ; i++) {
         grid_collocate_pgf_product_cpu(gaussian_handle,
                                        use_ortho,
@@ -306,7 +307,7 @@ double grid_collocate_replay(const char* filename, const int cycles, const int n
                                        ngrid,
                                        lb_grid,
                                        periodic,
-                                       radius,
+                                       radius * (1 - 0.5 * drand48()),
                                        o1,
                                        o2,
                                        n1,
@@ -325,12 +326,12 @@ double grid_collocate_replay(const char* filename, const int cycles, const int n
     for (int i = 0; i < ngrid[2]; i++) {
         for (int j = 0; j < ngrid[1]; j++) {
             for (int k = 0; k < ngrid[0]; k++) {
-                printf("(%.6e %.6e) ", grid_test[i][j][k], ((double)cycles * grid_ref[i][j][k]));
+                /* printf("(%.6e %.6e) ", grid_test[i][j][k], ((double)cycles * grid_ref[i][j][k])); */
                 const double diff = fabs((grid_test[i][j][k] - ((double)cycles * grid_ref[i][j][k])));
                 max_diff = fmax(max_diff, diff);
                 /* printf("%le\n", diff); */
             }
-            printf("\n");
+            /* printf("\n"); */
         }
     }
 

@@ -65,7 +65,7 @@ CONTAINS
 
       CALL collocate_pgf_synchronize_aux(gaussian_handle)
     END SUBROUTINE collocate_pgf_synchronize
-      function collocate_pgf_create_handle(device_id, number_of_gaussian) result(gaussian_handle)
+      function collocate_pgf_create_handle(device_id, number_of_gaussian, sequential_mode) result(gaussian_handle)
       USE ISO_C_BINDING, ONLY: C_BOOL,&
       C_DOUBLE,&
       C_INT,&
@@ -73,19 +73,21 @@ CONTAINS
       C_PTR
       INTEGER, INTENT(IN)                              :: device_id
       INTEGER, INTENT(IN)                              :: number_of_gaussian
+      LOGICAL, INTENT(IN)                              :: sequential_mode
       TYPE(C_PTR)                       :: gaussian_handle
 
       INTERFACE
-         function collocate_pgf_create_handle_aux(device_id, number_of_gaussian) result(gaussian_handle)&
+         function collocate_pgf_create_handle_aux(device_id, number_of_gaussian, sequential_mode) result(gaussian_handle)&
          &BIND(C, name="collocate_create_handle")
-         IMPORT C_PTR, C_INT
+         IMPORT C_PTR, C_INT, C_BOOL
          INTEGER(KIND=C_INT), value                    :: device_id
          INTEGER(KIND=C_INT), value                    :: number_of_gaussian
+         LOGICAL(KIND=C_BOOL), VALUE               :: sequential_mode
          TYPE(C_PTR) :: gaussian_handle
          END function
       END INTERFACE
 
-      gaussian_handle = collocate_pgf_create_handle_aux(device_id, number_of_gaussian)
+      gaussian_handle = collocate_pgf_create_handle_aux(device_id, number_of_gaussian, LOGICAL(sequential_mode, KIND=C_BOOL))
       END function
 
       SUBROUTINE collocate_pgf_finalize(gaussian_handle)
@@ -126,12 +128,12 @@ CONTAINS
 !> \param subpatch_pattern ...
 ! **************************************************************************************************
       SUBROUTINE collocate_pgf_product(gaussian_handle, &
-                                    la_max, zeta, la_min, &
-                                    lb_max, zetb, lb_min, &
-                                    ra, rab, scale, pab, o1, o2, &
-                                    rsgrid, cell, cube_info, &
-                                    ga_gb_function, radius, &
-                                    use_subpatch, subpatch_pattern)
+           la_max, zeta, la_min, &
+           lb_max, zetb, lb_min, &
+           ra, rab, scale, pab, o1, o2, &
+           rsgrid, cell, cube_info, &
+           ga_gb_function, radius, &
+           use_subpatch, subpatch_pattern)
 
       TYPE(C_PTR), INTENT(INOUT)                         :: gaussian_handle
       INTEGER, INTENT(IN)                                :: la_max

@@ -59,7 +59,7 @@ MODULE qs_collocate_density
         GRID_FUNC_AB, GRID_FUNC_DABpADB_X, GRID_FUNC_DABpADB_Y, GRID_FUNC_DABpADB_Z, &
         GRID_FUNC_DADB, GRID_FUNC_DX, GRID_FUNC_DXDX, GRID_FUNC_DXDY, GRID_FUNC_DY, &
         GRID_FUNC_DYDY, GRID_FUNC_DYDZ, GRID_FUNC_DZ, GRID_FUNC_DZDX, GRID_FUNC_DZDZ, &
-        collocate_pgf_product, collocate_pgf_create_handle, collocate_pgf_finalize
+        collocate_pgf_product, collocate_pgf_create_handle, collocate_pgf_finalize, collocate_pgf_synchronize
    USE input_constants,                 ONLY: &
         orb_dx2, orb_dxy, orb_dy2, orb_dyz, orb_dz2, orb_dzx, orb_px, orb_py, orb_pz, orb_s
    USE kinds,                           ONLY: default_string_length,&
@@ -192,8 +192,8 @@ CONTAINS
       CALL rs_grid_zero(rs_rho)
 
       eps_rho_rspace = dft_control%qs_control%eps_rho_rspace
-
-      gaussian_handle = collocate_pgf_create_handle(0, 1024)
+      ! sequential mode ?
+      gaussian_handle = collocate_pgf_create_handle(0, 1024, .TRUE.)
       DO ikind = 1, SIZE(atomic_kind_set)
          CALL get_atomic_kind(atomic_kind_set(ikind), natom=natom, atom_list=atom_list)
          CALL get_qs_kind(qs_kind_set(ikind), gth_potential=gth_potential)
@@ -378,7 +378,7 @@ CONTAINS
 
       eps_rho_rspace = dft_control%qs_control%eps_rho_rspace
 
-      gaussian_handle = collocate_pgf_create_handle(0, 1024)
+      gaussian_handle = collocate_pgf_create_handle(0, 1024, .TRUE.)
 
       DO ikind = 1, SIZE(atomic_kind_set)
          CALL get_atomic_kind(atomic_kind_set(ikind), natom=natom, atom_list=atom_list)
@@ -613,7 +613,8 @@ CONTAINS
       group_size = mgrid_rspace(1)%pw%pw_grid%para%group_size
 
 
-      gaussian_handle = collocate_pgf_create_handle(0, 1024)
+      ! sequential mode
+      gaussian_handle = collocate_pgf_create_handle(0, 1024, .TRUE.)
 
       DO ikind = 1, SIZE(atomic_kind_set)
 
@@ -911,7 +912,7 @@ CONTAINS
       CALL rs_grid_zero(rs_rho)
 
       eps_rho_rspace = dft_control%qs_control%eps_rho_rspace
-      gaussian_handle = collocate_pgf_create_handle(0, 1024)
+      gaussian_handle = collocate_pgf_create_handle(0, 1024, .TRUE.)
 
       DO ikind = 1, SIZE(atomic_kind_set)
          CALL get_atomic_kind(atomic_kind_set(ikind), natom=natom, atom_list=atom_list)
@@ -1033,7 +1034,7 @@ CONTAINS
       CALL rs_grid_retain(rs_rho)
       CALL rs_grid_zero(rs_rho)
 
-      gaussian_handle = collocate_pgf_create_handle(0, 1024)
+      gaussian_handle = collocate_pgf_create_handle(0, 1024, .TRUE.)
 
       eps_rho_rspace = dft_control%qs_control%eps_rho_rspace
       pab(1, 1) = 1.0_dp
@@ -1134,7 +1135,7 @@ CONTAINS
       CALL rs_grid_retain(rs_rho)
       CALL rs_grid_zero(rs_rho)
 
-      gaussian_handle = collocate_pgf_create_handle(0, 1024)
+      gaussian_handle = collocate_pgf_create_handle(0, 1024, .FALSE.)
 
       eps_rho_rspace = dft_control%qs_control%eps_rho_rspace
       pab(1, 1) = 1.0_dp
@@ -1263,7 +1264,7 @@ CONTAINS
       ENDIF
 
       IF (npme .GT. 0) THEN
-         gaussian_handle = collocate_pgf_create_handle(0, 1024)
+         gaussian_handle = collocate_pgf_create_handle(0, 1024, .FALSE.)
          ra(:) = pbc(particle_set(iatom)%r, cell)
          subpatch_pattern = 0
          radius = exp_radius_very_extended(la_min=0, la_max=0, &
@@ -1369,7 +1370,7 @@ CONTAINS
       ENDDO
 
       IF (npme .GT. 0) THEN
-         gaussian_handle = collocate_pgf_create_handle(0, 1024)
+         gaussian_handle = collocate_pgf_create_handle(0, 1024, .FALSE.)
          DO j = 1, npme
             iatom = cores(j)
             ra(:) = pbc(particle_set(iatom)%r, cell)
@@ -1690,8 +1691,7 @@ CONTAINS
 !$    ithread = omp_get_thread_num()
 
       ! create an handle for each omp thread. By default the queue if 1024 blocks
-
-      gaussian_handle =  collocate_pgf_create_handle(0, 1024)
+      gaussian_handle =  collocate_pgf_create_handle(0, 64, .FALSE.)
 
       pab => pabt(:, :, ithread)
       work => workt(:, :, ithread)
@@ -1872,7 +1872,7 @@ CONTAINS
 !$OMP END DO
 
 !     wait for all computation to complete and release memory. GPU IS NOT RESET
-         CALL collocate_pgf_finalize(gaussian_handle)
+         CALL collocate_pgf_synchronize(gaussian_handle)
 
          ! Now sum the thread-local grids back into the rs_grid
          ! (in parallel, each thread writes to a section of the rs_grid at a time)
@@ -1921,6 +1921,7 @@ CONTAINS
 !$OMP BARRIER
                  END DO loop_gridlevels
 
+                 CALL collocate_pgf_finalize(gaussian_handle)
 !$OMP END PARALLEL
 
       !   *** Release work storage ***
@@ -2120,7 +2121,7 @@ CONTAINS
       ithread = 0
       pab => pabt(:, :, ithread)
       work => workt(:, :, ithread)
-      gaussian_handle =  collocate_pgf_create_handle(0, 1024)
+      gaussian_handle =  collocate_pgf_create_handle(0, 1024, .FALSE.)
 
       loop_xyz: DO idir = 1, 3
 
@@ -2452,7 +2453,8 @@ CONTAINS
       group_size = mgrid_rspace(1)%pw%pw_grid%para%group_size
       ALLOCATE (where_is_the_point(0:group_size - 1))
 
-      gaussian_handle =  collocate_pgf_create_handle(0, 1024)
+      ! run in sequential mode
+      gaussian_handle = collocate_pgf_create_handle(0, 1024, .TRUE.)
 
       DO iatom = 1, natom
          ikind = particle_set(iatom)%atomic_kind%kind_number

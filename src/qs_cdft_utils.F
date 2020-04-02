@@ -225,7 +225,7 @@ CONTAINS
          ALLOCATE (becke_control%vector_buffer%position_vecs(3, natom))
       END IF
       ALLOCATE (becke_control%vector_buffer%R12(natom, natom))
-      gaussian_handle = collocate_pgf_create_handle(0, 1024)
+      gaussian_handle = collocate_pgf_create_handle(0, 1024, .TRUE.)
 
       ! Calculate pairwise distances between each atom pair
       DO i = 1, 3

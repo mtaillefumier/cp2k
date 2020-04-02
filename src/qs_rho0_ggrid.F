@@ -180,7 +180,7 @@ CONTAINS
 
       ALLOCATE (pab(nch_max, 1))
 
-      gaussian_handle = collocate_pgf_create_handle(0, 1024)
+      gaussian_handle = collocate_pgf_create_handle(0, 1024, .FALSE.)
 
       DO ikind = 1, SIZE(atomic_kind_set)
          CALL get_atomic_kind(atomic_kind_set(ikind), atom_list=atom_list, natom=nat)

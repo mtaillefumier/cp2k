@@ -68,10 +68,6 @@ void collocate_l0(const struct tensor_ *co,
                   const struct tensor_ *p_alpha_beta_reduced_,
                   struct tensor_ *cube);
 
-void collocate_core_rectangular(char *scratch,
-                                const struct tensor_ *co,
-                                const struct tensor_ *p_alpha_beta_reduced_,
-                                struct tensor_ *Vtmp);
 
 void collocate_core_rectangular_variant1(char *scratch,
                                          const int zmin,
@@ -87,7 +83,7 @@ void collocate_core_rectangular_variant1(char *scratch,
                                          const struct tensor_ *p_alpha_beta_reduced_,
                                          struct tensor_ *grid);
 
-void collocate_core_rectangular_variant2(char *scratch,
+void collocate_core_rectangular_variant2(double *scratch,
                                          const struct tensor_ *co,
                                          const struct tensor_ *p_alpha_beta_reduced_,
                                          struct tensor_ *cube);
@@ -133,13 +129,15 @@ typedef struct collocation_list_ {
     bool done;
     bool first_round;
     int initialized_;
+    double *scratch;
+    size_t scratch_size;
     size_t cube_alloc_size;
     size_t coef_alloc_size;
     size_t alpha_alloc_size;
     size_t pol_alloc_size;
     size_t T_alloc_size;
     size_t W_alloc_size;
-    int number_of_collocate_;
+    int integration;
 } collocation_list;
 
 typedef struct collocation_integration_ {
@@ -215,7 +213,9 @@ collocation_list *create_collocation_list(const int num_elem, const int integrat
     list->total_number_of_elements_ = num_elem;
 
     list->list = (struct collocation_block_ *) malloc(sizeof(struct collocation_block_) * list->total_number_of_elements_);
+
     memset(list->list, 0, sizeof(struct collocation_block_) * list->total_number_of_elements_);
+
     if (!list->list)
         abort();
 
@@ -228,6 +228,9 @@ collocation_list *create_collocation_list(const int num_elem, const int integrat
     list->pol_alloc_size = 0;
     list->T_alloc_size = 0;
     list->W_alloc_size = 0;
+    list->scratch_size = 0;
+    list->scratch = NULL;
+    list->integration = integration;
     return list;
 }
 
@@ -235,6 +238,7 @@ void destroy_collocation_list(struct collocation_list_ *list_collocation)
 {
     if (list_collocation != NULL) {
         free(list_collocation->list);
+        free(list_collocation->scratch);
         free(list_collocation);
     }
 }
@@ -449,15 +453,17 @@ void add_collocation_block(struct collocation_integration_ *const handler,
 /* #endif */
         memcpy(list->pol.data, handler->pol.data, sizeof(double) * handler->pol.alloc_size_);
 
-
+        /* It is for the second variant of collocate_dgemm only three dgemm */
         list_collocation->T_alloc_size = max(list_collocation->T_alloc_size,
                                              compute_memory_space_tensor_3(handler->coef.size[0] /* alpha */,
                                                                            handler->coef.size[1] /* gamma */,
                                                                            cube_size[1] /* j */));
+
         list_collocation->W_alloc_size = max(list_collocation->W_alloc_size,
                                              compute_memory_space_tensor_3(handler->coef.size[1] /* gamma */ ,
                                                                            cube_size[1] /* j */,
                                                                            cube_size[2] /* i */));
+
         handler->W_alloc_size = max(handler->W_alloc_size, list_collocation->W_alloc_size);
         handler->T_alloc_size = max(handler->T_alloc_size, list_collocation->T_alloc_size);
     }
@@ -469,38 +475,7 @@ void add_collocation_block(struct collocation_integration_ *const handler,
     list_collocation->number_of_elements_++;
 }
 
-
-void release_collocation_block_memory(struct collocation_list_ *list_collocation)
-{
-
-    for (int i = 0; i < list_collocation->number_of_elements_; i++) {
-#if defined(__LIBXSMM)
-        if (list_collocation->list[i].pol.data)
-            libxsmm_free(list_collocation->list[i].pol.data);
-        if (list_collocation->list[i].coefs.data)
-            libxsmm_free(list_collocation->list[i].coefs.data);
-        if (list_collocation->list[i].Exp.data) {
-            libxsmm_free(list_collocation->list[i].Exp.data);
-        }
-#else
-#error
-#endif
-        list_collocation->list[i].Exp.data = NULL;
-        list_collocation->list[i].pol.data = NULL;
-        list_collocation->list[i].coefs.data = NULL;
-        list_collocation->list[i].new_gaussian_pair_ = false;
-        list_collocation->list->initialized_ = 0;
-        list_collocation->cube_alloc_size = 0;
-        list_collocation->coef_alloc_size = 0;
-        list_collocation->alpha_alloc_size = 0;
-        list_collocation->T_alloc_size = 0;
-        list_collocation->T_alloc_size = 0;
-    }
-    list_collocation->done = false;
-    list_collocation->number_of_elements_ = 0;
-}
-
-void *collocate_create_handle(const int device_id, const int number_of_gaussian, const bool batched_mode)
+void *collocate_create_handle(const int device_id, const int number_of_gaussian, const bool sequential_mode)
 {
     struct collocation_integration_ *handle = NULL;
     handle = (struct collocation_integration_ *) malloc(sizeof(struct collocation_integration_));
@@ -512,9 +487,10 @@ void *collocate_create_handle(const int device_id, const int number_of_gaussian,
     memset(handle, 0, sizeof(struct collocation_integration_));
     handle->gpu_id = device_id;
 
-    handle->sequential_mode = !batched_mode;
+    handle->sequential_mode = sequential_mode;
 
-    handle->thpool = thpool_init(2);
+    if (!handle->sequential_mode)
+        handle->thpool = thpool_init(1);
 
     handle->list[0] = create_collocation_list(number_of_gaussian, 0);
     handle->list[1] = create_collocation_list(number_of_gaussian, 0);
@@ -596,39 +572,35 @@ void collocate_finalize(void *gaussian_handle)
 void calculate_collocation(void *const in)
 {
     struct collocation_list_ *const list_ = (struct collocation_list_ *)in;
-    double *scratch = NULL;
-/* #if defined(__LIBXSMM) */
-/*     scratch = libxsmm_aligned_scratch(sizeof(double) * (list_->cube_alloc_size), 0/\*auto-alignment*\/); */
-/* #else */
-    posix_memalign(&scratch, 32, sizeof(double) * list_->cube_alloc_size);
-/* #endif */
-    list_->number_of_collocate_ = 0;
+
+    if (list_->scratch == NULL) {
+        list_->scratch_size = list_->cube_alloc_size + list_->T_alloc_size + list_->W_alloc_size;
+        posix_memalign(&list_->scratch, 32, sizeof(double) * list_->scratch_size);
+    }
+
+    if (list_->scratch_size < (list_->cube_alloc_size + list_->T_alloc_size + list_->W_alloc_size))
+    {
+        list_->scratch_size = list_->cube_alloc_size + list_->T_alloc_size + list_->W_alloc_size;
+        free(list_->scratch);
+        posix_memalign(&list_->scratch, 32, sizeof(double) * list_->scratch_size);
+    }
+
     for (int i = 0; i < list_->number_of_elements_; i++) {
 
         /* print_collocation_block(list_->list + i); */
 
-        list_->list[i].cube.data = scratch;
+        list_->list[i].cube.data = list_->scratch;
 
         if (list_->list[i].new_gaussian_pair_) {
-            collocate_core_rectangular_variant2(NULL,
+            collocate_core_rectangular_variant2(list_->scratch + list_->list[i].cube.alloc_size_,
                                                 &list_->list[i].coefs,
                                                 &list_->list[i].pol,
                                                 &list_->list[i].cube);
-            list_->number_of_collocate_++;
-/* #if defined(__LIBXSMM) */
-/*             libxsmm_free(list_->list[i].pol.data); */
-/*             libxsmm_free(list_->list[i].coefs.data); */
-
-/*             if (list_->list[i].Exp.data) { */
-/*                 libxsmm_free(list_->list[i].Exp.data); */
-/*             } */
-/* #else */
             free(list_->list[i].pol.data);
             free(list_->list[i].coefs.data);
             if (list_->list[i].Exp.data) {
                 free(list_->list[i].Exp.data);
             }
-/* #endif */
             list_->list[i].Exp.data = NULL;
             list_->list[i].pol.data = NULL;
             list_->list[i].coefs.data = NULL;
@@ -647,12 +619,6 @@ void calculate_collocation(void *const in)
 
     list_->done = true;
     list_->number_of_elements_ = 0;
-/* #if defined(__LIBXSMM) */
-/*     libxsmm_free(scratch); */
-/* #else */
-    free(scratch);
-    list_->number_of_collocate_ = 0;
-/* #endif */
     return;
 }
 
@@ -1145,7 +1111,7 @@ static void grid_fill_pol(const double dr,
    V_{kji} = \sum_{\alpha\beta\gamma} C_{\alpha\gamma\beta} T_{0,\alpha,i} T_{1,\beta,j} T_{2,\gamma,k}
 
 */
-void collocate_core_rectangular_variant2(char *scratch,
+void collocate_core_rectangular_variant2(double *scratch,
                                          const struct tensor_ *co,
                                          const struct tensor_ *p_alpha_beta_reduced_,
                                          struct tensor_ *cube)
@@ -1164,13 +1130,8 @@ void collocate_core_rectangular_variant2(char *scratch,
         initialize_tensor_3(&T, co->size[0] /* alpha */, co->size[1] /* gamma */, cube->size[1] /* j */);
         initialize_tensor_3(&W, co->size[1] /* gamma */ , cube->size[1] /* j */, cube->size[2] /* i */);
 
-#if defined(__LIBXSMM)
-        T.data = libxsmm_aligned_scratch(sizeof(double) * T.alloc_size_, 0/*auto-alignment*/);
-        W.data = libxsmm_aligned_scratch(sizeof(double) * W.alloc_size_, 0/*auto-alignment*/);
-#else
-        T.data = (double *)scratch;
-        W.data = ((double *)scratch) + T.alloc_size_ * sizeof(double);
-#endif
+        T.data = scratch;
+        W.data = scratch + T.alloc_size_;
 
         /* WARNING we are in row major layout. cblas allows it and it is more
          * natural to read left to right than top to bottom
@@ -1371,11 +1332,6 @@ void collocate_core_rectangular_variant2(char *scratch,
                &m3.beta,
                m3.c, // cube_{kji}
                &m3.ldc);
-#endif
-
-#if defined(__LIBXSMM)
-        libxsmm_free(W.data);
-        libxsmm_free(T.data);
 #endif
         return;
     }

@@ -200,23 +200,25 @@ void add_sub_grid_with_pcb(const int *period,
     for (int z = 0; z < sizez; z++) {
         double *__restrict__ dst = &idx3(grid[0], lower_corner[0] + z, lower_corner[1], 0);
         double *__restrict__ src = &idx3(subgrid[0], position1[0] + z, position1[1], 0);
-
+        __builtin_prefetch (dst, 1, 3);
+        __builtin_prefetch (src, 0, 3);
         for (int y = 0; y < sizey; y++) {
             //#pragma omp simd
+            /* for (int x = 0; x < grid->size[2]; x++) */
 #pragma GCC ivdep
-            for (int x = 0; x < offset; x++)
+            for (int x = 0; x < offset; x++) {
                 dst[x + lower_corner[2]] += src[x];
+            }
 
             int shift = offset;
             for (int l = 0; l < loop_number; l++) {
-//#pragma omp simd
 #pragma GCC ivdep
-                for (int x = 0; x < grid->size[2]; x++)
+                for (int x = 0; x < grid->size[2]; x++) {
                     dst[x] += src[shift + x];
-
+                }
                 shift = offset + (l + 1)  * period[2];
             }
-//#pragma omp simd
+
 #pragma GCC ivdep
             for (int x = 0; x < remainder; x++)
                 dst[x] += src[shift + x];

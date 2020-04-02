@@ -954,7 +954,9 @@ CONTAINS
       ENDIF
 
       ithread = 0
-      gaussian_handle = collocate_pgf_create_handle(0, 1024)
+
+      ! it should run in sequential mode apparently
+      gaussian_handle = collocate_pgf_create_handle(0, 1024, .TRUE.)
 
       jpab_a => jpabt_a(:, :, ithread)
       jpab_b => jpabt_b(:, :, ithread)
