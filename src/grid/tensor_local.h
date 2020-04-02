@@ -25,6 +25,7 @@ inline void initialize_tensor(struct tensor_ *a, const int dim, const int *const
         a->size[d] = sizes[d];
 
     // we need proper alignment here. But can be done later
+    /* a->ld_ = (sizes[a->dim_ - 1] / 32 + 1) * 32; */
     a->ld_ = sizes[a->dim_ - 1];
     switch(a->dim_) {
     case 4: {
@@ -151,6 +152,10 @@ inline void recompute_tensor_offsets(tensor *a)
     }
 }
 
+inline size_t compute_memory_space_tensor_3(const int n1, const int n2, const int n3)
+{
+    return (n1 * n2 * n3);
+}
 
 #define idx4(a, i, j, k, l) a.data[ (i) * a.offsets[0] + (j) * a.offsets[1] + (k) * a.offsets[2] + (l)]
 #define idx3(a, i, j, k) a.data[(i) * a.offsets[0] + (j) * a.offsets[1] + (k)]

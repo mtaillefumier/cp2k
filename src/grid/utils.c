@@ -140,6 +140,7 @@ inline void add_sub_grid(const int *lower_corner,
         double *__restrict__ dst = &idx3(grid[0], lower_corner[0] + z, lower_corner[1], lower_corner[2]);
         double *__restrict__ src = &idx3(subgrid[0], position1[0] + z, position1[1], position1[2]);
         for (int y = 0; y < sizey; y++) {
+#pragma GCC unroll 4
 #pragma GCC ivdep
             for (int x = 0; x < sizex; x++) {
                 dst[x] += src[x];
@@ -151,6 +152,83 @@ inline void add_sub_grid(const int *lower_corner,
 
     return;
 }
+
+/* add a 3D block given by subgrid and apply pcb along the fastest dimension */
+
+void add_sub_grid_with_pcb(const int *period,
+                           const int *position_inside_subgrid,
+                           const int *lower_corner,
+                           const int *upper_corner,
+                           const tensor *subgrid,
+                           tensor *grid)
+{
+
+    int position1[3] = {0, 0, 0};
+
+    if (position_inside_subgrid) {
+        position1[0] = position_inside_subgrid[0];
+        position1[1] = position_inside_subgrid[1];
+        position1[2] = position_inside_subgrid[2];
+    }
+    for (int d = 0; d < 2; d++) {
+        if ((lower_corner[d] >= grid->size[d]) ||
+            (lower_corner[d] < 0) ||
+            (lower_corner[d] >= upper_corner[d]) ||
+            (upper_corner[d] > grid->size[d]) ||
+            (upper_corner[d] <= 0) ||
+            (upper_corner[d] - lower_corner[d] > subgrid->size[d]) ||
+            (grid == NULL) ||
+            (subgrid == NULL)) {
+
+            printf("Error : invalid parameters. Values of the given parameters along the first wrong dimension\n");
+            printf("      : lorner corner  [%d] = %d\n", d, lower_corner[d]);
+            printf("      : upper  corner  [%d] = %d\n", d, upper_corner[d]);
+            printf("      : diff           [%d] = %d\n", d, upper_corner[d] - lower_corner[d]);
+            printf("      : src grid size  [%d] = %d\n", d, subgrid->size[d]);
+            printf("      : dst grid size  [%d] = %d\n", d, grid->size[d]);
+            abort();
+        }
+    }
+
+    const int sizey = upper_corner[1] - lower_corner[1];
+    const int sizez = upper_corner[0] - lower_corner[0];
+
+    const int offset = min(grid->size[2] - lower_corner[2], subgrid->size[2]);
+    const int loop_number = (subgrid->size[2] - offset) / period[2];
+    const int remainder = min(grid->size[2], subgrid->size[2] - offset - loop_number * period[2]);
+
+    for (int z = 0; z < sizez; z++) {
+        double *__restrict__ dst = &idx3(grid[0], lower_corner[0] + z, lower_corner[1], 0);
+        double *__restrict__ src = &idx3(subgrid[0], position1[0] + z, position1[1], 0);
+
+        for (int y = 0; y < sizey; y++) {
+            //#pragma omp simd
+#pragma GCC ivdep
+            for (int x = 0; x < offset; x++)
+                dst[x + lower_corner[2]] += src[x];
+
+            int shift = offset;
+            for (int l = 0; l < loop_number; l++) {
+//#pragma omp simd
+#pragma GCC ivdep
+                for (int x = 0; x < grid->size[2]; x++)
+                    dst[x] += src[shift + x];
+
+                shift = offset + (l + 1)  * period[2];
+            }
+//#pragma omp simd
+#pragma GCC ivdep
+            for (int x = 0; x < remainder; x++)
+                dst[x] += src[shift + x];
+
+            dst += grid->ld_;
+            src += subgrid->ld_;
+        }
+    }
+
+    return;
+}
+
 
 inline int compute_cube_properties(const double radius,
                                    const double dh[3][3],

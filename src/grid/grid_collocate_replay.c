@@ -318,7 +318,7 @@ double grid_collocate_replay(const char* filename, const int cycles, const int n
     collocate_finalize(gaussian_handle);
 
     struct timespec end_time;
-    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &end_time);
+    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &end_time);
 
     double max_diff = 0.0;
 
@@ -328,7 +328,7 @@ double grid_collocate_replay(const char* filename, const int cycles, const int n
                 printf("(%.6e %.6e) ", grid_test[i][j][k], ((double)cycles * grid_ref[i][j][k]));
                 const double diff = fabs((grid_test[i][j][k] - ((double)cycles * grid_ref[i][j][k])));
                 max_diff = fmax(max_diff, diff);
-                printf("%le\n", diff);
+                /* printf("%le\n", diff); */
             }
             printf("\n");
         }
