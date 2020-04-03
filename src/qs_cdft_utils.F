@@ -32,7 +32,7 @@ MODULE qs_cdft_utils
    USE grid_api,                        ONLY: GRID_FUNC_AB,&
         collocate_pgf_product,&
         collocate_pgf_create_handle,&
-        collocate_pgf_finalize
+        collocate_pgf_finalize, collocate_pgf_synchronize
    USE hirshfeld_methods,               ONLY: create_shape_function
    USE hirshfeld_types,                 ONLY: create_hirshfeld_type,&
                                               hirshfeld_type,&
@@ -76,7 +76,7 @@ MODULE qs_cdft_utils
                                               rs_grid_retain,&
                                               rs_grid_zero,&
                                               rs_pw_transfer
-   USE iso_c_binding,                   ONLY: C_PTR
+   USE iso_c_binding,                   ONLY: C_PTR, C_NULL_PTR
 #include "./base/base_uses.f90"
 
    IMPLICIT NONE
@@ -139,6 +139,8 @@ CONTAINS
                particle_set, logger, cdft_constraint_section, qs_kind_set, &
                particles, subsys, pab, pw_env, rs_cavity, cavity_env, &
                auxbas_pw_pool, atomic_kind_set, group, radii_list, cdft_control)
+
+      gaussian_handle = C_NULL_PTR
       logger => cp_get_default_logger()
       CALL timeset(routineN, handle)
       CALL get_qs_env(qs_env, &
@@ -225,7 +227,8 @@ CONTAINS
          ALLOCATE (becke_control%vector_buffer%position_vecs(3, natom))
       END IF
       ALLOCATE (becke_control%vector_buffer%R12(natom, natom))
-      gaussian_handle = collocate_pgf_create_handle(0, 1024, .TRUE.)
+
+      gaussian_handle = collocate_pgf_create_handle(0, 128, .TRUE.)
 
       ! Calculate pairwise distances between each atom pair
       DO i = 1, 3
@@ -400,7 +403,7 @@ CONTAINS
             DEALLOCATE (cores)
          END DO
          DEALLOCATE (pab)
-         CALL collocate_pgf_finalize(gaussian_handle)
+         CALL collocate_pgf_synchronize(gaussian_handle)
 
          CALL pw_pool_create_pw(auxbas_pw_pool, becke_control%cavity%pw, &
                                 use_data=REALDATA3D, in_space=REALSPACE)
@@ -453,6 +456,8 @@ CONTAINS
       END IF
       IF (ALLOCATED(is_constraint)) &
          DEALLOCATE (is_constraint)
+      CALL collocate_pgf_finalize(gaussian_handle)
+
       CALL timestop(handle)
 
    END SUBROUTINE becke_constraint_init

@@ -17,7 +17,8 @@ MODULE qs_rho0_ggrid
    USE grid_api,                        ONLY: GRID_FUNC_AB,&
       collocate_pgf_product,&
       collocate_pgf_finalize,&
-      collocate_pgf_create_handle
+      collocate_pgf_create_handle, &
+      collocate_pgf_synchronize
    USE kinds,                           ONLY: dp,&
                                               int_8
    USE mathconstants,                   ONLY: dfac,&
@@ -69,7 +70,7 @@ MODULE qs_rho0_ggrid
         rs_pw_transfer
    USE util,                            ONLY: get_limit
    USE virial_types,                    ONLY: virial_type
-      USE ISO_C_BINDING,                   ONLY: C_PTR
+   USE ISO_C_BINDING,                   ONLY: C_PTR, C_NULL_PTR
 #include "./base/base_uses.f90"
 
    IMPLICIT NONE
@@ -133,6 +134,7 @@ CONTAINS
       CALL timeset(routineN, handle)
 
       NULLIFY (atomic_kind_set, qs_kind_set, cores, pab, Qlm_c)
+      gaussian_handle = C_NULL_PTR
 
       NULLIFY (dft_control, pw_env, particle_set, para_env, cell, rho0_s_gs, rho0_s_rs)
       CALL get_qs_env(qs_env=qs_env, dft_control=dft_control, &
@@ -180,7 +182,7 @@ CONTAINS
 
       ALLOCATE (pab(nch_max, 1))
 
-      gaussian_handle = collocate_pgf_create_handle(0, 1024, .FALSE.)
+      gaussian_handle = collocate_pgf_create_handle(0, 128, .TRUE.)
 
       DO ikind = 1, SIZE(atomic_kind_set)
          CALL get_atomic_kind(atomic_kind_set(ikind), atom_list=atom_list, natom=nat)
@@ -231,14 +233,14 @@ CONTAINS
                ra, (/0.0_dp, 0.0_dp, 0.0_dp/), 1.0_dp, pab, 0, 0, &
                rs_grid, cell, cube_info(igrid), ga_gb_function=GRID_FUNC_AB, radius=rpgf0, &
                use_subpatch=.TRUE., subpatch_pattern=0_int_8)
-
          END DO !  j
-
       END DO ! ikind
-      CALL collocate_pgf_finalize(gaussian_handle)
+
+
       IF (ASSOCIATED(cores)) THEN
          DEALLOCATE (cores)
       END IF
+      CALL collocate_pgf_synchronize(gaussian_handle)
 
       DEALLOCATE (pab)
 
@@ -272,6 +274,8 @@ CONTAINS
          CALL pw_zero(rho0_s_gs%pw)
          CALL pw_transfer(rho0_s_rs%pw, rho0_s_gs%pw)
       END IF
+
+      CALL collocate_pgf_finalize(gaussian_handle)
       CALL timestop(handle)
 
    END SUBROUTINE put_rho0_on_grid

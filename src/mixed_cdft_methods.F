@@ -55,8 +55,8 @@ MODULE mixed_cdft_methods
                                               use_qs_force
    USE grid_api,                        ONLY: GRID_FUNC_AB,&
         collocate_pgf_product,&
-   collocate_pgf_create_handle,&
-   collocate_pgf_finalize
+        collocate_pgf_create_handle,&
+        collocate_pgf_finalize, collocate_pgf_synchronize
    USE hirshfeld_methods,               ONLY: create_shape_function
    USE hirshfeld_types,                 ONLY: hirshfeld_type
    USE input_constants,                 ONLY: &
@@ -125,7 +125,7 @@ MODULE mixed_cdft_methods
                                               rs_grid_zero,&
                                               rs_pw_transfer
                                               USE util,                            ONLY: sort
-                                              USE iso_c_binding, ONLY:C_PTR
+                                              USE iso_c_binding, ONLY:C_PTR, C_NULL_PTR
 #include "./base/base_uses.f90"
 
    IMPLICIT NONE
@@ -2352,6 +2352,8 @@ CONTAINS
       NULLIFY (pab, cell, force_env_qs, particle_set, force_env_section, print_section, &
                qs_kind_set, particles, subsys_mix, rs_cavity, cavity_env, auxbas_pw_pool, &
                atomic_kind_set, radii_list, cdft_control)
+
+      gaussian_handle = C_NULL_PTR
       logger => cp_get_default_logger()
       nforce_eval = SIZE(force_env%sub_force_env)
       CALL timeset(routineN, handle)
@@ -2569,7 +2571,9 @@ CONTAINS
          ALLOCATE (pab(1, 1))
          nthread = 1
          ithread = 0
-         gaussian_handle = collocate_pgf_create_handle(0, 1024, .FALSE.)
+
+         gaussian_handle = collocate_pgf_create_handle(0, 128, .TRUE.)
+
          DO ikind = 1, SIZE(atomic_kind_set)
             numexp = cavity_env%kind_shape_fn(ikind)%numexp
             IF (numexp <= 0) CYCLE
@@ -2619,7 +2623,7 @@ CONTAINS
             END DO
             DEALLOCATE (cores)
          END DO
-         CALL collocate_pgf_finalize(gaussian_handle)
+         CALL collocate_pgf_synchronize(gaussian_handle)
 
          DEALLOCATE (pab)
          CALL pw_pool_create_pw(auxbas_pw_pool, cdft_control%becke_control%cavity%pw, &
@@ -2747,6 +2751,7 @@ CONTAINS
          END IF
       END IF
 
+      CALL collocate_pgf_finalize(gaussian_handle)
       CALL timestop(handle)
 
    END SUBROUTINE mixed_becke_constraint_init

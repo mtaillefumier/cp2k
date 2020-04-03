@@ -21,10 +21,11 @@ MODULE hirshfeld_methods
    USE cp_units,                        ONLY: cp_unit_to_cp2k
    USE cube_utils,                      ONLY: cube_info_type
    USE grid_api,                        ONLY: GRID_FUNC_AB,&
-                                              collocate_pgf_product,&
-                                              integrate_pgf_product,&
-                                              collocate_pgf_create_handle,&
-                                              collocate_pgf_finalize
+        collocate_pgf_product,&
+        integrate_pgf_product,&
+        collocate_pgf_create_handle,&
+        collocate_pgf_finalize, &
+        collocate_pgf_synchronize
    USE hirshfeld_types,                 ONLY: get_hirshfeld_info,&
                                               hirshfeld_type,&
                                               set_hirshfeld_info
@@ -66,7 +67,7 @@ MODULE hirshfeld_methods
                                               rs_grid_zero,&
                                               rs_pw_transfer
 
-   USE iso_c_binding,                  ONLY: C_PTR
+   USE iso_c_binding,                  ONLY: C_PTR, C_NULL_PTR
 #include "./base/base_uses.f90"
 
    IMPLICIT NONE
@@ -440,6 +441,8 @@ CONTAINS
       TYPE(C_PTR)                                        :: gaussian_handle
       CALL timeset(routineN, handle)
 
+      gaussian_handle = C_NULL_PTR
+
       CALL get_qs_env(qs_env=qs_env, atomic_kind_set=atomic_kind_set, cell=cell, &
                       dft_control=dft_control, particle_set=particle_set, pw_env=pw_env)
       CALL pw_env_get(pw_env, auxbas_rs_desc=auxbas_rs_desc, auxbas_rs_grid=rs_rho, &
@@ -453,7 +456,10 @@ CONTAINS
       ALLOCATE (pab(1, 1))
       nthread = 1
       ithread = 0
-      gaussian_handle = collocate_pgf_create_handle(0, 1024, .FALSE.)
+
+      ! sequential mode
+      gaussian_handle = collocate_pgf_create_handle(0, 128, .TRUE.)
+
       DO ikind = 1, SIZE(atomic_kind_set)
          numexp = hirshfeld_env%kind_shape_fn(ikind)%numexp
          IF (numexp <= 0) CYCLE
@@ -500,7 +506,7 @@ CONTAINS
 
          DEALLOCATE (cores)
       END DO
-      CALL collocate_pgf_finalize(gaussian_handle)
+      CALL collocate_pgf_synchronize(gaussian_handle)
       DEALLOCATE (pab)
 
       NULLIFY (fnorm)
@@ -516,6 +522,7 @@ CONTAINS
 
       CALL rs_pw_transfer(rs_rho, fnorm%pw, rs2pw)
       CALL rs_grid_release(rs_rho)
+      CALL collocate_pgf_finalize(gaussian_handle)
 
       CALL timestop(handle)
 

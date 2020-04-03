@@ -43,7 +43,7 @@ extern int compute_cube_properties(const double radius,
                                    int *lb_cube,
                                    int *ub_cube,
                                    int *cube_size);
-extern void  return_cube_position(const int *__restrict__ lb_grid, const int *__restrict__ cube_center, const int *__restrict__ lower_boundaries_cube, const int *__restrict__period, int *__restrict__ const position);
+extern void  return_cube_position(const int *__restrict__ grid_size, const int *__restrict__ lb_grid, const int *__restrict__ cube_center, const int *__restrict__ lower_boundaries_cube, const int *__restrict__period, int *__restrict__ const position);
 extern void add_sub_grid_with_pcb(const int *period,
                                   const int *lower_corner,
                                   const int *upper_corner,

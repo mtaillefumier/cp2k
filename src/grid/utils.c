@@ -284,9 +284,14 @@ inline int compute_cube_properties(const double radius,
     return cmax;
 }
 
-void  return_cube_position(const int *lb_grid, const int *cube_center, const int *lower_boundaries_cube, const int *period, int *const position)
+void  return_cube_position(const int *grid_size, const int *lb_grid, const int *cube_center, const int *lower_boundaries_cube, const int *period, int *const position)
 {
     position[0] = (lb_grid[0] + cube_center[0] + lower_boundaries_cube[0] + 32 * period[0]) % period[0];
     position[1] = (lb_grid[1] + cube_center[1] + lower_boundaries_cube[1] + 32 * period[1]) % period[1];
     position[2] = (lb_grid[2] + cube_center[2] + lower_boundaries_cube[2] + 32 * period[2]) % period[2];
+
+    if ((position[0] >= grid_size[0]) || (position[1] >= grid_size[1]) || (position[2] >= grid_size[2])) {
+        printf("the lower corner of the cube is outside the grid\n");
+        abort();
+    }
 }

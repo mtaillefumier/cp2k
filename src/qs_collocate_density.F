@@ -110,7 +110,7 @@ MODULE qs_collocate_density
    USE task_list_methods,               ONLY: rs_distribute_matrix
    USE task_list_types,                 ONLY: task_list_type,&
                                               task_type
-   USE iso_c_binding,                   ONLY: C_PTR
+   USE iso_c_binding,                   ONLY: C_PTR, C_NULL_PTR
 !$ USE OMP_LIB, ONLY: omp_get_max_threads, omp_get_thread_num, omp_get_num_threads
 
 #include "./base/base_uses.f90"
@@ -173,6 +173,7 @@ CONTAINS
       TYPE(realspace_grid_type), POINTER                 :: rs_rho
       TYPE(C_PTR)                                        :: gaussian_handle
       CALL timeset(routineN, handle)
+      gaussian_handle = C_NULL_PTR
 
       NULLIFY (cell, dft_control, pab, particle_set, atomic_kind_set, &
                qs_kind_set, atom_list, pw_env, rs_rho, auxbas_pw_pool, cores)
@@ -192,8 +193,10 @@ CONTAINS
       CALL rs_grid_zero(rs_rho)
 
       eps_rho_rspace = dft_control%qs_control%eps_rho_rspace
-      ! sequential mode ?
-      gaussian_handle = collocate_pgf_create_handle(0, 1024, .TRUE.)
+
+!     sequential mode ?
+      gaussian_handle = collocate_pgf_create_handle(0, 256, .TRUE.)
+
       DO ikind = 1, SIZE(atomic_kind_set)
          CALL get_atomic_kind(atomic_kind_set(ikind), natom=natom, atom_list=atom_list)
          CALL get_qs_kind(qs_kind_set(ikind), gth_potential=gth_potential)
@@ -312,14 +315,14 @@ CONTAINS
          END DO
 
       END DO
-      CALL collocate_pgf_finalize(gaussian_handle)
+      CALL collocate_pgf_synchronize(gaussian_handle)
       IF (ASSOCIATED(cores)) THEN
          DEALLOCATE (cores)
       END IF
 
+      CALL collocate_pgf_finalize(gaussian_handle)
       CALL rs_pw_transfer(rs_rho, rho_nlcc%pw, rs2pw)
       CALL rs_grid_release(rs_rho)
-
       CALL timestop(handle)
 
    END SUBROUTINE calculate_rho_nlcc
@@ -358,6 +361,7 @@ CONTAINS
       TYPE(C_PTR)                                        :: gaussian_handle
 
       CALL timeset(routineN, handle)
+      gaussian_handle = C_NULL_PTR
 
       NULLIFY (cell, dft_control, pab, atomic_kind_set, qs_kind_set, particle_set, &
                atom_list, pw_env, rs_rho, auxbas_pw_pool, cores)
@@ -378,7 +382,8 @@ CONTAINS
 
       eps_rho_rspace = dft_control%qs_control%eps_rho_rspace
 
-      gaussian_handle = collocate_pgf_create_handle(0, 1024, .TRUE.)
+      ! sequential mode by default
+      gaussian_handle = collocate_pgf_create_handle(0, 256, .TRUE.)
 
       DO ikind = 1, SIZE(atomic_kind_set)
          CALL get_atomic_kind(atomic_kind_set(ikind), natom=natom, atom_list=atom_list)
@@ -493,6 +498,9 @@ CONTAINS
          DEALLOCATE (pab)
 
       END DO
+
+      ! there is a synchronization point inside but we run in sequential mode so
+      ! it just release memory
       CALL collocate_pgf_finalize(gaussian_handle)
       IF (ASSOCIATED(cores)) THEN
          DEALLOCATE (cores)
@@ -568,7 +576,7 @@ CONTAINS
                la_min, lri_basis_set, mgrid_gspace, mgrid_rspace, npgfa, nsgfa, &
                pab, particle_set, pw_env, pw_pools, rs_grid, rs_rho, sphi_a, &
                work, zeta)
-
+      gaussian_handle = C_NULL_PTR
       CALL timeset(routineN, handle)
 
       IF (exact_1c_terms) THEN
@@ -584,6 +592,9 @@ CONTAINS
       cube_info => pw_env%cube_info
       eps_rho_rspace = dft_control%qs_control%eps_rho_rspace
       gridlevel_info => pw_env%gridlevel_info
+
+      ! sequential mode
+      gaussian_handle = collocate_pgf_create_handle(0, 256, .TRUE.)
 
       ! *** set up the pw multi-grids *** !
       CPASSERT(ASSOCIATED(pw_env))
@@ -611,10 +622,6 @@ CONTAINS
       offset = 0
       my_pos = mgrid_rspace(1)%pw%pw_grid%para%my_pos
       group_size = mgrid_rspace(1)%pw%pw_grid%para%group_size
-
-
-      ! sequential mode
-      gaussian_handle = collocate_pgf_create_handle(0, 1024, .TRUE.)
 
       DO ikind = 1, SIZE(atomic_kind_set)
 
@@ -704,6 +711,7 @@ CONTAINS
                                                    radius=radius, &
                                                    ga_gb_function=GRID_FUNC_AB)
                      ENDIF
+                     CALL collocate_pgf_synchronize(gaussian_handle)
                   END DO
                   DEALLOCATE (work)
                END IF
@@ -712,6 +720,7 @@ CONTAINS
          END DO
       END DO
       DEALLOCATE (pab)
+
 
       ! process the one-center terms
       IF (exact_1c_terms) THEN
@@ -805,12 +814,13 @@ CONTAINS
                                                                    prefactor=1.0_dp, cutoff=1.0_dp)
 
                                  CALL collocate_pgf_product(gaussian_handle, &
-                                    la_max(iset), zeta(ipgf, iset), la_min(iset), &
-                                    la_max(jset), zeta(jpgf, jset), la_min(jset), &
-                                    ra, (/0.0_dp, 0.0_dp, 0.0_dp/), 1.0_dp, pab, na1, nb1, &
-                                    rs_grid, cell, cube_info(igrid_level), &
-                                    radius=radius, ga_gb_function=GRID_FUNC_AB)
+                                      la_max(iset), zeta(ipgf, iset), la_min(iset), &
+                                      la_max(jset), zeta(jpgf, jset), la_min(jset), &
+                                      ra, (/0.0_dp, 0.0_dp, 0.0_dp/), 1.0_dp, pab, na1, nb1, &
+                                      rs_grid, cell, cube_info(igrid_level), &
+                                      radius=radius, ga_gb_function=GRID_FUNC_AB)
                               END IF
+                              CALL collocate_pgf_synchronize(gaussian_handle)
                            END DO
                         END DO
                      END IF
@@ -822,8 +832,6 @@ CONTAINS
          END DO
          DEALLOCATE (pab, work)
       END IF
-
-      CALL collocate_pgf_finalize(gaussian_handle)
 
       CALL pw_zero(lri_rho_g%pw)
       CALL pw_zero(lri_rho_r%pw)
@@ -847,6 +855,7 @@ CONTAINS
       ! *** give back the multi-grids *** !
       CALL pw_pools_give_back_pws(pw_pools, mgrid_gspace)
       CALL pw_pools_give_back_pws(pw_pools, mgrid_rspace)
+      CALL collocate_pgf_finalize(gaussian_handle)
 
       CALL timestop(handle)
 
@@ -894,6 +903,8 @@ CONTAINS
                atom_list, pw_env, rs_rho, auxbas_pw_pool, cores)
       ALLOCATE (pab(1, 1))
 
+      gaussian_handle = C_NULL_PTR
+
       my_only_nopaw = .FALSE.
       IF (PRESENT(only_nopaw)) my_only_nopaw = only_nopaw
 
@@ -911,8 +922,10 @@ CONTAINS
       CALL rs_grid_retain(rs_rho)
       CALL rs_grid_zero(rs_rho)
 
+      ! collocate sequential
+      gaussian_handle = collocate_pgf_create_handle(0, 128, .TRUE.)
+
       eps_rho_rspace = dft_control%qs_control%eps_rho_rspace
-      gaussian_handle = collocate_pgf_create_handle(0, 1024, .TRUE.)
 
       DO ikind = 1, SIZE(atomic_kind_set)
          CALL get_atomic_kind(atomic_kind_set(ikind), natom=natom, atom_list=atom_list)
@@ -966,12 +979,14 @@ CONTAINS
 
       END DO
 
-      CALL collocate_pgf_finalize(gaussian_handle)
+      CALL collocate_pgf_synchronize(gaussian_handle)
 
       IF (ASSOCIATED(cores)) THEN
          DEALLOCATE (cores)
       END IF
       DEALLOCATE (pab)
+
+      CALL collocate_pgf_finalize(gaussian_handle)
 
       CALL pw_pool_create_pw(auxbas_pw_pool, rhoc_r%pw, &
                              use_data=REALDATA3D, in_space=REALSPACE)
@@ -1023,6 +1038,8 @@ CONTAINS
       CALL timeset(routineN, handle)
       NULLIFY (cell, dft_control, pab, pw_env, rs_rho, auxbas_pw_pool)
 
+      gaussian_handle = C_NULL_PTR
+
       ALLOCATE (pab(1, 1))
 
       CALL get_qs_env(qs_env=qs_env, &
@@ -1034,7 +1051,7 @@ CONTAINS
       CALL rs_grid_retain(rs_rho)
       CALL rs_grid_zero(rs_rho)
 
-      gaussian_handle = collocate_pgf_create_handle(0, 1024, .TRUE.)
+      gaussian_handle = collocate_pgf_create_handle(0, 128, .TRUE.)
 
       eps_rho_rspace = dft_control%qs_control%eps_rho_rspace
       pab(1, 1) = 1.0_dp
@@ -1069,6 +1086,9 @@ CONTAINS
       ENDIF
 
       DEALLOCATE (pab)
+
+      ! return immediatly in sequential mode. If you turn the batched mode then it is needed
+      CALL collocate_pgf_synchronize(gaussian_handle)
 
       CALL collocate_pgf_finalize(gaussian_handle)
 
@@ -1124,6 +1144,8 @@ CONTAINS
 
       NULLIFY (cell, dft_control, pab, pw_env, rs_rho, auxbas_pw_pool, cores)
 
+      gaussian_handle = C_NULL_PTR
+
       ALLOCATE (pab(1, 1))
 
       CALL get_qs_env(qs_env=qs_env, &
@@ -1135,7 +1157,7 @@ CONTAINS
       CALL rs_grid_retain(rs_rho)
       CALL rs_grid_zero(rs_rho)
 
-      gaussian_handle = collocate_pgf_create_handle(0, 1024, .FALSE.)
+      gaussian_handle = collocate_pgf_create_handle(0, 128, .TRUE.)
 
       eps_rho_rspace = dft_control%qs_control%eps_rho_rspace
       pab(1, 1) = 1.0_dp
@@ -1178,8 +1200,9 @@ CONTAINS
                cell, pw_env%cube_info(1), radius=radius, ga_gb_function=GRID_FUNC_AB, &
                use_subpatch=.TRUE., subpatch_pattern=subpatch_pattern)
          ENDDO
-         CALL collocate_pgf_finalize(gaussian_handle)
       ENDIF
+
+      CALL collocate_pgf_synchronize(gaussian_handle)
 
       DEALLOCATE (pab, cores)
 
@@ -1195,6 +1218,7 @@ CONTAINS
 
       CALL pw_transfer(rhoc_r%pw, rho_metal%pw)
       CALL pw_pool_give_back_pw(auxbas_pw_pool, rhoc_r%pw)
+      CALL collocate_pgf_finalize(gaussian_handle)
 
       CALL timestop(handle)
 
@@ -1254,6 +1278,7 @@ CONTAINS
       iatom = iatom_in
 
       npme = 0
+      gaussian_handle = collocate_pgf_create_handle(0, 64, .TRUE.)
 
       IF (rs_rho%desc%parallel .AND. .NOT. rs_rho%desc%distributed) THEN
          IF (MODULO(iatom, rs_rho%desc%group_size) == rs_rho%desc%my_pos) THEN
@@ -1264,7 +1289,6 @@ CONTAINS
       ENDIF
 
       IF (npme .GT. 0) THEN
-         gaussian_handle = collocate_pgf_create_handle(0, 1024, .FALSE.)
          ra(:) = pbc(particle_set(iatom)%r, cell)
          subpatch_pattern = 0
          radius = exp_radius_very_extended(la_min=0, la_max=0, &
@@ -1278,7 +1302,6 @@ CONTAINS
                                     (/0.0_dp, 0.0_dp, 0.0_dp/), 1.0_dp, pab, 0, 0, rs_rho, &
                                     cell, pw_env%cube_info(1), radius=radius, ga_gb_function=GRID_FUNC_AB, &
                                     use_subpatch=.TRUE., subpatch_pattern=subpatch_pattern)
-         CALL collocate_pgf_finalize(gaussian_handle)
       ENDIF
       DEALLOCATE (pab)
 
@@ -1291,6 +1314,7 @@ CONTAINS
       CALL pw_transfer(rhoc_r%pw, rho_gb%pw)
 
       CALL pw_pool_give_back_pw(auxbas_pw_pool, rhoc_r%pw)
+      CALL collocate_pgf_finalize(gaussian_handle)
 
       CALL timestop(handle)
 
@@ -1339,7 +1363,7 @@ CONTAINS
                particle_set)
 
       ALLOCATE (pab(1, 1))
-
+      gaussian_handle = C_NULL_PTR
       CALL get_qs_env(qs_env=qs_env, &
                       cell=cell, &
                       dft_control=dft_control, &
@@ -1349,6 +1373,9 @@ CONTAINS
                       auxbas_pw_pool=auxbas_pw_pool)
       CALL rs_grid_retain(rs_rho)
       CALL rs_grid_zero(rs_rho)
+
+      ! sequential mode on
+      gaussian_handle = collocate_pgf_create_handle(0, 64, .TRUE.)
 
       eps_rho_rspace = dft_control%qs_control%eps_rho_rspace
       pab(1, 1) = 1.0_dp
@@ -1370,7 +1397,6 @@ CONTAINS
       ENDDO
 
       IF (npme .GT. 0) THEN
-         gaussian_handle = collocate_pgf_create_handle(0, 1024, .FALSE.)
          DO j = 1, npme
             iatom = cores(j)
             ra(:) = pbc(particle_set(iatom)%r, cell)
@@ -1388,10 +1414,12 @@ CONTAINS
                cell, pw_env%cube_info(1), radius=radius, ga_gb_function=GRID_FUNC_AB, &
                use_subpatch=.TRUE., subpatch_pattern=subpatch_pattern)
          ENDDO
-         CALL collocate_pgf_finalize(gaussian_handle)
       ENDIF
 
+      CALL collocate_pgf_synchronize(gaussian_handle)
+
       DEALLOCATE (pab, cores)
+      CALL collocate_pgf_finalize(gaussian_handle)
 
       CALL pw_pool_create_pw(auxbas_pw_pool, rhoc_r%pw, &
                              use_data=REALDATA3D, in_space=REALSPACE)
@@ -1496,6 +1524,8 @@ CONTAINS
                la_min, lb_max, lb_min, npgfa, npgfb, nsgfa, nsgfb, p_block, &
                sphi_a, sphi_b, zeta, zetb, first_sgfa, first_sgfb, tasks, pabt, &
                workt, lgrid)
+
+      gaussian_handle = C_NULL_PTR
 
       debug_count = debug_count + 1
 
@@ -1690,8 +1720,8 @@ CONTAINS
       ithread = 0
 !$    ithread = omp_get_thread_num()
 
-      ! create an handle for each omp thread. By default the queue if 1024 blocks
-      gaussian_handle =  collocate_pgf_create_handle(0, 64, .FALSE.)
+      ! create an handle for each omp thread. By default the queue of 256 blocks
+      gaussian_handle =  collocate_pgf_create_handle(0, 32, .TRUE.)
 
       pab => pabt(:, :, ithread)
       work => workt(:, :, ithread)
@@ -1868,7 +1898,8 @@ CONTAINS
                   subpatch_pattern=tasks(itask)%subpatch_pattern)
             END IF
          END DO loop_tasks
-         END DO loop_pairs
+         CALL collocate_pgf_synchronize(gaussian_handle)
+      END DO loop_pairs
 !$OMP END DO
 
 !     wait for all computation to complete and release memory. GPU IS NOT RESET
@@ -1919,9 +1950,9 @@ CONTAINS
          CALL daxpy(nxy*nzsize, 1.0_dp, lgrid%r(lbr, 0), 1, &
                     rs_rho(igrid_level)%rs_grid%r(:, :, lb:ub), 1)
 !$OMP BARRIER
-                 END DO loop_gridlevels
+      END DO loop_gridlevels
 
-                 CALL collocate_pgf_finalize(gaussian_handle)
+      CALL collocate_pgf_finalize(gaussian_handle)
 !$OMP END PARALLEL
 
       !   *** Release work storage ***
@@ -2014,6 +2045,8 @@ CONTAINS
                sab_orb, particle_set, rs_rho, pw_env, rs_descs, la_max, la_min, &
                lb_max, lb_min, npgfa, npgfb, nsgfa, nsgfb, p_block, sphi_a, &
                sphi_b, zeta, zetb, first_sgfa, first_sgfb, tasks, pabt, workt)
+
+      gaussian_handle = C_NULL_PTR
 
       debug_count = debug_count + 1
 
@@ -2121,10 +2154,10 @@ CONTAINS
       ithread = 0
       pab => pabt(:, :, ithread)
       work => workt(:, :, ithread)
-      gaussian_handle =  collocate_pgf_create_handle(0, 1024, .FALSE.)
+
+      gaussian_handle =  collocate_pgf_create_handle(0, 64, .TRUE.)
 
       loop_xyz: DO idir = 1, 3
-
          DO igrid_level = 1, gridlevel_info%ngrid_levels
             CALL rs_grid_zero(rs_rho(igrid_level)%rs_grid)
          END DO
@@ -2303,10 +2336,11 @@ CONTAINS
             END IF
 
          END DO loop_tasks
-
+         CALL collocate_pgf_synchronize(gaussian_handle)
          CALL density_rs2pw_basic(pw_env, rs_rho, drho(idir), drho_gspace(idir))
 
       END DO loop_xyz
+
       CALL collocate_pgf_finalize(gaussian_handle)
 
 !     *** Release work storage ***
@@ -2406,6 +2440,8 @@ CONTAINS
                npgfa, nsgfa, sphi_a, zeta, first_sgfa, rs_rho, pw_pools, &
                mgrid_rspace, mgrid_gspace)
 
+      gaussian_handle = C_NULL_PTR
+
       IF (PRESENT(external_vector)) THEN
          nao = SIZE(external_vector)
          ALLOCATE (eigenvector(nao))
@@ -2454,7 +2490,7 @@ CONTAINS
       ALLOCATE (where_is_the_point(0:group_size - 1))
 
       ! run in sequential mode
-      gaussian_handle = collocate_pgf_create_handle(0, 1024, .TRUE.)
+      gaussian_handle = collocate_pgf_create_handle(0, 64, .TRUE.)
 
       DO iatom = 1, natom
          ikind = particle_set(iatom)%atomic_kind%kind_number
@@ -2543,7 +2579,7 @@ CONTAINS
 
       END DO
 
-      CALL collocate_pgf_finalize(gaussian_handle)
+      CALL collocate_pgf_synchronize(gaussian_handle)
 
       DO igrid_level = 1, gridlevel_info%ngrid_levels
          CALL rs_pw_transfer(rs_rho(igrid_level)%rs_grid, &
@@ -2566,6 +2602,7 @@ CONTAINS
       DEALLOCATE (pab)
 
       DEALLOCATE (work)
+      CALL collocate_pgf_finalize(gaussian_handle)
 
       ! give back the pw multi-grids
       CALL pw_pools_give_back_pws(pw_pools, mgrid_gspace)

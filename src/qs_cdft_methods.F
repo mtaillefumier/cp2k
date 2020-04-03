@@ -27,7 +27,7 @@ MODULE qs_cdft_methods
    USE grid_api,                        ONLY: GRID_FUNC_AB,&
       collocate_pgf_product,&
       collocate_pgf_create_handle,&
-      collocate_pgf_finalize
+      collocate_pgf_finalize, collocate_pgf_synchronize
    USE hirshfeld_types,                 ONLY: get_hirshfeld_info,&
                                               hirshfeld_type,&
                                               set_hirshfeld_info
@@ -80,7 +80,7 @@ MODULE qs_cdft_methods
    USE realspace_grid_types,            ONLY: &
         realspace_grid_desc_type, realspace_grid_p_type, realspace_grid_type, rs2pw, &
         rs_grid_create, rs_grid_release, rs_grid_retain, rs_grid_zero, rs_pw_transfer
-   USE iso_c_binding,                   ONLY: C_PTR
+   USE iso_c_binding,                   ONLY: C_PTR, C_NULL_PTR
 #include "./base/base_uses.f90"
 
    IMPLICIT NONE
@@ -1197,6 +1197,8 @@ CONTAINS
                auxbas_rs_desc, rs_rho_all, rs_rho_constr, cdft_control, &
                hirshfeld_control, rs_single)
 
+      gaussian_handle = C_NULL_PTR
+
       CALL timeset(routineN, handle)
       CALL get_qs_env(qs_env, &
                       atomic_kind_set=atomic_kind_set, &
@@ -1209,6 +1211,9 @@ CONTAINS
       cdft_control => dft_control%qs_control%cdft_control
       hirshfeld_control => cdft_control%hirshfeld_control
       hirshfeld_env => hirshfeld_control%hirshfeld_env
+
+      ! create an handle for each omp thread. By default the queue if 1024 blocks
+      gaussian_handle =  collocate_pgf_create_handle(0, 128, .TRUE.)
 
       ! Build weight function
       ALLOCATE (is_constraint(natom))
@@ -1326,8 +1331,7 @@ CONTAINS
             DEALLOCATE (cores)
          END DO
          DEALLOCATE (pab)
-
-         CALL collocate_pgf_finalize(gaussian_handle)
+         CALL collocate_pgf_synchronize(gaussian_handle)
 
          ! Transfer rs_rho_all to the correct grid and save it
          CALL get_hirshfeld_info(hirshfeld_env, fnorm=fnorm)
@@ -1368,6 +1372,7 @@ CONTAINS
 
       DEALLOCATE (is_constraint)
       DEALLOCATE (coefficients)
+      CALL collocate_pgf_finalize(gaussian_handle)
       CALL timestop(handle)
 
    END SUBROUTINE hirshfeld_constraint_low

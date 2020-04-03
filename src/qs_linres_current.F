@@ -128,7 +128,7 @@ MODULE qs_linres_current
                                               task_list_inner_loop
    USE task_list_types,                 ONLY: reallocate_tasks,&
         task_type
-   USE iso_c_binding,                  ONLY: C_PTR
+   USE iso_c_binding,                  ONLY: C_PTR, C_NULL_PTR
 #include "./base/base_uses.f90"
 
    IMPLICIT NONE
@@ -650,6 +650,8 @@ CONTAINS
       NULLIFY (jpblock_a, jpblock_b, jpblock_c, jpblock_d)
       NULLIFY (jpabt_a, jpabt_b, jpabt_c, jpabt_d)
 
+      gaussian_handle = C_NULL_PTR
+
       CALL timeset(routineN, handle)
 
       !
@@ -956,7 +958,7 @@ CONTAINS
       ithread = 0
 
       ! it should run in sequential mode apparently
-      gaussian_handle = collocate_pgf_create_handle(0, 1024, .TRUE.)
+      gaussian_handle = collocate_pgf_create_handle(0, 128, .TRUE.)
 
       jpab_a => jpabt_a(:, :, ithread)
       jpab_b => jpabt_b(:, :, ithread)
@@ -1220,10 +1222,9 @@ CONTAINS
                                        radius=radius, &
                                        ga_gb_function=encode_ardbmdarb_func(idir=idir, ir=iiB))
          ENDIF
-
+         CALL collocate_pgf_synchronize(gaussian_handle)
       END DO loop_tasks
 
-      CALL collocate_pgf_finalize(gaussian_handle)
       !
       ! Scale the density with the gauge rho * ( r - d(r) ) if needed
       IF (do_igaim) THEN
@@ -1258,6 +1259,7 @@ CONTAINS
 
       ! Free the array of grids (grids themselves are released in density_rs2pw)
       DEALLOCATE (rs_current)
+      CALL collocate_pgf_finalize(gaussian_handle)
 
       CALL timestop(handle)
 
