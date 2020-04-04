@@ -465,53 +465,7 @@ void apply_spherical_cutoff(const double disr_radius,
     }
 }
 
-/* this function needs serious rethinking. Basically we apply a spherical mask
- * on a 3D grid and then add the result on a grid with PBC */
 
-void apply_mapping(const double disr_radius,
-                   const double dh[3][3],
-                   const double dh_inv[3][3],
-                   const int *map[3],
-                   const int lb_cube[3],
-                   tensor *cube,
-                   const int cmax,
-                   tensor *grid)
-{
-    const int kgmin = ceil(-1e-8 - disr_radius * dh_inv[2][2]);
-
-    const double dz = dh[2][2];
-    const double dy = dh[1][1];
-    const double inv_dy = dh_inv[1][1];
-    const double inv_dx = dh_inv[0][0];
-    const int *__restrict map_x = map[2];
-    const int *__restrict map_y = map[1];
-    const int *__restrict map_z = map[0];
-
-    for (int kg = kgmin; kg <= 1 - kgmin; kg++) {
-        const int k = map_z[kg + cmax];   // target location on the grid
-        const int kd = (2 * kg - 1) / 2;     // distance from center in grid points
-        const double kr = kd * dz;   // distance from center in a.u.
-        const double kremain = disr_radius * disr_radius - kr * kr;
-        if (kremain < 0.0)
-            continue;
-        /* const int jgmin = ceil(-1e-8 - sqrt(max(0.0, kremain)) * inv_dy); */
-        for (int jg = -cmax; jg <= cmax; jg++) {
-            const int j = map_y[jg + cmax];  // target location on the grid
-            const int jd = (2 * jg - 1) / 2;    // distance from center in grid points
-            const double jr = jd * dy;  // distance from center in a.u.
-            const double jremain = kremain - jr * jr;
-            if (jremain < 0.0)
-                continue;
-            const int igmin = ceil(-1e-8 - sqrt(max(0.0, jremain)) * inv_dx);
-            double *__restrict dst = &idx3(grid[0], k - 1, j - 1, 0);
-            const double *__restrict src = &idx3(cube[0], kg - lb_cube[0], jg - lb_cube[1], - lb_cube[2]);
-            for (int ig = igmin; ig <= 1 - igmin; ig++) {
-                const int i = map_x[ig + cmax];  // target location on the grid
-                dst[i - 1] += src[ig];
-            }
-        }
-    }
-}
 /*
  * collocate method where the pcb is applied on the polynomials already. For the
  * orthogonal case it might be advantageous to do it that way. The result is
