@@ -1720,8 +1720,8 @@ CONTAINS
       ithread = 0
 !$    ithread = omp_get_thread_num()
 
-      ! create an handle for each omp thread. By default the queue of 256 blocks
-      gaussian_handle =  collocate_pgf_create_handle(0, 32, .TRUE.)
+      ! create an handle for each omp thread. By default the queue of 256 blocks. It is neglected when running in sequential mode
+      gaussian_handle =  collocate_pgf_create_handle(0, 128, .TRUE.)
 
       pab => pabt(:, :, ithread)
       work => workt(:, :, ithread)

@@ -157,6 +157,26 @@ inline size_t compute_memory_space_tensor_3(const int n1, const int n2, const in
     return (n1 * n2 * n3);
 }
 
+
+inline size_t realloc_tensor(void *const old_mem_ptr, const size_t old_mem_size, const size_t mem_size, void **data)
+{
+    if ((old_mem_size != 0) && (old_mem_ptr == NULL))
+        abort();
+
+    if (old_mem_size > mem_size) {
+        *data = old_mem_ptr;
+        return old_mem_size;
+    }
+
+    if ((old_mem_size != 0) && (old_mem_ptr != NULL))
+        free(old_mem_ptr);
+
+    if (posix_memalign(data, 32, sizeof(double) * mem_size) != 0)
+        abort();
+
+    return mem_size;
+}
+
 #define idx4(a, i, j, k, l) a.data[ (i) * a.offsets[0] + (j) * a.offsets[1] + (k) * a.offsets[2] + (l)]
 #define idx3(a, i, j, k) a.data[(i) * a.offsets[0] + (j) * a.offsets[1] + (k)]
 #define idx2(a, i, j) a.data[(i) * a.offsets[0] + (j)]

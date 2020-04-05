@@ -28,6 +28,10 @@
 #include "coefficients.h"
 #include "thpool.h"
 
+extern void collocate_core_rectangular_variant2(double *scratch,
+                                                const struct tensor_ *co,
+                                                const struct tensor_ *p_alpha_beta_reduced_,
+                                                struct tensor_ *cube);
 
 void integrate_cubic(const double radius,
                      const double dh[3][3],
@@ -124,7 +128,7 @@ void integrate_cubic(const double radius,
 
     // it also mean that I have to permute the polynomials. i becomes y, k becomes z, and j - becomes x
 
-    collocate_core_rectangular_variant3(NULL, // will need to change that eventually.
+    collocate_core_rectangular_variant2(NULL, // will need to change that eventually.
                                         // pointer to scratch memory
                                         &cube,
                                         pol_,

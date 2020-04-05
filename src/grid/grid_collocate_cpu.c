@@ -28,9 +28,6 @@
 #include "coefficients.h"
 #include "thpool.h"
 
-#define TEST 0
-#define BLOCKSIZE 2
-
 extern void apply_mapping(const double disr_radius,
                           const double dh[3][3],
                           const double dh_inv[3][3],
@@ -77,69 +74,15 @@ static void grid_fill_map(const bool periodic,
     }
 }
 
-
-size_t realloc_tensor(void *const old_mem_ptr, const size_t old_mem_size, const size_t mem_size, void **data)
-{
-    if ((old_mem_size != 0) && (old_mem_ptr == NULL))
-        abort();
-
-    if (old_mem_size > mem_size) {
-        *data = old_mem_ptr;
-        return old_mem_size;
-    }
-
-    if ((old_mem_size != 0) && (old_mem_ptr != NULL))
-        free(old_mem_ptr);
-
-    if (posix_memalign(data, 32, sizeof(double) * mem_size) != 0)
-        abort();
-
-    return mem_size;
-}
-
-extern void collocate_core_rectangular_variant1(char *scratch,
-                                                const int zmin,
-                                                const int ymin,
-                                                const int xmin,
-                                                const int zmax,
-                                                const int ymax,
-                                                const int xmax,
-                                                const int zoffset,
-                                                const int yoffset,
-                                                const int xoffset,
-                                                const struct tensor_ *co,
-                                                const struct tensor_ *p_alpha_beta_reduced_,
-                                                struct tensor_ *grid);
-
 void collocate_l0(const struct tensor_ *co,
                   const struct tensor_ *p_alpha_beta_reduced_,
                   struct tensor_ *cube);
 
-
-void collocate_core_rectangular_variant1(char *scratch,
-                                         const int zmin,
-                                         const int ymin,
-                                         const int xmin,
-                                         const int zmax,
-                                         const int ymax,
-                                         const int xmax,
-                                         const int zoffset,
-                                         const int yoffset,
-                                         const int xoffset,
-                                         const struct tensor_ *co,
-                                         const struct tensor_ *p_alpha_beta_reduced_,
-                                         struct tensor_ *grid);
-
-void collocate_core_rectangular_variant2(double *scratch,
-                                         const struct tensor_ *co,
-                                         const struct tensor_ *p_alpha_beta_reduced_,
-                                         struct tensor_ *cube);
-
-void collocate_core_rectangular_variant3(char *scratch,
-                                         const struct tensor_ *co,
-                                         const struct tensor_ *p_alpha_beta_reduced_,
-                                         struct tensor_ *cube);
-
+void collocate_core_rectangular(double *scratch,
+                                const double prefactor,
+                                const struct tensor_ *co,
+                                const struct tensor_ *p_alpha_beta_reduced_,
+                                struct tensor_ *cube);
 
 typedef struct collocation_block_ {
     tensor pol;
@@ -635,10 +578,11 @@ void calculate_collocation(void *const in)
         list_->list[i].cube.data = list_->scratch;
 
         if (list_->list[i].new_gaussian_pair_) {
-            collocate_core_rectangular_variant2(list_->scratch + list_->list[i].cube.alloc_size_,
-                                                &list_->list[i].coefs,
-                                                &list_->list[i].pol,
-                                                &list_->list[i].cube);
+            collocate_core_rectangular(list_->scratch + list_->list[i].cube.alloc_size_,
+                                       1.0,
+                                       &list_->list[i].coefs,
+                                       &list_->list[i].pol,
+                                       &list_->list[i].cube);
             free(list_->list[i].pol.data);
             free(list_->list[i].coefs.data);
             if (list_->list[i].Exp.data) {
@@ -665,283 +609,6 @@ void calculate_collocation(void *const in)
     return;
 }
 
-
-/* this function will replace the function grid_prepare_coef when I get the
- * tensor coef right. This need change elsewhere in cp2k, something I do not
- * want to do right now. I need to rethink the order of the parameters */
-
-static void compute_compact_polynomial_coefficients(const tensor *coef,
-                                                    const int *coef_offset_,
-                                                    const int *lmin,
-                                                    const int *lmax,
-                                                    const double *ra,
-                                                    const double *rb,
-                                                    const double *rab,
-                                                    const double prefactor,
-                                                    tensor *co)
-{
-    // binomial coefficients n = 0 ... 20
-    const int binomial[21][21] = {
-        {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-        {1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-        {1, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-        {1, 3, 3, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-        {1, 4, 6, 4, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-        {1, 5, 10, 10, 5, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-        {1, 6, 15, 20, 15, 6, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-        {1, 7, 21, 35, 35, 21, 7, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-        {1, 8, 28, 56, 70, 56, 28, 8, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-        {1, 9, 36, 84, 126, 126, 84, 36, 9, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-        {1, 10, 45, 120, 210, 252, 210, 120, 45, 10, 1,
-         0, 0,  0,  0,   0,   0,   0,   0,   0,  0},
-        {1, 11, 55, 165, 330, 462, 462, 330, 165, 55, 11,
-         1, 0,  0,  0,   0,   0,   0,   0,   0,   0},
-        {1,  12, 66, 220, 495, 792, 924, 792, 495, 220, 66,
-         12, 1,  0,  0,   0,   0,   0,   0,   0,   0},
-        {1,  13, 78, 286, 715, 1287, 1716, 1716, 1287, 715, 286,
-         78, 13, 1,  0,   0,   0,    0,    0,    0,    0},
-        {1,   14, 91, 364, 1001, 2002, 3003, 3432, 3003, 2002, 1001,
-         364, 91, 14, 1,   0,    0,    0,    0,    0,    0},
-        {1,    15,  105, 455, 1365, 3003, 5005, 6435, 6435, 5005, 3003,
-         1365, 455, 105, 15,  1,    0,    0,    0,    0,    0},
-        {1,    16,   120, 560, 1820, 4368, 8008, 11440, 12870, 11440, 8008,
-         4368, 1820, 560, 120, 16,   1,    0,    0,     0,     0},
-        {1,     17,   136,  680, 2380, 6188, 12376, 19448, 24310, 24310, 19448,
-         12376, 6188, 2380, 680, 136,  17,   1,     0,     0,     0},
-        {1,     18,    153,  816,  3060, 8568, 18564, 31824, 43758, 48620, 43758,
-         31824, 18564, 8568, 3060, 816,  153,  18,    1,     0,     0},
-        {1,     19,    171,   969,   3876,  11628, 27132,
-         50388, 75582, 92378, 92378, 75582, 50388, 27132,
-         11628, 3876,  969,   171,   19,    1,     0},
-        {1,     20,     190,    1140,   4845,   15504,  38760,
-         77520, 125970, 167960, 184756, 167960, 125970, 77520,
-         38760, 15504,  4845,   1140,   190,    20,     1}};
-
-    if (lmax[0] + lmax[1] == 0) {
-        idx3(co[0], 0, 0, 0) = prefactor * idx2(coef[0], 0, 0);
-        return;
-    }
-
-    /*
-     * Notation alpha = lx, beta = ly, gamma = lz (l angular momentum cp2k
-     * notation)
-     *
-     * this routine computes the coefficients coef_xyz in the ordering for the
-     * collocate coming afterwards. The final order of coef_xyz should be
-     * coef[x][z][y] so we avoid quite few dgemm calls doing so.
-     *
-     * The initial coefficients are stored as co[x1y1z1][x2y2z2] so we need to
-     * reshufle the data such that co[x1x2][y1y2][z1z2]. With
-     * co[gamma][beta][alpha] and
-     *
-     *     pol[0] = pol_alpha (i indice)
-     *     pol[1] = pol_beta, (j indice)
-     *     pol[2] = pol_gamma (k indice)
-     *
-     * collocate_rectangular returns coef[beta][gamma][alpha] but we want
-     * coef[alpha][gamma][beta]. this means that we need co[beta][alpha][gamma],
-     * with
-     *
-     *     pol[2] = pol_beta
-     *     pol[1] = pol_alpha
-     *     pol[0] = pol_gamma,
-     *
-     */
-
-    tensor power, px, coef_tmp;
-
-    initialize_tensor_4(&power, 2, 3, lmax[0] + lmax[1] + 1, lmax[0] + lmax[1] + 1);
-    initialize_tensor_3(&px, 3, (lmax[0] + 1) * (lmax[1] + 1), lmax[0] + lmax[1] + 1);
-    initialize_tensor_3(&coef_tmp, (lmax[0] + 1) * (lmax[1] + 1), // alpha
-                        (lmax[0] + 1) * (lmax[1] + 1),  // gamma
-                        (lmax[0] + 1) * (lmax[1] + 1)); // beta
-
-#if defined(__LIBXSMM)
-    power.data = libxsmm_aligned_scratch(sizeof(double) * power.alloc_size_, 0/*auto-alignment*/);
-    px.data = libxsmm_aligned_scratch(sizeof(double) * px.alloc_size_, 0/*auto-alignment*/);
-    coef_tmp.data = libxsmm_aligned_scratch(sizeof(double) * coef_tmp.alloc_size_, 0/*auto-alignment*/);
-#else
-#error "Need implementation"
-#endif
-    /* I compute (x - xa) ^ k Binomial(alpha, k), for alpha = 0.. l1 + l2 + 1
-     * and k = 0 .. l1 + l2 + 1. It is used everywhere here and make the economy
-     * of multiplications and function calls
-     */
-    for (int dir = 0; dir < 3; dir++) {
-        double tmp = rab[dir] - ra[dir];
-        idx4(power, 0, dir, 0, 0) = 1.0;
-        for (int k = 1; k < lmax[0] + lmax[1] + 1; k++) {
-            idx4(power, 0, dir, 0, k) =
-                tmp * idx4(power, 0, dir, 0, k - 1);
-        }
-
-        for (int k = 1; k < lmax[0] + lmax[1] + 1; k++)
-            memcpy(&idx4(power, 0, dir, k, 0),
-                   &idx4(power, 0, dir, k - 1, 0),
-                   sizeof(double) * power.size[3]);
-
-        for (int a1 = 0; a1 < lmax[0] + lmax[1] + 1; a1++)
-            for (int k = 0; k < lmax[0] + lmax[1] + 1; k++)
-                idx4(power, 0, dir, a1, k) *= binomial[a1][k];
-
-        tmp = rab[dir] - rb[dir];
-
-        idx4(power, 1, dir, 0, 0) = 1.0;
-        for (int k = 1; k < lmax[0] + lmax[1] + 1; k++)
-            idx4(power, 1, dir, 0, k) =
-                tmp * idx4(power, 1, dir, 0, k - 1);
-
-        for (int k = 1; k < lmax[0] + lmax[1] + 1; k++)
-            memcpy(&idx4(power, 1, dir, k, 0),
-                   &idx4(power, 1, dir, k - 1, 0),
-                   sizeof(double) * power.size[3]);
-
-        for (int a1 = 0; a1 < lmax[0] + lmax[1] + 1; a1++)
-            for (int k = 0; k < lmax[0] + lmax[1] + 1; k++)
-                idx4(power, 1, dir, a1, k) *= binomial[a1][k];
-    }
-
-    memset(px.data, 0, sizeof(double) * px.alloc_size_);
-    int perm[3] = {1, 2, 0};
-    for (int i = 0; i < 3; i++) {
-        for (int a1 = 0; a1 <= lmax[0]; a1++) {
-            for (int k1 = 0; k1 <= a1; k1++) {
-                const double c1 = idx4(power, 0, i, a1, a1 - k1);
-                for (int a2 = 0; a2 <= lmax[1]; a2++) {
-                    const double *__restrict__ src = &idx4(power, 1, i, a2, 0);
-                    double *__restrict__ dst =
-                        &idx3(px, perm[i], a1 * (lmax[1] + 1) + a2, k1);
-                    for (int k2 = 0; k2 <= a2; k2++) {
-                        dst[k2] += c1 * src[a2 - k2];
-                    }
-                }
-            }
-        }
-    }
-
-    /* Now we need to reorder the coefficients. */
-    memset(coef_tmp.data, 0, sizeof(double) * coef_tmp.alloc_size_);
-
-    for (int a1 = 0; a1 <= lmax[0]; a1++) {
-        for (int a2 = 0; a2 <= lmax[1]; a2++) {
-            const int i_a = a1 * (lmax[1] + 1) + a2;
-            for (int b1 = 0; b1 <= lmax[0]; b1++) {
-                for (int b2 = 0; b2 <= lmax[1]; b2++) {
-                    const int i_b = b1 * (lmax[1] + 1) + b2;
-                    for (int g1 = max(0, lmin[0] - a1 - b1); g1 <= lmax[0]; g1++) {
-                        const int l1 = g1 + a1 + b1;
-                        if ((l1 >= lmin[0]) && (l1 <=lmax[0])) {
-                            const int i1 = coef_offset_[0]  +
-                                return_linear_index_from_exponents(a1, b1, g1);
-                            const double *__restrict__ src = &idx2(coef[0], i1, 0);
-                            for (int g2 = 0; g2 <= lmax[1]; g2++) {
-                                const int l2 = g2 + a2 + b2;
-                                if ((l2 >= lmin[1]) && (l2 <=lmax[1])) {
-                                    const int i_g = g1 * (lmax[1] + 1) + g2;
-                                    const int i2 = coef_offset_[1] +
-                                        return_linear_index_from_exponents(a2, b2, g2);
-                                    idx3(coef_tmp, i_b, i_a, i_g) += src[i2];
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-
-// it is a collocate now....
-
-    collocate_core_rectangular_variant3(NULL, &coef_tmp, &px, co);
-
-    // rescale the all thing with the prefactor
-    cblas_dscal(co->alloc_size_, prefactor, co->data, 1);
-}
-
-void compute_non_zero_elements(const int center,
-                               const int pol_length,
-                               const int period,
-                               const int grid_size,
-                               const int grid_lower_boundaries,
-                               int *__restrict non_zero_elements, // we can compress it using bit encoding
-                               int *number_of_non_zero_elements)
-{
-    const int start = (center - grid_lower_boundaries - (pol_length - 1) / 2 + 32 * period) % period;
-
-    memset(non_zero_elements, 0, sizeof(int) * grid_size);
-
-#pragma GCC unroll 4
-#pragma GCC ivdep
-    for (int s = 0; s < min(grid_size - start, pol_length); s++) {
-        non_zero_elements[s + start] = 1;
-    }
-
-    for (int s = min(grid_size - start, pol_length); s < pol_length; s++) {
-#pragma GCC unroll 4
-#pragma GCC ivdep
-        for (int s1 = 0; s1 < min(grid_size, pol_length - s); s1++)
-            non_zero_elements[s1] = 1;
-
-        s += period;
-    }
-
-
-    *number_of_non_zero_elements = 0;
-    for (int s = 0; s < grid_size; s++)
-        *number_of_non_zero_elements += non_zero_elements[s];
-
-}
-
-void compute_folded_polynomial(const int cube_center,
-                               const int pol_length,
-                               const int period,
-                               const int grid_size,
-                               const int grid_lower_boundaries,
-                               const int *__restrict non_zero_elements,
-                               const double *__restrict pol,
-                               double *__restrict res,
-                               double *__restrict tmp)
-{
-
-    const int start = (cube_center - grid_lower_boundaries - (pol_length - 1) / 2 + 32 * period) % period;
-
-#pragma GCC unroll 4
-#pragma GCC ivdep
-    for (int s = start; s < min(grid_size, pol_length + start); s++) {
-        tmp[s] = pol[s - start];
-    }
-
-    for (int s = min(grid_size - start, pol_length); s < pol_length; s++) {
-#pragma GCC unroll 4
-#pragma GCC ivdep
-        for (int s1 = 0; s1 < min(grid_size, pol_length - s); s1++)
-            tmp[s1] += pol[s + s1];
-
-        s += period;
-    }
-
-    // now compress the all thing. I do not care about zeros.
-    int offset = 0;
-
-    for (int s = 0; s < grid_size; s++) {
-        /* if (non_zero_elements[s] == 0) */
-        /*     continue; */
-        for (; (s < grid_size - 1) && (non_zero_elements[s] == 0); s++);
-        int smin = s;
-
-        for (; (s < grid_size - 1) && (non_zero_elements[s] == 1); s++);
-
-        int smax = s + non_zero_elements[s];
-
-        for (int si = 0; si < (smax - smin); si++)
-            res[offset + si] = tmp[smin + si];
-        offset += smax - smin;
-    }
-}
-
-
-
 void collocate_l0(const struct tensor_ *co,
                   const struct tensor_ *p_alpha_beta_reduced_,
                   struct tensor_ *cube)
@@ -950,8 +617,6 @@ void collocate_l0(const struct tensor_ *co,
     const double *__restrict py = &idx3(p_alpha_beta_reduced_[0], 1, 0, 0); /* j indice */
     const double *__restrict px = &idx3(p_alpha_beta_reduced_[0], 2, 0, 0); /* i indice */
     const double coo = idx3 (co[0], 0, 0, 0);
-    const double tz1 = pz[0];
-
     for (int y1 = 0; y1 < cube->size[1]; y1++) {
         const double tmp = coo * py[y1];
         double *__restrict dst = &idx3(cube[0], 0, y1, 0);
@@ -1083,20 +748,6 @@ static void grid_fill_pol(const double dr,
             dst[ig] *= src[ig];
         }
     }
-
-    /* double t_exp_plus_1 = exp(-zetp * roffset * roffset); */
-    /* double t_exp_plus_2 = exp(2.0 * zetp * roffset * dr); */
-    /* for (int ig=0; ig >= lb_cube; ig--) { */
-    /*     const double rpg = (1-ig) * dr - roffset; */
-    /*     t_exp_plus_1 *= t_exp_plus_2 * t_exp_1; */
-    /*     t_exp_plus_2 *= t_exp_2; */
-    /*     double pg = t_exp_plus_1; */
-    /*     // pg  = EXP(-zetp*rpg**2) */
-    /*     for (int icoef = 0; icoef <= lp; icoef++) { */
-    /*         idx2(pol, icoef, 1 - ig - lb_cube) = pg; */
-    /*         pg *= rpg; */
-    /*     } */
-    /* } */
 }
 
 
@@ -1105,10 +756,11 @@ static void grid_fill_pol(const double dr,
    V_{kji} = \sum_{\alpha\beta\gamma} C_{\alpha\gamma\beta} T_{0,\alpha,i} T_{1,\beta,j} T_{2,\gamma,k}
 
 */
-void collocate_core_rectangular_variant2(double *scratch,
-                                         const struct tensor_ *co,
-                                         const struct tensor_ *p_alpha_beta_reduced_,
-                                         struct tensor_ *cube)
+void collocate_core_rectangular(double *scratch,
+                                const double prefactor,
+                                const struct tensor_ *co,
+                                const struct tensor_ *p_alpha_beta_reduced_,
+                                struct tensor_ *cube)
 {
     if (co->size[0] > 1) {
         struct {
@@ -1141,7 +793,7 @@ void collocate_core_rectangular_variant2(double *scratch,
          * fastest one. it can be done with one dgemm.
          */
 
-        m1.alpha = 1.0;
+        m1.alpha = prefactor;
         m1.beta = 0.0;
         m1.m = co->size[0] * co->size[1]; /* alpha gamma */
         m1.n = cube->size[1]; /* j */
@@ -1339,297 +991,6 @@ void collocate_core_rectangular_variant2(double *scratch,
     return;
 }
 
-/* compute the following operation
-
-   V_{kji} = \sum_{\alpha\beta\gamma} C_{\alpha\gamma\beta} T_{0,\alpha,i} T_{1,\beta,j} T_{2,\gamma,k}
-
-*/
-
-void collocate_core_rectangular_variant3(char *scratch,
-                                         const struct tensor_ *co,
-                                         const struct tensor_ *p_alpha_beta_reduced_,
-                                         struct tensor_ *cube)
-{
-    if (co->size[0] > 1) {
-
-        // an helper structure for the dgemm parameters (*ROW MAJOR* format for
-        // the matrices)
-        struct {
-            double one;
-            double zero;
-            double *a, *b, *c;
-            int m, n, k, lda, ldb, ldc;
-        } m1, m2, m3;
-
-        double *__restrict const pz = &idx3(p_alpha_beta_reduced_[0], 0, 0, 0); /* k indice */
-        double *__restrict const py = &idx3(p_alpha_beta_reduced_[0], 1, 0, 0); /* j indice */
-        double *__restrict const px = &idx3(p_alpha_beta_reduced_[0], 2, 0, 0); /* i indice */
-
-        tensor T;
-        tensor W;
-
-        initialize_tensor_3(&T, co->size[0] /* alpha */, co->size[1] /* gamma */, cube->size[1] /* j */);
-
-        initialize_tensor_3(&W, co->size[1] /* alpha */ , cube->size[0] /* k */, cube->size[1] /* j */);
-
-#if defined(__LIBXSMM)
-        T.data = libxsmm_aligned_scratch(sizeof(double) * T.alloc_size_, 0/*auto-alignment*/);
-        W.data = libxsmm_aligned_scratch(sizeof(double) * W.alloc_size_, 0/*auto-alignment*/);
-#else
-        T.data = (double *)scratch;
-        W.data = ((double *)scratch) + T.alloc_size_ * sizeof(double);
-#endif
-
-        /* WARNING we are in row major layout. cblas allows it and it is more
-         * natural to read left to right than top to bottom
-         *
-         * we do first T_{\alpha,\gamma,j} = \sum_beta C_{alpha\gamma\beta} Y_{\beta, j}
-         *
-         * keep in mind that Y_{\beta, j} = p_alpha_beta_reduced(1, \beta, j)
-         * and the order of indices is also important. the last indice is the
-         * fastest one. it can be done with one dgemm.
-         */
-
-        m1.one = 1.0;
-        m1.zero = 0.0;
-        m1.m = co->size[0] * co->size[1]; /* alpha gamma */
-        m1.n = cube->size[1]; /* j */
-        m1.k = co->size[2]; /* beta */
-        m1.a = co->data; // Coef_{alpha,gamma,beta} Coef_xzy
-        m1.lda = co->ld_;
-        m1.b = py; // Y_{beta, j} = p_alpha_beta_reduced(1, beta, j)
-        m1.ldb = p_alpha_beta_reduced_->ld_;
-        m1.c = T.data; // T_{\alpha, \gamma, j} = T(alpha, gamma, j)
-        m1.ldc = T.ld_;
-
-        /*
-         * the next step is a reduction along the gamma index. Unfortunately, it
-         * can not be done with one dgemm call, because we want that the order
-         * of the indices to be W_{alpha, k, j}....
-         *
-         * We compute then
-         *
-         * W_{alpha, k, j} = sum_{\gamma} Z_{k, \gamma} T_{\alpha, \gamma, j}
-         *
-         * which means we need to transpose Z_{\gamma, k} = p_alpha_beta_reduced(2, 0, 0)
-         */
-
-        m2.one = 1.0;
-        m2.zero = 0.0;
-        m2.m = cube->size[0]; // k direction
-        m2.n = cube->size[1]; // j direction
-        m2.k = co->size[2]; // gamma
-        m2.a = pz; // p_alpha_beta_reduced(0, gamma, j)
-        m2.lda = p_alpha_beta_reduced_->ld_;
-        m2.b = T.data; // T_{\alpha, \gamma, j}
-        m2.ldb = T.ld_;
-        m2.c = W.data; // W_{\alpha, k, j}
-        m2.ldc = W.ld_;
-
-        /* the final step is again a reduction along the alpha indice. It can
-         * again be done with one dgemm. The operation is simply
-         *
-         * Cube_{k, j, i} = \sum_{alpha} W_{k, j, alpha} X_{alpha, i}
-         *
-         * which means we need to permute W_{\alpha, k, j} in to W_{k, j,
-         * \alpha} which can be done with one transposition if we consider (k,j)
-         * as a composite index.
-         */
-
-        m3.one = 1.0;
-        m3.zero = 0.0;
-        m3.m = cube->size[0] * cube->size[1]; // (k, j)
-        m3.n = cube->size[2]; // i direction
-        m3.k = co->size[2]; // alpha
-        m3.a = &idx3(W, 0, 0, 0); // W_{\alpha, k, j}
-        m3.lda = W.size[1] * W.ld_;
-        m3.b = px; // p_alpha_beta_reduced(2, alpha, i)
-        m3.ldb = p_alpha_beta_reduced_->ld_;
-        m3.c = &idx3(cube[0], 0, 0, 0); // cube_{kji}
-        m3.ldc = cube->ld_;
-
-
-#if defined(__LIBXSMM)
-
-        /* WARNING : We are in row major order but we use the fortran interface,
-         * which means that dgemm see all matrices transposed. The basic
-         * algorithm described above still holds but we have to reverse the
-         * order of the matrices.
-         *
-         * there is a trick (thanks Hans) to get it is right with matrix-matrix
-         * multiplication in row major format but calling fortran interfaces of
-         * dgemm
-         *
-         * TA, TB, M, N, K, A, LDA, B, LDB (cblas_dgemm, row major)
-         * Changes to
-         * TB, TA, N, M, K, B, LDB, A, LDA (dgemm, col major)
-         *
-         */
-
-        libxsmm_dgemm("N",
-                      "N",
-                      &m1.n/*required*/,
-                      &m1.m/*required*/,
-                      &m1.k/*required*/,
-                      &m1.one,
-                      m1.b/*required*/,
-                      &m1.ldb/*ldb*/,
-                      m1.a/*required*/,
-                      &m1.lda/*lda*/,
-                      &m1.zero,
-                      m1.c/*required*/,
-                      &m1.ldc);
-
-
-        for (int a1 = 0; a1 < co->size[0]; a1++) {
-            libxsmm_dgemm("N",
-                          "T",
-                          &m2.n,
-                          &m2.m,
-                          &m2.k,
-                          &m2.one,
-                          m2.b,
-                          &m2.ldb,
-                          m2.a,
-                          &m2.lda,
-                          &m2.zero,
-                          m2.c,
-                          &m2.ldc);
-
-
-            m2.b +=  T.offsets[0];
-            m2.c +=  W.offsets[0];
-        }
-
-        libxsmm_dgemm("N",
-                      "T",
-                      &m3.n,
-                      &m3.m,
-                      &m3.k,
-                      &m3.one,
-                      m3.b,
-                      &m3.ldb,
-                      m3.a,
-                      &m3.lda,
-                      &m3.zero,
-                      m3.c,
-                      &m3.ldc);
-
-#elif defined(__MKL) || defined(__OPENBLAS)
-        cblas_dgemm(CblasRowMajor,
-                    CblasNoTrans,
-                    CblasNoTrans,
-                    m1.m,
-                    m1.n,
-                    m1.k,
-                    1.0,
-                    m1.a,
-                    m1.lda,
-                    m1.b,
-                    m1.ldb,
-                    0.0,
-                    m1.c, // tmp_{alpha, gamma, j}
-                    m1.ldc);
-
-        for (int a1 = 0; a1 < co->size[0]; a1++) {
-            cblas_dgemm(CblasRowMajor,
-                        CblasTrans,
-                        CblasNoTrans,
-                        m2.m,
-                        m2.n,
-                        m2.k,
-                        1.0,
-                        m2.a,
-                        m2.lda,
-                        m2.b,
-                        m2.ldb,
-                        0.0,
-                        m2.c,
-                        m2.ldc);
-
-            m2.b +=  T.offsets[0];
-            m2.c +=  W.offsets[0];
-        }
-
-        cblas_dgemm(CblasRowMajor,
-                    CblasTrans,
-                    CblasNoTrans,
-                    m3.m,
-                    m3.n,
-                    m3.k,
-                    1.0,
-                    m3.a,
-                    m3.lda,
-                    m3.b,
-                    m3.ldb,
-                    0.0,
-                    m3.c,
-                    m3.ldc);
-#else
-        /* Plain fortran like calls */
-
-        dgemm_("N",
-               "N",
-               &m1.n,
-               &m1.m,
-               &m1.k,
-               &m1.one,
-               m1.b,
-               &m1.ldb,
-               m1.a,
-               &m1.lda,
-               &m1.zero,
-               m1.c,
-               &m1.ldc);
-
-        for (int a1 = 0; a1 < co->size[0]; a1++) {
-            dgemm_("N",
-                   "T",
-                   &m2.n,
-                   &m2.m,
-                   &m2.k,
-                   &m2.one,
-                   m2.b,
-                   &m2.ldb,
-                   &m2.a,
-                   &m2.lda,
-                   &m2.zero,
-                   m2.c,
-                   &m2.ldc);
-
-
-            m2.b +=  T.offsets[0];
-            m2.c +=  W.offsets[0];
-        }
-
-        dgemm_("N",
-               "T",
-               &m3.n,
-               &m3.m,
-               &m3.k,
-               &m3.done,
-               m3.b,
-               &m3.ldb,
-               m3.a,
-               &m3.lda,
-               &m3.zero,
-               m3.c,
-               &m3.ldc);
-#endif
-
-#if defined(__LIBXSMM)
-        libxsmm_free(W.data);
-        libxsmm_free(T.data);
-#endif
-    } else {
-        collocate_l0(co,
-                     p_alpha_beta_reduced_,
-                     cube);
-    }
-}
-
-
-
 /* It is a sub-optimal version of the mapping in case of a cubic cutoff. But is
  * very general and does not depend on the orthorombic nature of the grid. for
  * orthorombic cases, it is faster to apply PCB directly on the polynomials. */
@@ -1674,10 +1035,9 @@ void compute_blocks(collocation_integration *const handler,
     int z_offset = 0;
     /* We actually split the cube into smaller parts such that we do not have
      * to apply pcb as a last stage. The blocking takes care of it */
-    for (int z = 0; (z < cube_size[0]); z++, z1++) {
-
+    for (int z = 0; (z < (cube_size[0] - 1)); z++, z1++) {
         const int zmin = z1;
-        for (;((z1 < grid->size[0]) || (z1 < period[0])) && (z < cube_size[0]); z1++, z++);
+        for (int z2 = z;((z1 < grid->size[0]) || (z1 < period[0])) && (z2 < cube_size[0]); z1++, z2++);
         const int zmax = z1;
 
         /* // We have a full plane. */
@@ -1688,7 +1048,7 @@ void compute_blocks(collocation_integration *const handler,
             for (int y = 0; y < cube_size[1]; y++, y1++) {
 
                 const int ymin = y1;
-                for (;((y1 < grid->size[1]) || (y1 < period[1])) && (y < cube_size[1]); y1++, y++);
+                for (int y2 = y;((y1 < grid->size[1]) || (y1 < period[1])) && (y2 < cube_size[1]); y1++, y2++);
                 const int ymax = y1;
 
                 /*     // this is needed when the grid is distributed over several ranks. */
@@ -1702,7 +1062,7 @@ void compute_blocks(collocation_integration *const handler,
 
                     const int upper_corner[3] = {zmax,
                                                  ymax,
-                                                 position[2] + cube_size[2]};
+                                                 position[2]};
 
                     int position2[3]= {z_offset, y_offset, 0};
 
@@ -1716,34 +1076,21 @@ void compute_blocks(collocation_integration *const handler,
                                           grid);
 
                     y_offset += (ymax - ymin);
-                }
-
-                /* this dimension of the grid is *not* divided over several ranks */
-
-                if (y1 == period[1]) {
-                    y1 = -1;
-                } else {
-
                     /* this dimension of the grid is divided over several ranks */
                     if (y1 == grid->size[1]) {
-                        y += period[1] - lb_grid[1] - 1;
-                        y1 = -1;
+                        y1 = - 1;
                     }
+                    y = ymax - ymin - 1;
                 }
             }
 
-            if (z1 == period[0]) {
+            /* this dimension of the grid is divided over several ranks */
+            if (z1 == grid->size[0]) {
                 z1 = -1;
-            } else {
-
-                /* this dimension of the grid is divided over several ranks */
-                if (z1 == grid->size[0]) {
-                    z += period[0] - lb_grid[0] - 1;
-                    z1 = -1;
-                }
             }
 
             z_offset += (zmax - zmin);
+            z = zmax - zmin - 1;
         }
     }
 }
@@ -1792,40 +1139,38 @@ void apply_mapping_cubic(const int *lower_boundaries_cube,
         return;
     }
 
+
+    int offset[3];
+    int loop_number[3];
+    int reminder[3];
+
+    for (int d = 0; d < 3; d++) {
+        offset[d] = min(grid->size[d] - position[d], cube->size[d]);
+        loop_number[d] = (cube->size[d] - offset[d]) / period[d];
+        reminder[d] = min(grid->size[d], cube->size[d] - offset[d] - loop_number[d] * period[d]);
+    }
+
     int z1 = position[0];
     int z_offset = 0;
-
-    const int offset = min(grid->size[2] - position[2], cube->size[2]);
-    const int loop_number = (cube->size[2] - offset) / period[2];
-    const int reminder = min(grid->size[2], cube->size[2] - offset - loop_number * period[2]);
-
     for (int z = 0; (z < cube->size[0]); z++, z1++) {
 
-
-        if (z1 >= period[0])
-            z1 -= period[0];
-
         const int zmin = z1;
-        for (;((z1 < (grid->size[0] - 1)) || (z1 < (period[0] - 1)) && (z < (cube->size[0] - 1))); z1++, z++);
-        const int zmax = z1;
-
+        for (int z2 = z;((z1 < grid->size[0]) || (z1 < period[0])) && (z2 < cube->size[0]); z1++, z2++);
+        const int zmax = z1 /* + (z1 == (grid->size[0] - 1)) */;
 
         /* // We have a full plane. */
         if (zmax - zmin) {
             int y1 = position[1];
             int y_offset = 0;
-            for (int y = 0; y < cube->size[1]; y++, y1++) {
-
-                if (y1 >= period[1])
-                    y1 -= period[1];
-
+            for (int y = 0; y < cube->size[1]; y1++, y++) {
                 const int ymin = y1;
-                for (;((y1 < (grid->size[1] - 1)) || (y1 < (period[1] - 1))) && (y < (cube->size[1] - 1)); y1++, y++);
-                const int ymax = y1;
 
-                /*     // this is needed when the grid is distributed over several ranks. */
-                /* if (y1 >= lb_grid[1] + grid->size[1]) */
-                /*     continue; */
+                for (int y2 = y;((y1 < grid->size[1]) ||
+                                 (y1 < period[1])) &&
+                         (y2 < cube->size[1]);
+                     y1++, y2++);
+
+                const int ymax = y1;
 
                 if (ymax - ymin) {
 
@@ -1841,38 +1186,44 @@ void apply_mapping_cubic(const int *lower_boundaries_cube,
                     // we take periodicity into account
                     for (int z2 = zmin; z2 < zmax; z2++) {
                         double *__restrict dst = &idx3(grid[0], z2, ymin, 0);
-
                         const double *__restrict src = &idx3(cube[0], z_offset + z2 - zmin, y_offset, 0);
                         for (int y2 = 0; y2 < ymax - ymin; y2++) {
 
                             // the tail of the queue.
 //#pragma omp simd
 #pragma GCC ivdep
-                            for (int x = 0; x < offset; x++)
+                            for (int x = 0; x < offset[2]; x++)
                                 dst[x + position[2]] += src[x];
 
-                            int shift = offset;
-                            for (int l = 0; l < loop_number; l++) {
+                            int shift = offset[2];
+                            for (int l = 0; l < loop_number[2]; l++) {
 //#pragma omp simd
 #pragma GCC ivdep
                                 for (int x = 0; x < grid->size[2]; x++)
                                     dst[x] += src[shift + x];
 
-                                shift = offset + (l + 1)  * period[2];
+                                shift = offset[2] + (l + 1)  * period[2];
                             }
 //#pragma omp simd
 #pragma GCC ivdep
-                            for (int x = 0; x < reminder; x++)
+                            for (int x = 0; x < reminder[2]; x++)
                                 dst[x] += src[shift + x];
 
                             dst += grid->ld_;
                             src += cube->ld_;
                         }
                     }
+                    if (y1 == grid->size[1])
+                        y1 = -1;
+
                     y_offset += (ymax - ymin);
+                    y += ymax - ymin - 1;
                 }
             }
+            if (z1 == grid->size[0])
+                z1 = -1;
             z_offset += (zmax - zmin);
+            z += zmax - zmin - 1;
         }
     }
 }
@@ -1959,29 +1310,29 @@ void grid_collocate_ortho(collocation_integration *const handler,
 
     /* temporary restore the maping */
 
-#if defined(__LIBXSMM)
-    // normally it is 2 * cmax + 1, but for alignment reason it is probably
-    // better to align on 16 bytes
+/* #if defined(__LIBXSMM) */
+/*     // normally it is 2 * cmax + 1, but for alignment reason it is probably */
+/*     // better to align on 16 bytes */
 
-    map[0] =  libxsmm_aligned_scratch(sizeof(int) * 3 * (2 * cmax + 1), 0/*auto-alignment*/);
-    map[1] = map[0] + (2 * cmax + 1);
-    map[2] = map[1] + (2 * cmax + 1);
-#else
-    int map[3][2 * cmax + 1];
-#endif
-    memset(map[0], 0, sizeof(int) * 3 * (2 * cmax + 1));
+/*     map[0] =  libxsmm_aligned_scratch(sizeof(int) * 3 * (2 * cmax + 1), 0/\*auto-alignment*\/); */
+/*     map[1] = map[0] + (2 * cmax + 1); */
+/*     map[2] = map[1] + (2 * cmax + 1); */
+/* #else */
+/*     int map[3][2 * cmax + 1]; */
+/* #endif */
+/*     memset(map[0], 0, sizeof(int) * 3 * (2 * cmax + 1)); */
 
-    for (int i = 0; i < 3; i++) {
-        grid_fill_map(periodic[i],
-                      lb_cube[i],
-                      ub_cube[i],
-                      cubecenter[i],
-                      lb_grid[i],
-                      npts[i],
-                      grid->size[i],
-                      cmax,
-                      map[i]);
-    }
+/*     for (int i = 0; i < 3; i++) { */
+/*         grid_fill_map(periodic[i], */
+/*                       lb_cube[i], */
+/*                       ub_cube[i], */
+/*                       cubecenter[i], */
+/*                       lb_grid[i], */
+/*                       npts[i], */
+/*                       grid->size[i], */
+/*                       cmax, */
+/*                       map[i]); */
+/*     } */
 
 
     /* compute the polynomials */
@@ -1994,15 +1345,16 @@ void grid_collocate_ortho(collocation_integration *const handler,
     grid_fill_pol(dh[2][2], roffset[0], lb_cube[0], handler->coef.size[0] - 1, cmax, zetp, &idx3(handler->pol, 0, 0, 0)); /* k indice */
 
     if (handler->sequential_mode) {
-        collocate_core_rectangular_variant2(handler->scratch,
-                                            // pointer to scratch memory
-                                            &handler->coef,
-                                            &handler->pol,
-                                            &handler->cube);
+        collocate_core_rectangular(handler->scratch,
+                                   // pointer to scratch memory
+                                   1.0,
+                                   &handler->coef,
+                                   &handler->pol,
+                                   &handler->cube);
 
-        apply_mapping(disr_radius, dh, dh_inv, map, lb_cube, &handler->cube, cmax, grid);
+        /* apply_mapping(disr_radius, dh, dh_inv, map, lb_cube, &handler->cube, cmax, grid); */
 
-        /* apply_mapping_cubic(lb_cube, cubecenter, npts, &handler->cube, lb_grid, grid); */
+        apply_mapping_cubic(lb_cube, cubecenter, npts, &handler->cube, lb_grid, grid);
     } else {
         compute_blocks(handler,
                        lb_cube,
@@ -2013,9 +1365,6 @@ void grid_collocate_ortho(collocation_integration *const handler,
                        lb_grid,
                        grid);
     }
-#if defined(__LIBXSMM)
-    libxsmm_free(map[0]);
-#endif
 }
 
 // *****************************************************************************

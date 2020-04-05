@@ -15,24 +15,6 @@
 
 #include "utils.h"
 
-inline void find_interval(const int start, const int end, const int *non_zero_elements_, int *zmin, int *zmax)
-{
-    int si;
-
-    // loop over the table until we reach a 1
-    for (si = start;(si < end - 1) && (non_zero_elements_[si] == 0); si++);
-
-    // interval starts here
-    *zmin = si;
-
-    // now search where it ends;
-
-    // loop over the table until we reach a 1
-    for (;(si < (end - 1)) && (non_zero_elements_[si] == 1); si++);
-
-    *zmax = si + non_zero_elements_[si];
-}
-
 inline int return_length_l(const int l) {
     static const int length_[] = {1, 3, 6, 10, 15, 21, 28, 36, 45, 55};
     return length_[l];
@@ -195,19 +177,17 @@ void add_sub_grid_with_pcb(const int *period,
 
     const int offset = min(grid->size[2] - lower_corner[2], subgrid->size[2]);
     const int loop_number = (subgrid->size[2] - offset) / period[2];
-    const int remainder = min(grid->size[2], subgrid->size[2] - offset - loop_number * period[2]);
+    const int reminder = min(grid->size[2], subgrid->size[2] - offset - loop_number * period[2]);
 
     for (int z = 0; z < sizez; z++) {
         double *__restrict__ dst = &idx3(grid[0], lower_corner[0] + z, lower_corner[1], 0);
         double *__restrict__ src = &idx3(subgrid[0], position1[0] + z, position1[1], 0);
-        __builtin_prefetch (dst, 1, 3);
-        __builtin_prefetch (src, 0, 3);
         for (int y = 0; y < sizey; y++) {
             //#pragma omp simd
             /* for (int x = 0; x < grid->size[2]; x++) */
 #pragma GCC ivdep
             for (int x = 0; x < offset; x++) {
-                dst[x + lower_corner[2]] += src[x];
+                dst[x + offset] += src[x];
             }
 
             int shift = offset;
@@ -216,11 +196,11 @@ void add_sub_grid_with_pcb(const int *period,
                 for (int x = 0; x < grid->size[2]; x++) {
                     dst[x] += src[shift + x];
                 }
-                shift = offset + (l + 1)  * period[2];
+                shift = offset + (l + 1) * period[2];
             }
 
 #pragma GCC ivdep
-            for (int x = 0; x < remainder; x++)
+            for (int x = 0; x < reminder; x++)
                 dst[x] += src[shift + x];
 
             dst += grid->ld_;
@@ -284,7 +264,11 @@ inline int compute_cube_properties(const double radius,
     return cmax;
 }
 
-void  return_cube_position(const int *grid_size, const int *lb_grid, const int *cube_center, const int *lower_boundaries_cube, const int *period, int *const position)
+void  return_cube_position(const int *grid_size,
+                           const int *lb_grid,
+                           const int *cube_center,
+                           const int *lower_boundaries_cube,
+                           const int *period, int *const position)
 {
     position[0] = (lb_grid[0] + cube_center[0] + lower_boundaries_cube[0] + 32 * period[0]) % period[0];
     position[1] = (lb_grid[1] + cube_center[1] + lower_boundaries_cube[1] + 32 * period[1]) % period[1];
@@ -335,6 +319,181 @@ void apply_mapping(const double disr_radius,
             for (int ig = igmin; ig <= 1 - igmin; ig++) {
                 const int i = map_x[ig + cmax];  // target location on the grid
                 dst[i - 1] += src[ig];
+            }
+        }
+    }
+}
+
+
+// *****************************************************************************
+static void grid_fill_map(const bool periodic,
+                          const int lb_cube,
+                          const int ub_cube,
+                          const int cubecenter,
+                          const int lb_grid,
+                          const int npts,
+                          const int ngrid,
+                          const int cmax,
+                          int *map)
+{
+    if (periodic) {
+        /* for (int i=0; i <= 2*cmax; i++) */
+        /*     map[i] = mod(cubecenter + i - cmax, npts) + 1; */
+        int start = lb_cube;
+        while (true) {
+            const int offset = mod(cubecenter + start, npts)  + 1 - start;
+            const int length = min(ub_cube, npts - offset) - start;
+            for (int ig = start; ig <= start + length; ig++) {
+                map[ig + cmax] = ig + offset;
+            }
+            if (start + length >= ub_cube){
+                break;
+            }
+            start += length + 1;
+        }
+    } else {
+        // this takes partial grid + border regions into account
+        const int offset = mod(cubecenter + lb_cube + lb_grid, npts) + 1 - lb_cube;
+        // check for out of bounds
+        assert(ub_cube + offset <= ngrid);
+        assert(lb_cube + offset >= 1);
+        for (int ig = lb_cube; ig <= ub_cube; ig++) {
+            map[ig + cmax] = ig + offset;
+        }
+    }
+}
+
+/* this function needs serious rethinking. Basically we apply a spherical mask
+ * on a 3D grid and then add the result on a grid with PBC */
+
+void apply_spherical_cutoff(const double disr_radius,
+                            const double dh[3][3],
+                            const double dh_inv[3][3],
+                            const int lb_cube[3],
+                            const int cmax,
+                            tensor *cube)
+{
+    const int kgmin = (cube->size[0] - 1) / 2;
+    const int jgmin = (cube->size[1] - 1) / 2;
+    const int igmin = (cube->size[2] - 1) / 2;
+    const double r2 = disr_radius * disr_radius;
+    const double inv_dx = 1.0 / dh[0][0];
+    const double rx = dh[0][0];
+    const double ry = dh[1][1];
+    const double rz = dh[2][2];
+
+    for (int kg = -kgmin; kg <= kgmin + 1; kg++) {
+        double kr = ((double)kg) * rz;   // distance from center in a.u.
+        kr *= kr;
+        for (int jg = -jgmin; jg <= jgmin + 1; jg++) {
+            double jr = ((double)jg) * ry;   // distance from center in a.u.
+            jr *= jr;
+            const double rest = r2 - kr - jr;
+            if (rest < 1e-8) {
+                memset(&idx3(cube[0], kg + kgmin, jg + jgmin, 0), 0, cube->size[2] * sizeof(double));
+                continue;
+            }
+            double *__restrict dst =  &idx3(cube[0], kg + kgmin, jg + jgmin, 0);
+            int rix = ceil(-1e-8 - sqrt(max(0.0, rest)) * inv_dx);
+            for (int ig = -igmin; ig <= rix; ig ++) {
+                dst[ig + igmin] = 0.0;
+            }
+            for (int ig = -rix + 1; ig < cube->size[2]; ig ++) {
+                dst[ig + igmin] = 0.0;
+            }
+        }
+    }
+}
+
+
+void compute_folded_polynomial(const int cube_center,
+                               const int pol_length,
+                               const int period,
+                               const int grid_size,
+                               const int grid_lower_boundaries,
+                               const int *__restrict non_zero_elements,
+                               const double *__restrict pol,
+                               double *__restrict res,
+                               double *__restrict tmp)
+{
+
+    const int start = (cube_center - grid_lower_boundaries - (pol_length - 1) / 2 + 32 * period) % period;
+
+#pragma GCC unroll 4
+#pragma GCC ivdep
+    for (int s = start; s < min(grid_size, pol_length + start); s++) {
+        tmp[s] = pol[s - start];
+    }
+
+    for (int s = min(grid_size - start, pol_length); s < pol_length; s++) {
+#pragma GCC unroll 4
+#pragma GCC ivdep
+        for (int s1 = 0; s1 < min(grid_size, pol_length - s); s1++)
+            tmp[s1] += pol[s + s1];
+
+        s += period;
+    }
+
+    // now compress the all thing. I do not care about zeros.
+    int offset = 0;
+
+    for (int s = 0; s < grid_size; s++) {
+        /* if (non_zero_elements[s] == 0) */
+        /*     continue; */
+        for (; (s < grid_size - 1) && (non_zero_elements[s] == 0); s++);
+        int smin = s;
+
+        for (; (s < grid_size - 1) && (non_zero_elements[s] == 1); s++);
+
+        int smax = s + non_zero_elements[s];
+
+        for (int si = 0; si < (smax - smin); si++)
+            res[offset + si] = tmp[smin + si];
+        offset += smax - smin;
+    }
+}
+
+
+void calculate_non_orthorombic_corrections_tensor(const double*__restrict r_ab,
+                                                  const double mu_mean,
+                                                  const double *dr,
+                                                  const double basis[3][3],
+                                                  const int *corner,
+                                                  const int *period,
+                                                  tensor *const Exp)
+{
+    // need to move this outside
+    /* void *tmp = Exp->data; */
+    /* realloc_tensor(tmp, */
+    /*                handler->alpha_alloc_size, */
+    /*                handler->alpha.alloc_size_, */
+    /*                (void **)&(Exp->data)); */
+
+    const int n[3][2] = {{0, 2},
+                         {0, 1},
+                         {1, 2}};
+
+    // need to review this
+    const double c[3] = {
+        /* beta gamma */
+        -2.0 * (basis[1][0] * basis[2][0] + basis[1][1] * basis[2][1] + basis[1][2] * basis[2][2]),
+        /* alpha gamma */
+        -2.0 * (basis[0][0] * basis[2][0] + basis[0][1] * basis[2][1] + basis[0][2] * basis[2][2]),
+        /* alpha beta */
+        -2.0 * (basis[0][0] * basis[1][0] + basis[0][1] * basis[1][1] + basis[0][2] * basis[1][2])
+    };
+
+    for (int dir = 0; dir < 3; dir++) {
+        int d1 = n[dir][0];
+        int d2 = n[dir][1];
+
+        const double coef = c[dir];
+
+        for (int alpha = 0; alpha < Exp->size[d1]; alpha++) {
+            double alpha_d = (alpha + corner[d1]) * dr[d1] - period[d1] * dr[d1] / 2.0 - r_ab[d1];
+            for (int beta = 0; beta < Exp->size[d2]; beta++) {
+                int beta_d = (beta + corner[d2]) * dr[d2] - period[d2] * dr[d2] / 2.0  - r_ab[d2];
+                idx3(Exp[0], dir, alpha, beta) = exp(-coef * mu_mean * alpha_d * beta_d);
             }
         }
     }
