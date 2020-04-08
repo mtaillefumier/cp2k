@@ -41,9 +41,36 @@ inline int return_offset_l(const int l) {
     return offset_[l];
 }
 
+inline void update_loop_index(const int xmin, const int xmax, const int local_grid_size, const int global_grid_size, int *const x_offset, int *const x, int *const x1)
+{
+    *x += xmax - xmin - 1;
+    *x_offset += (xmax - xmin);
+
+    if (*x1 == local_grid_size) {
+        *x1 = -1;
+        /* case we have periodic boundaries conditions and the  grid is divided */
+        if (local_grid_size != global_grid_size) {
+            *x += global_grid_size;
+            *x_offset += global_grid_size;
+        }
+    }
+}
+
+inline void compute_next_boundaries(int y1, int y, const int local_grid_size, const int global_grid_size, const int cube_size, int *const ymin, int *const ymax)
+{
+    *ymin = y1;
+
+    for (int y2 = y; ((y1 < local_grid_size) ||
+                      (y1 < global_grid_size)) &&
+             (y2 < cube_size);
+         y1++, y2++);
+
+    *ymax = y1;
+}
+
 
 inline int return_linear_index_from_exponents(const int alpha, const int beta,
-                                       const int gamma) {
+                                              const int gamma) {
     const int l = alpha + beta + gamma;
     return return_offset_l(l) + (l - alpha) * (l - alpha + 1) / 2 + gamma;
 }
