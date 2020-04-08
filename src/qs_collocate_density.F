@@ -1721,7 +1721,8 @@ CONTAINS
 !$    ithread = omp_get_thread_num()
 
       ! create an handle for each omp thread. By default the queue of 256 blocks. It is neglected when running in sequential mode
-      gaussian_handle =  collocate_pgf_create_handle(0, 128, .TRUE.)
+
+      gaussian_handle =  collocate_pgf_create_handle(0, 256, .TRUE.)
 
       pab => pabt(:, :, ithread)
       work => workt(:, :, ithread)
@@ -1733,7 +1734,6 @@ CONTAINS
       ! We only need a single lgrid, which we sum back onto the rsgrid after each
       ! grid level is completed
       loop_gridlevels: DO igrid_level = 1, gridlevel_info%ngrid_levels
-
          ! Setup thread local copy of realspace grid with lgrid as the thread's work space.
          threadlocal_rsgrid = rs_rho(igrid_level)%rs_grid
          threadlocal_rsgrid%r(threadlocal_rsgrid%lb_local(1):threadlocal_rsgrid%ub_local(1), &
@@ -1902,7 +1902,7 @@ CONTAINS
       END DO loop_pairs
 !$OMP END DO
 
-!     wait for all computation to complete and release memory. GPU IS NOT RESET
+         ! wait for all computation to complete and release memory.
          CALL collocate_pgf_synchronize(gaussian_handle)
 
          ! Now sum the thread-local grids back into the rs_grid

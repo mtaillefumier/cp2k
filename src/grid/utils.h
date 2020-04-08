@@ -1,6 +1,7 @@
 #ifndef UTILS_H_
 #define UTILS_H_
 
+#include <stdbool.h>
 // *****************************************************************************
 #define min(x, y) ( ((x) < (y)) ? x : y )
 
@@ -15,11 +16,38 @@
 
 extern void find_interval(const int start, const int end, const int *non_zero_elements_, int *zmin, int *zmax);
 
-extern int return_length_l(const int l);
-extern int return_offset_l(const int l);
+extern int multinomial3(const int a, const int b, const int c);
 
-extern int return_linear_index_from_exponents(const int alpha, const int beta,
-                                              const int gamma);
+extern int return_exponents(const int index);
+
+extern void apply_non_orthorombic_corrections(const tensor *const Exp,
+                                              tensor *const cube);
+
+extern void calculate_non_orthorombic_corrections_tensor(const double mu_mean,
+                                                         const double *r_ab,
+                                                         const double basis[3][3],
+                                                         const int *const size,
+                                                         tensor *const Exp);
+
+inline int return_length_l(const int l) {
+    static const int length_[] = {1, 4, 7, 11, 16, 22, 29, 37, 46, 56, 67, 79, 92, 106, 121, 137, 154, \
+                                  172, 191, 211, 232};
+    return length_[l];
+}
+
+inline int return_offset_l(const int l) {
+    static const int offset_[] = {1, 4, 10, 20, 35, 56, 84, 120, 165, 220, 286, 364, 455, 560, 680, \
+                                  816, 969, 1140, 1330, 1540, 1771, 2024};
+    return offset_[l];
+}
+
+
+inline int return_linear_index_from_exponents(const int alpha, const int beta,
+                                       const int gamma) {
+    const int l = alpha + beta + gamma;
+    return return_offset_l(l) + (l - alpha) * (l - alpha + 1) / 2 + gamma;
+}
+
 
 extern void extract_sub_grid(const int *lower_corner,
                              const int *upper_corner,
@@ -33,7 +61,8 @@ extern void add_sub_grid(const int *lower_corner,
                          const tensor *subgrid,
                          tensor *grid);
 
-extern int compute_cube_properties(const double radius,
+extern int compute_cube_properties(const bool ortho,
+                                   const double radius,
                                    const double dh[3][3],
                                    const double dh_inv[3][3],
                                    const double *rp,

@@ -1,0 +1,98 @@
+#ifndef __COLLOCATION_INTEGRATION_H
+#define __COLLOCATION_INTEGRATION_H
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#include "tensor_local.h"
+#include "thpool.h"
+
+typedef struct collocation_block_ {
+    tensor pol;
+    tensor coefs;
+    tensor Exp;
+    tensor cube;
+    tensor grid;
+
+    /* intermdiate storage for the collocation. We don not allocate these in
+     * advance because it is method dependent */
+
+    tensor T;
+    tensor W;
+    int position_inside_cube[3];
+    int lower_corner[3];
+    int upper_corner[3];
+    int period[3];
+    int initialized_;
+    /* first block indicating a new gaussian pair */
+    /* this mean that the full cube will be computed. */
+    /* the next blocks will only store the positions etc... */
+
+    bool new_gaussian_pair_;
+} collocation_block;
+
+typedef struct collocation_list_ {
+    struct collocation_block_ *list;
+    int number_of_elements_;
+    int total_number_of_elements_;
+    bool done;
+    bool first_round;
+    int initialized_;
+    double *scratch;
+    size_t scratch_size;
+    size_t cube_alloc_size;
+    size_t coef_alloc_size;
+    size_t alpha_alloc_size;
+    size_t pol_alloc_size;
+    size_t T_alloc_size;
+    size_t W_alloc_size;
+    int integration;
+} collocation_list;
+
+typedef struct collocation_integration_ {
+    /* GPU device id. should replace this with GPU UID */
+    int gpu_id;
+
+    /*
+      Do we want the batched or the serial mode. The difference between the two
+      modes is that in one case group of gaussians are treated collectively
+      while they are treated one by one in the other case. When the GPU mode is
+      activated then the batch mode is also activated.
+    */
+    bool sequential_mode;
+
+    /* two lists containing information about the computations to do. Only
+     * allocated when the serial is off */
+    struct collocation_list_ *list[2];
+
+    /* current list to be filled */
+    struct collocation_list_ *current_list;
+
+    /* Just for debugging */
+    int working_thread;
+
+    /* number of gaussians block in each list */
+    int number_of_gaussian;
+
+    /* structure for handling the thread pool */
+    threadpool thpool;
+
+    /* some scratch storage to avoid malloc / free all the time */
+    tensor alpha;
+    tensor pol;
+    tensor coef;
+
+    /* Only allocated in sequential mode */
+    tensor cube;
+    tensor Exp;
+
+    size_t Exp_alloc_size;
+    size_t cube_alloc_size;
+    size_t coef_alloc_size;
+    size_t alpha_alloc_size;
+    size_t pol_alloc_size;
+    size_t T_alloc_size;
+    size_t W_alloc_size;
+
+    void *scratch;
+} collocation_integration;
+#endif

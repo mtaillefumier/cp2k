@@ -1,25 +1,19 @@
 #ifndef COEFFICIENTS_H
 #define COEFFICIENTS_H
+#include <stdbool.h>
 #include <string.h>
 #include "utils.h"
 #include "grid_common.h"
 
 // *****************************************************************************
-extern void grid_prepare_coef_ortho(const int *lmax,
-                                    const int *lmin,
-                                    const int lp,
-                                    const double prefactor,
-                                    const tensor *alpha, // [3][lb_max+1][la_max+1][lp+1]
-                                    const double pab[ncoset[lmax[1]]][ncoset[lmax[0]]],
-                                    tensor *coef_xyz); //[lp+1][lp+1][lp+1]
-
 extern void grid_prepare_alpha(const double ra[3],
                                const double rb[3],
                                const double rp[3],
                                const int *lmax,
                                tensor *alpha);
 
-extern void grid_prepare_coef(const int *lmax,
+extern void grid_prepare_coef(const bool ortho,
+                              const int *lmax,
                               const int *lmin,
                               const int lp,
                               const double prefactor,
@@ -36,4 +30,9 @@ extern void compute_compact_polynomial_coefficients(const tensor *coef,
                                                     const double *rab,
                                                     const double prefactor,
                                                     tensor *co);
+
+extern void grid_transform_coef_xyz_to_ijk(const double dh[3][3],
+                                           const double dh_inv[3][3],
+                                           const tensor *coef_xyz);
+
 #endif

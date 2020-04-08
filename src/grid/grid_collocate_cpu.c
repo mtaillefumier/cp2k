@@ -24,9 +24,9 @@
 #include "grid_prepare_pab.h"
 #include "grid_common.h"
 #include "tensor_local.h"
+#include "collocation_integration.h"
 #include "utils.h"
 #include "coefficients.h"
-#include "thpool.h"
 
 extern void apply_mapping(const double disr_radius,
                           const double dh[3][3],
@@ -84,93 +84,6 @@ void collocate_core_rectangular(double *scratch,
                                 const struct tensor_ *p_alpha_beta_reduced_,
                                 struct tensor_ *cube);
 
-typedef struct collocation_block_ {
-    tensor pol;
-    tensor coefs;
-    tensor Exp;
-    tensor cube;
-    tensor grid;
-
-    /* intermdiate storage for the collocation. We don not allocate these in
-     * advance because it is method dependent */
-
-    tensor T;
-    tensor W;
-    int position_inside_cube[3];
-    int lower_corner[3];
-    int upper_corner[3];
-    int period[3];
-    int initialized_;
-    /* first block indicating a new gaussian pair */
-    /* this mean that the full cube will be computed. */
-    /* the next blocks will only store the positions etc... */
-
-    bool new_gaussian_pair_;
-} collocation_block;
-
-typedef struct collocation_list_ {
-    struct collocation_block_ *list;
-    int number_of_elements_;
-    int total_number_of_elements_;
-    bool done;
-    bool first_round;
-    int initialized_;
-    double *scratch;
-    size_t scratch_size;
-    size_t cube_alloc_size;
-    size_t coef_alloc_size;
-    size_t alpha_alloc_size;
-    size_t pol_alloc_size;
-    size_t T_alloc_size;
-    size_t W_alloc_size;
-    int integration;
-} collocation_list;
-
-typedef struct collocation_integration_ {
-    /* GPU device id. should replace this with GPU UID */
-    int gpu_id;
-
-    /*
-      Do we want the batched or the serial mode. The difference between the two
-      modes is that in one case group of gaussians are treated collectively
-      while they are treated one by one in the other case. When the GPU mode is
-      activated then the batch mode is also activated.
-    */
-    bool sequential_mode;
-
-    /* two lists containing information about the computations to do. Only
-     * allocated when the serial is off */
-    struct collocation_list_ *list[2];
-
-    /* current list to be filled */
-    struct collocation_list_ *current_list;
-
-    /* Just for debugging */
-    int working_thread;
-
-    /* number of gaussians block in each list */
-    int number_of_gaussian;
-
-    /* structure for handling the thread pool */
-    threadpool thpool;
-
-    /* some scratch storage to avoid malloc / free all the time */
-    tensor alpha;
-    tensor pol;
-    tensor coef;
-
-    /* Only allocated in sequential mode */
-    tensor cube;
-
-    size_t cube_alloc_size;
-    size_t coef_alloc_size;
-    size_t alpha_alloc_size;
-    size_t pol_alloc_size;
-    size_t T_alloc_size;
-    size_t W_alloc_size;
-
-    void *scratch;
-} collocation_integration;
 
 void *print_collocation_list(void *const handler);
 collocation_list *create_collocation_list(const int num_elem, const int integration);
@@ -410,21 +323,13 @@ void add_collocation_block(struct collocation_integration_ *const handler,
     if (list->new_gaussian_pair_) {
         initialize_tensor_3(&list->coefs, handler->coef.size[0], handler->coef.size[1], handler->coef.size[2]);
 
-/* #if defined(__LIBXSMM) */
-/*         list->coefs.data = libxsmm_aligned_scratch(sizeof(double) * handler->coef.alloc_size_, 0/\*auto-alignment*\/); */
-/* #else */
         posix_memalign((void **)&list->coefs.data, 32, sizeof(double) * handler->coef.alloc_size_);
-/* #endif */
         memcpy(list->coefs.data, handler->coef.data, sizeof(double) * handler->coef.alloc_size_);
 
 
         if (Exp != NULL) {
             initialize_tensor_3(&list->Exp, Exp->size[0], Exp->size[1], Exp->size[2]);
-/* #if defined(__LIBXSMM) */
-/*             list->Exp.data = libxsmm_aligned_scratch(sizeof(double) * Exp->alloc_size_, 0/\*auto-alignment*\/); */
-/* #else */
             posix_memalign((void **)&list->Exp.data, 32, sizeof(double) * Exp->alloc_size_);
-/* #endif */
             memcpy(list->Exp.data, Exp->data, sizeof(double) * Exp->alloc_size_);
         }
 
@@ -432,11 +337,7 @@ void add_collocation_block(struct collocation_integration_ *const handler,
                             handler->pol.size[0],
                             handler->pol.size[1],
                             handler->pol.size[2]);
-/* #if defined(__LIBXSMM) */
-/*         list->pol.data = libxsmm_aligned_scratch(sizeof(double) * handler->pol.alloc_size_, 0/\*auto-alignment*\/); */
-/* #else */
         posix_memalign((void **)&list->pol.data, 32, sizeof(double) * handler->pol.alloc_size_);
-/* #endif */
         memcpy(list->pol.data, handler->pol.data, sizeof(double) * handler->pol.alloc_size_);
 
         /* It is for the second variant of collocate_dgemm only three dgemm */
@@ -583,9 +484,16 @@ void calculate_collocation(void *const in)
                                        &list_->list[i].coefs,
                                        &list_->list[i].pol,
                                        &list_->list[i].cube);
+
+
             free(list_->list[i].pol.data);
             free(list_->list[i].coefs.data);
             if (list_->list[i].Exp.data) {
+
+                // Well self explanatory
+                apply_non_orthorombic_corrections(&list_->list[i].Exp,
+                                                  &list_->list[i].cube);
+
                 free(list_->list[i].Exp.data);
             }
             list_->list[i].Exp.data = NULL;
@@ -593,12 +501,11 @@ void calculate_collocation(void *const in)
             list_->list[i].coefs.data = NULL;
         }
 
-        add_sub_grid_with_pcb(list_->list[i].period,
-                              list_->list[i].position_inside_cube, // starting position of in the subgrid
-                              list_->list[i].lower_corner, // lower corner position where the subgrid should placed
-                              list_->list[i].upper_corner, // upper boundary
-                              &list_->list[i].cube, // subgrid
-                              &list_->list[i].grid);
+        add_sub_grid(list_->list[i].lower_corner, // lower corner position where the subgrid should placed
+                     list_->list[i].upper_corner, // upper boundary
+                     list_->list[i].position_inside_cube, // starting position of in the subgrid
+                     &list_->list[i].cube, // subgrid
+                     &list_->list[i].grid);
 
         // I forgot that one !!!!!!!
         list_->list[i].new_gaussian_pair_ = false;
@@ -661,91 +568,128 @@ void collocate_l0(const struct tensor_ *co,
  * contribution to computation of collocate and integrate */
 
 
-static void grid_fill_pol(const double dr,
-                          const double roffset,
-                          const int lb_cube,
-                          const int lp,
-                          const int cmax,
-                          const double zetp,
-                          double *pol_)
+void grid_fill_pol(const bool transpose,
+                   const double dr,
+                   const double roffset,
+                   const int lb_cube,
+                   const int lp,
+                   const int cmax,
+                   const double zetp,
+                   double *pol_)
 {
     tensor pol;
-    initialize_tensor_2(&pol, lp + 1, 2 * cmax + 1);
-    pol.data = pol_;
-//
-//   compute the values of all (x-xp)**lp*exp(..)
-//
-//  still requires the old trick:
-//  new trick to avoid to many exps (reuse the result from the previous gridpoint):
-//  exp( -a*(x+d)**2)=exp(-a*x**2)*exp(-2*a*x*d)*exp(-a*d**2)
-//  exp(-2*a*(x+d)*d)=exp(-2*a*x*d)*exp(-2*a*d**2)
-//
     const double t_exp_1 = exp(-zetp * dr * dr);
     const double t_exp_2 = t_exp_1 * t_exp_1;
 
     double t_exp_min_1 = exp(-zetp * (dr - roffset) * (dr - roffset));
     double t_exp_min_2 = exp(2.0 * zetp * (dr - roffset) * dr);
 
-    /* compute the exponential recursively and store the polynomial prefactors as well */
-    for (int ig = 0; ig >= lb_cube; ig--) {
-        const double rpg = ig * dr - roffset;
-        t_exp_min_1 *= t_exp_min_2 * t_exp_1;
-        t_exp_min_2 *= t_exp_2;
-        double pg = t_exp_min_1;
-        // pg  = EXP(-zetp*rpg**2)
-        /* for (int icoef=0; icoef <= lp; icoef++) { */
-        idx2(pol, 0, ig - lb_cube) = pg;
-        if (lp > 0)
-            idx2(pol, 1, ig - lb_cube) = rpg;
-        /* pg *= rpg; */
-        /* } */
-    }
-
     double t_exp_plus_1 = exp(-zetp * roffset * roffset);
     double t_exp_plus_2 = exp(2.0 * zetp * roffset * dr);
-    for (int ig = 0; ig >= lb_cube; ig--) {
-        const double rpg = (1 - ig) * dr - roffset;
-        t_exp_plus_1 *= t_exp_plus_2 * t_exp_1;
-        t_exp_plus_2 *= t_exp_2;
-        double pg = t_exp_plus_1;
-        // pg  = EXP(-zetp*rpg**2)
-        /* for (int icoef = 0; icoef <= lp; icoef++) { */
-        idx2(pol, 0, 1 - ig - lb_cube) = pg;
-        if (lp > 0)
-            idx2(pol, 1, 1 - ig - lb_cube) = rpg;
-        /* pg *= rpg; */
-        /* } */
-    }
 
-    /* compute the remaining powers using previously computed stuff */
-    if (lp >= 2) {
-        double *__restrict__ poly = &idx2(pol, 1, 0);
-        double *__restrict__ src1 = &idx2(pol, 0, 0);
-        double *__restrict__ dst = &idx2(pol, 2, 0);
-//#pragma omp simd
-#pragma GCC ivdep
-        for (int ig = 0; ig <= 1 - 2 * lb_cube; ig++)
-            dst[ig] = src1[ig] * poly[ig] * poly[ig];
-    }
+    if (transpose) {
+        initialize_tensor_2(&pol, 2 * cmax + 1, lp + 1);
+        pol.data = pol_;
 
-    for (int icoef = 3; icoef <= lp; icoef++) {
-        const double *__restrict__ poly = &idx2(pol, 1, 0);
-        const double *__restrict__ src1 = &idx2(pol, icoef - 1, 0);
-        double *__restrict__ dst = &idx2(pol, icoef, 0);
-//#pragma omp simd
-#pragma GCC ivdep
-        for (int ig = 0; ig <= 1 - 2 * lb_cube; ig++) {
-            dst[ig] = src1[ig] * poly[ig];
+        /* It is original Ole code. I need to transpose the polynomials for the
+         * integration routine and Ole code already does it. */
+        for (int ig=0; ig >= lb_cube; ig--) {
+            const double rpg = ig * dr - roffset;
+            t_exp_min_1 *= t_exp_min_2 * t_exp_1;
+            t_exp_min_2 *= t_exp_2;
+            double pg = t_exp_min_1;
+            // pg  = EXP(-zetp*rpg**2)
+            for (int icoef=0; icoef<=lp; icoef++) {
+                idx2(pol, ig - lb_cube, icoef) = pg;
+                pg *= rpg;
+            }
         }
-    }
 
-    //
-    if (lp > 0) {
-        double *__restrict__ dst = &idx2(pol, 1, 0);
-        const double *__restrict__ src = &idx2(pol, 0, 0);
+        double t_exp_plus_1 = exp(-zetp * roffset * roffset);
+        double t_exp_plus_2 = exp(2 * zetp * roffset * dr);
+        for (int ig=0; ig >= lb_cube; ig--) {
+            const double rpg = (1 - ig) * dr - roffset;
+            t_exp_plus_1 *= t_exp_plus_2 * t_exp_1;
+            t_exp_plus_2 *= t_exp_2;
+            double pg = t_exp_plus_1;
+            // pg  = EXP(-zetp*rpg**2)
+            for (int icoef = 0; icoef <= lp; icoef++) {
+                idx2(pol, 1 - ig - lb_cube, icoef) = pg;
+                pg *= rpg;
+            }
+        }
+
+    } else {
+        initialize_tensor_2(&pol, lp + 1, 2 * cmax + 1);
+        pol.data = pol_;
+        /*
+         *   compute the values of all (x-xp)**lp*exp(..)
+         *
+         *  still requires the old trick:
+         *  new trick to avoid to many exps (reuse the result from the previous gridpoint):
+         *  exp( -a*(x+d)**2)=exp(-a*x**2)*exp(-2*a*x*d)*exp(-a*d**2)
+         *  exp(-2*a*(x+d)*d)=exp(-2*a*x*d)*exp(-2*a*d**2)
+         */
+
+        /* compute the exponential recursively and store the polynomial prefactors as well */
+        for (int ig = 0; ig >= lb_cube; ig--) {
+            const double rpg = ig * dr - roffset;
+            t_exp_min_1 *= t_exp_min_2 * t_exp_1;
+            t_exp_min_2 *= t_exp_2;
+            double pg = t_exp_min_1;
+            // pg  = EXP(-zetp*rpg**2)
+            /* for (int icoef=0; icoef <= lp; icoef++) { */
+            idx2(pol, 0, ig - lb_cube) = pg;
+            if (lp > 0)
+                idx2(pol, 1, ig - lb_cube) = rpg;
+            /* pg *= rpg; */
+            /* } */
+        }
+
+        for (int ig = 0; ig >= lb_cube; ig--) {
+            const double rpg = (1 - ig) * dr - roffset;
+            t_exp_plus_1 *= t_exp_plus_2 * t_exp_1;
+            t_exp_plus_2 *= t_exp_2;
+            double pg = t_exp_plus_1;
+            // pg  = EXP(-zetp*rpg**2)
+            /* for (int icoef = 0; icoef <= lp; icoef++) { */
+            idx2(pol, 0, 1 - ig - lb_cube) = pg;
+            if (lp > 0)
+                idx2(pol, 1, 1 - ig - lb_cube) = rpg;
+            /* pg *= rpg; */
+        /* } */
+        }
+
+        /* compute the remaining powers using previously computed stuff */
+        if (lp >= 2) {
+            double *__restrict__ poly = &idx2(pol, 1, 0);
+            double *__restrict__ src1 = &idx2(pol, 0, 0);
+            double *__restrict__ dst = &idx2(pol, 2, 0);
+//#pragma omp simd
 #pragma GCC ivdep
-        for (int ig = 0; ig <= 1 - 2 * lb_cube; ig++) {
-            dst[ig] *= src[ig];
+            for (int ig = 0; ig <= 1 - 2 * lb_cube; ig++)
+                dst[ig] = src1[ig] * poly[ig] * poly[ig];
+        }
+
+        for (int icoef = 3; icoef <= lp; icoef++) {
+            const double *__restrict__ poly = &idx2(pol, 1, 0);
+            const double *__restrict__ src1 = &idx2(pol, icoef - 1, 0);
+            double *__restrict__ dst = &idx2(pol, icoef, 0);
+//#pragma omp simd
+#pragma GCC ivdep
+            for (int ig = 0; ig <= 1 - 2 * lb_cube; ig++) {
+                dst[ig] = src1[ig] * poly[ig];
+            }
+        }
+
+        //
+        if (lp > 0) {
+            double *__restrict__ dst = &idx2(pol, 1, 0);
+            const double *__restrict__ src = &idx2(pol, 0, 0);
+#pragma GCC ivdep
+            for (int ig = 0; ig <= 1 - 2 * lb_cube; ig++) {
+                dst[ig] *= src[ig];
+            }
         }
     }
 }
@@ -1048,7 +992,10 @@ void compute_blocks(collocation_integration *const handler,
             for (int y = 0; y < cube_size[1]; y++, y1++) {
 
                 const int ymin = y1;
-                for (int y2 = y;((y1 < grid->size[1]) || (y1 < period[1])) && (y2 < cube_size[1]); y1++, y2++);
+                for (int y2 = y; ((y1 < grid->size[1]) ||
+                                  (y1 < period[1])) &&
+                         (y2 < cube_size[1]);
+                     y1++, y2++);
                 const int ymax = y1;
 
                 /*     // this is needed when the grid is distributed over several ranks. */
@@ -1056,42 +1003,62 @@ void compute_blocks(collocation_integration *const handler,
                 /*     continue; */
 
                 if (ymax - ymin > 0) {
-                    const int lower_corner[3] = {zmin,
-                                                 ymin,
-                                                 position[2]};
+                    int x1 = position[2];
+                    int x_offset = 0;
 
-                    const int upper_corner[3] = {zmax,
-                                                 ymax,
-                                                 position[2]};
+                    for (int x = 0; x < cube_size[2]; x++, x1++) {
 
-                    int position2[3]= {z_offset, y_offset, 0};
+                        const int xmin = x1;
+                        for (int x2 = x;
+                             ((x1 < grid->size[2]) || (x1 < period[2]))
+                                 &&
+                                 (x2 < cube_size[2]);
+                             x1++, x2++);
+                        const int xmax = x1;
 
-                    add_collocation_block(handler,
-                                          period,
-                                          cube_size,
-                                          position2, // starting position in the subgrid
-                                          lower_corner,
-                                          upper_corner,
-                                          Exp,
-                                          grid);
+                        if (xmax - xmin) {
+                            const int lower_corner[3] = {zmin,
+                                                         ymin,
+                                                         xmin};
 
+                            const int upper_corner[3] = {zmax,
+                                                         ymax,
+                                                         xmax};
+
+                            int position2[3]= {z_offset, y_offset, x_offset};
+
+                            add_collocation_block(handler,
+                                                  period,
+                                                  cube_size,
+                                                  position2, // starting position in the subgrid
+                                                  lower_corner,
+                                                  upper_corner,
+                                                  Exp,
+                                                  grid);
+
+                        }
+                        x_offset += xmax - xmin;
+                        x += xmax - xmin - 1;
+                        if (x1 == grid->size[2])
+                            x1 = -1;
+                    }
                     y_offset += (ymax - ymin);
                     /* this dimension of the grid is divided over several ranks */
-                    if (y1 == grid->size[1]) {
-                        y1 = - 1;
-                    }
-                    y = ymax - ymin - 1;
                 }
+                if (y1 == grid->size[1]) {
+                    y1 = - 1;
+                }
+                y += ymax - ymin - 1;
             }
-
-            /* this dimension of the grid is divided over several ranks */
-            if (z1 == grid->size[0]) {
-                z1 = -1;
-            }
-
-            z_offset += (zmax - zmin);
-            z = zmax - zmin - 1;
         }
+
+        /* this dimension of the grid is divided over several ranks */
+        if (z1 == grid->size[0]) {
+            z1 = -1;
+        }
+
+        z_offset += (zmax - zmin);
+        z += zmax - zmin - 1;
     }
 }
 
@@ -1198,6 +1165,7 @@ void apply_mapping_cubic(const int *lower_boundaries_cube,
                             int shift = offset[2];
                             for (int l = 0; l < loop_number[2]; l++) {
 //#pragma omp simd
+#pragma GCC unroll 4
 #pragma GCC ivdep
                                 for (int x = 0; x < grid->size[2]; x++)
                                     dst[x] += src[shift + x];
@@ -1205,6 +1173,7 @@ void apply_mapping_cubic(const int *lower_boundaries_cube,
                                 shift = offset[2] + (l + 1)  * period[2];
                             }
 //#pragma omp simd
+#pragma GCC unroll 4
 #pragma GCC ivdep
                             for (int x = 0; x < reminder[2]; x++)
                                 dst[x] += src[shift + x];
@@ -1253,7 +1222,6 @@ void grid_collocate_ortho(collocation_integration *const handler,
     int cube_size[3];
     int lb_cube[3], ub_cube[3];
     double roffset[3];
-    int* map[3];
     double disr_radius;
     /* cube : grid comtaining pointlike product between polynomials
      *
@@ -1264,7 +1232,8 @@ void grid_collocate_ortho(collocation_integration *const handler,
      */
 
     /* seting up the cube parameters */
-    int cmax = compute_cube_properties(radius,
+    int cmax = compute_cube_properties(true,
+                                       radius,
                                        dh,
                                        dh_inv,
                                        rp,
@@ -1308,41 +1277,15 @@ void grid_collocate_ortho(collocation_integration *const handler,
         }
     }
 
-    /* temporary restore the maping */
-
-/* #if defined(__LIBXSMM) */
-/*     // normally it is 2 * cmax + 1, but for alignment reason it is probably */
-/*     // better to align on 16 bytes */
-
-/*     map[0] =  libxsmm_aligned_scratch(sizeof(int) * 3 * (2 * cmax + 1), 0/\*auto-alignment*\/); */
-/*     map[1] = map[0] + (2 * cmax + 1); */
-/*     map[2] = map[1] + (2 * cmax + 1); */
-/* #else */
-/*     int map[3][2 * cmax + 1]; */
-/* #endif */
-/*     memset(map[0], 0, sizeof(int) * 3 * (2 * cmax + 1)); */
-
-/*     for (int i = 0; i < 3; i++) { */
-/*         grid_fill_map(periodic[i], */
-/*                       lb_cube[i], */
-/*                       ub_cube[i], */
-/*                       cubecenter[i], */
-/*                       lb_grid[i], */
-/*                       npts[i], */
-/*                       grid->size[i], */
-/*                       cmax, */
-/*                       map[i]); */
-/*     } */
-
 
     /* compute the polynomials */
 
     // WARNING : do not reverse the order in pol otherwise you will have to
     // reverse the order in collocate_dgemm as well.
 
-    grid_fill_pol(dh[0][0], roffset[2], lb_cube[2], handler->coef.size[2] - 1, cmax, zetp, &idx3(handler->pol, 2, 0, 0)); /* i indice */
-    grid_fill_pol(dh[1][1], roffset[1], lb_cube[1], handler->coef.size[1] - 1, cmax, zetp, &idx3(handler->pol, 1, 0, 0)); /* j indice */
-    grid_fill_pol(dh[2][2], roffset[0], lb_cube[0], handler->coef.size[0] - 1, cmax, zetp, &idx3(handler->pol, 0, 0, 0)); /* k indice */
+    grid_fill_pol(false, dh[0][0], roffset[2], lb_cube[2], handler->coef.size[2] - 1, cmax, zetp, &idx3(handler->pol, 2, 0, 0)); /* i indice */
+    grid_fill_pol(false, dh[1][1], roffset[1], lb_cube[1], handler->coef.size[1] - 1, cmax, zetp, &idx3(handler->pol, 1, 0, 0)); /* j indice */
+    grid_fill_pol(false, dh[2][2], roffset[0], lb_cube[0], handler->coef.size[0] - 1, cmax, zetp, &idx3(handler->pol, 0, 0, 0)); /* k indice */
 
     if (handler->sequential_mode) {
         collocate_core_rectangular(handler->scratch,
@@ -1366,6 +1309,139 @@ void grid_collocate_ortho(collocation_integration *const handler,
                        grid);
     }
 }
+
+// *****************************************************************************
+void grid_collocate_generic(collocation_integration *const handler,
+                            const double zetp,
+                            const double dh[3][3],
+                            const double dh_inv[3][3],
+                            const double rp[3],
+                            const int npts[3],
+                            const int lb_grid[3],
+                            const bool periodic[3],
+                            const double radius,
+                            tensor *grid)
+{
+
+    // *** position of the gaussian product
+    //
+    // this is the actual definition of the position on the grid
+    // i.e. a point rp(:) gets here grid coordinates
+    // MODULO(rp(:)/dr(:),npts(:))+1
+    // hence (0.0,0.0,0.0) in real space is rsgrid%lb on the rsgrid ((1,1,1) on grid)
+
+    // cubecenter(:) = FLOOR(MATMUL(dh_inv, rp))
+    int cubecenter[3];
+    int cube_size[3];
+    int lb_cube[3], ub_cube[3];
+    double roffset[3];
+    double disr_radius;
+    /* cube : grid comtaining pointlike product between polynomials
+     *
+     * pol : grid  containing the polynomials in all three directions
+     *
+     * pol_folded : grid containing the polynomials after folding for periodic
+     * boundaries conditions
+     */
+
+    /* seting up the cube parameters */
+    int cmax = compute_cube_properties(false,
+                                       radius,
+                                       dh,
+                                       dh_inv,
+                                       rp,
+                                       &disr_radius,
+                                       roffset,
+                                       cubecenter,
+                                       lb_cube,
+                                       ub_cube,
+                                       cube_size);
+
+    /* initialize the multidimensional array containing the polynomials */
+
+    initialize_tensor_3(&handler->pol, 3, handler->coef.size[0], 2 * cmax + 1);
+    handler->pol_alloc_size = realloc_tensor(handler->pol.data, handler->pol_alloc_size, handler->pol.alloc_size_,  (void **)&handler->pol.data);
+
+    initialize_tensor_3(&handler->Exp, 3, max(cube_size[0], cube_size[1]), max(cube_size[1], cube_size[2]));
+    handler->Exp_alloc_size = realloc_tensor(handler->Exp.data, handler->Exp_alloc_size, handler->Exp.alloc_size_, (void **)&handler->Exp.data);
+
+    /* allocate memory for the polynomial and the cube */
+
+    if (handler->sequential_mode) {
+        initialize_tensor_3(&handler->cube,
+                            cube_size[0],
+                            cube_size[1],
+                            cube_size[2]);
+
+        handler->cube_alloc_size = realloc_tensor(handler->cube.data, handler->cube_alloc_size, handler->cube.alloc_size_, (void **)&handler->cube.data);
+
+        size_t tmp1 = max(handler->T_alloc_size,
+                                 compute_memory_space_tensor_3(handler->coef.size[0] /* alpha */,
+                                                               handler->coef.size[1] /* gamma */,
+                                                               cube_size[1] /* j */));
+        size_t tmp2 = max(handler->W_alloc_size,
+                          compute_memory_space_tensor_3(handler->coef.size[1] /* gamma */ ,
+                                                        cube_size[1] /* j */,
+                                                        cube_size[2] /* i */));
+        if (((tmp1 + tmp2) > (handler->T_alloc_size + handler->W_alloc_size)) ||
+            (handler->scratch == NULL)) {
+            handler->T_alloc_size = tmp1;
+            handler->W_alloc_size = tmp2;
+            if (handler->scratch)
+                free(handler->scratch);
+            if (posix_memalign(&handler->scratch, 32, sizeof(double) * (tmp1 + tmp2)) != 0)
+                abort();
+        }
+    }
+
+    /* compute the polynomials */
+
+    // WARNING : do not reverse the order in pol otherwise you will have to
+    // reverse the order in collocate_dgemm as well.
+
+    double dx[3];
+
+    dx[2] = sqrt(dh[0][0] * dh[0][0] + dh[0][1] * dh[0][1] + dh[0][2] * dh[0][2]);
+    dx[1] = sqrt(dh[1][0] * dh[1][0] + dh[1][1] * dh[1][1] + dh[1][2] * dh[1][2]);
+    dx[0] = sqrt(dh[2][0] * dh[2][0] + dh[2][1] * dh[2][1] + dh[2][2] * dh[2][2]);
+
+    grid_fill_pol(false, dx[0], roffset[0], lb_cube[0], handler->coef.size[0] - 1, cmax, zetp, &idx3(handler->pol, 0, 0, 0)); /* k indice */
+    grid_fill_pol(false, dx[1], roffset[1], lb_cube[1], handler->coef.size[1] - 1, cmax, zetp, &idx3(handler->pol, 1, 0, 0)); /* j indice */
+    grid_fill_pol(false, dx[2], roffset[2], lb_cube[2], handler->coef.size[2] - 1, cmax, zetp, &idx3(handler->pol, 2, 0, 0)); /* i indice */
+
+    calculate_non_orthorombic_corrections_tensor(zetp,
+                                                 roffset,
+                                                 dh,
+                                                 handler->cube.size,
+                                                 &handler->Exp);
+
+    /* Use a slightly modified version of Ole code */
+    grid_transform_coef_xyz_to_ijk(dh, dh_inv, &handler->coef);
+
+    if (handler->sequential_mode) {
+        collocate_core_rectangular(handler->scratch,
+                                   // pointer to scratch memory
+                                   1.0,
+                                   &handler->coef,
+                                   &handler->pol,
+                                   &handler->cube);
+
+        apply_non_orthorombic_corrections(&handler->Exp, &handler->cube);
+        /* apply_mapping(disr_radius, dh, dh_inv, map, lb_cube, &handler->cube, cmax, grid); */
+
+        apply_mapping_cubic(lb_cube, cubecenter, npts, &handler->cube, lb_grid, grid);
+    } else {
+        compute_blocks(handler,
+                       lb_cube,
+                       cube_size,
+                       cubecenter,
+                       npts,
+                       NULL,
+                       lb_grid,
+                       grid);
+    }
+}
+
 
 // *****************************************************************************
 static void grid_collocate_general(const int lp,
@@ -1395,13 +1471,13 @@ static void grid_collocate_general(const int lp,
 
     //TODO really needed?
     //coef_map = HUGE(coef_map)
-    for (int lzp=0; lzp<=lp; lzp++) {
-        for (int lyp=0; lyp<=lp; lyp++) {
-            for (int lxp=0; lxp<=lp; lxp++) {
-                coef_map[lzp][lyp][lxp] = INT_MAX;
-            }
-        }
-    }
+    /* for (int lzp=0; lzp<=lp; lzp++) { */
+    /*     for (int lyp=0; lyp<=lp; lyp++) { */
+    /*         for (int lxp=0; lxp<=lp; lxp++) { */
+    /*             coef_map[lzp][lyp][lxp] = INT_MAX; */
+    /*         } */
+    /*     } */
+    /* } */
 
     int lxyz = 0;
     for (int lzp=0; lzp<=lp; lzp++) {
@@ -1695,7 +1771,7 @@ void grid_collocate_internal(collocation_integration *const handler,
     // (current implementation is l**7)
     //
 
-    /* precuationary tail since I probably intitialize data to NULL when I
+    /* precautionary tail since I probably intitialize data to NULL when I
      * initialize a new tensor. I want to keep the memory (I put a ridiculous
      * amount already) */
 
@@ -1733,18 +1809,20 @@ void grid_collocate_internal(collocation_integration *const handler,
     //   contiguous memory access in collocate_fast.F
     //
 
+    // coef[x][z][y]
+    grid_prepare_coef(use_ortho,
+                      lmax_prep,
+                      lmin_prep,
+                      lp,
+                      prefactor,
+                      &handler->alpha,
+                      pab_prep,
+                      &handler->coef);
+
     if (use_ortho) {
         const int period[3] = {npts[2], npts[1], npts[0]};
         const int lb_grid_bis[3] = {lb_grid[2], lb_grid[1], lb_grid[0]};
         const bool periodic_bis[3] = {periodic[2], periodic[1], periodic[0]};
-        // coef[x][z][y]
-        grid_prepare_coef_ortho(lmax_prep,
-                                lmin_prep,
-                                lp,
-                                prefactor,
-                                &handler->alpha,
-                                pab_prep,
-                                &handler->coef);
 
         grid_collocate_ortho(handler,
                              zetp,
@@ -1758,14 +1836,6 @@ void grid_collocate_internal(collocation_integration *const handler,
                              grid);
     } else {
 
-        // coef[x][z][y]
-        grid_prepare_coef(lmax_prep,
-                          lmin_prep,
-                          lp,
-                          prefactor,
-                          &handler->alpha,
-                          pab_prep,
-                          &handler->coef);
 // initialy cp2k stores coef_xyz as coef[z][y][x]. this is fine but I
         // need them to be stored as
 
@@ -1785,40 +1855,6 @@ void grid_collocate_internal(collocation_integration *const handler,
     }
 }
 
-void integrate_ortho(const int la_max,
-                     const int la_min,
-                     const int lb_max,
-                     const int lb_min,
-                     const double zeta,
-                     const double zetb,
-                     const double dh[3][3],
-                     const double dh_inv[3][3],
-                     const double ra[3],
-                     const double rab[3],
-                     const int npts[3],
-                     const int ngrid[3],
-                     const int lb_grid[3],
-                     const bool periodic[3],
-                     double *const grid_,
-                     double *coef_xyz)
-{
-    int lmax[2] = {la_max, lb_max};
-    int lmin[2] = {la_min, lb_min};
-    tensor grid;
-    initialize_tensor_3(&grid, ngrid[2], ngrid[1], ngrid[0]);
-    grid.ld_ = ngrid[0];
-    grid.data = grid_;
-
-    const double zetp = zeta + zetb;
-    const double f = zetb / zetp;
-    const double rab2 = rab[0] * rab[0] + rab[1] * rab[1] + rab[2] * rab[2];
-    const double prefactor = /* rscale * */ exp(-zeta * f * rab2);
-    double rp[3], rb[3];
-    for (int i=0; i<3; i++) {
-        rp[i] = ra[i] + f * rab[i];
-        rb[i] = ra[i] + rab[i];
-    }
-}
 
 // *****************************************************************************
 void grid_collocate_pgf_product_cpu(void *const handle,

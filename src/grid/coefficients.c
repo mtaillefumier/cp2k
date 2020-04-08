@@ -91,6 +91,7 @@ void grid_prepare_coef(const bool ortho,
                 }
             }
             if (ortho) {
+                /* I need to permute two fo the indices for the orthogonal case */
                 for (int lzp = 0; lzp<=lza+lzb; lzp++) {
                     for (int lyp = 0; lyp<=lp-lza-lzb; lyp++) {
                         for (int lxp = 0; lxp<=lp-lza-lzb-lyp; lxp++) {
@@ -322,8 +323,7 @@ void compute_compact_polynomial_coefficients(const tensor *coef,
                                 const int l2 = g2 + a2 + b2;
                                 if ((l2 >= lmin[1]) && (l2 <=lmax[1])) {
                                     const int i_g = g1 * (lmax[1] + 1) + g2;
-                                    const int i2 = coef_offset_[1] +
-                                        return_linear_index_from_exponents(a2, b2, g2);
+                                    const int i2 = coef_offset_[1] + return_linear_index_from_exponents(a2, b2, g2);
                                     idx3(coef_tmp, i_b, i_a, i_g) += src[i2];
                                 }
                             }
@@ -352,22 +352,111 @@ inline double return_multimonial_prefactor(const int l, const int m, int *const 
         idx3(power[0], *beta, dir, 2);
 }
 
+/* this function computes the coefficients initially expressed in the cartesian
+ * space to the grid space. It is inplane */
+
+void grid_transform_coef_xyz_to_ijk(const double dh[3][3],
+                                    const double dh_inv[3][3],
+                                    const tensor *coef_xyz)
+{
+    const int lp = coef_xyz->size[0] - 1;
+    tensor coef_ijk;
+    tensor hmatgridp;
+
+    initialize_tensor_3(&coef_ijk, coef_xyz->size[0], coef_xyz->size[1], coef_xyz->size[2]);
+
+    if(posix_memalign((void **)&coef_ijk.data, 32, sizeof(double) * coef_xyz->alloc_size_) != 0)
+        abort();
+
+    memset(coef_ijk.data, 0, sizeof(double) * coef_xyz->alloc_size_);
+    initialize_tensor_3(&hmatgridp, coef_xyz->size[0], 3, 3);
+
+    posix_memalign((void **)&hmatgridp.data, 32, sizeof(double) * hmatgridp.alloc_size_);
+
+    /* int coef_map[coef_xyz.size[0]][coef_xyz.size[1]][coef_xyz.size[2]]; */
+
+    /* int lxyz = 0; */
+    /* for (int lzp=0; lzp<=lp; lzp++) { */
+    /*     for (int lyp=0; lyp<=lp-lzp; lyp++) { */
+    /*         for (int lxp=0; lxp<=lp-lzp-lyp; lxp++) { */
+    /*             coef_map[lzp][lyp][lxp] = ++lxyz; */
+    /*         } */
+    /*     } */
+    /* } */
+
+    // transform using multinomials
+    for (int i=0; i<3; i++) {
+        for (int j=0; j<3; j++) {
+            idx3(hmatgridp, 0, j, i) = 1.0;
+            for (int k=1; k<=lp; k++) {
+                idx3(hmatgridp, k, j, i) = idx3(hmatgridp, k - 1, j, i) * dh[j][i];
+            }
+        }
+    }
+
+    /* // zero coef_ijk */
+    /* const int ncoef_ijk = ((lp+1)*(lp+2)*(lp+3))/6; */
+    /* double coef_ijk[ncoef_ijk]; */
+    /* for (int i=0; i<ncoef_ijk; i++) { */
+    /*     coef_ijk[i] = 0.0; */
+    /* } */
+
+    const int lpx = lp;
+    for (int klx=0; klx<=lpx; klx++) {
+        for (int jlx=0; jlx<=lpx-klx; jlx++) {
+            for (int ilx=0; ilx<=lpx-klx-jlx; ilx++) {
+                const int lx = ilx + jlx + klx;
+                const int lpy = lp - lx;
+                for (int kly=0; kly<=lpy; kly++) {
+                    for (int jly=0; jly<=lpy-kly; jly++) {
+                        for (int ily=0; ily<=lpy-kly-jly; ily++) {
+                            const int ly = ily + jly + kly;
+                            const int lpz = lp - lx - ly;
+                            for (int klz=0; klz<=lpz; klz++) {
+                                for (int jlz=0; jlz<=lpz-klz; jlz++) {
+                                    for (int ilz=0; ilz<=lpz-klz-jlz; ilz++) {
+                                        const int lz = ilz + jlz + klz;
+                                        const int il = ilx + ily + ilz;
+                                        const int jl = jlx + jly + jlz;
+                                        const int kl = klx + kly + klz;
+                                        //const int lijk= coef_map[kl][jl][il];
+                                        idx3(coef_ijk, kl, jl, il) += idx3(coef_xyz[0], lz, ly, lx) *
+                                            idx3(hmatgridp, ilx, 0, 0) * idx3(hmatgridp, jlx, 1, 0) * idx3(hmatgridp, klx, 2, 0) *
+                                            idx3(hmatgridp, ily, 0, 1) * idx3(hmatgridp, jly, 1, 1) * idx3(hmatgridp, kly, 2, 1) *
+                                            idx3(hmatgridp, ilz, 0, 2) * idx3(hmatgridp, jlz, 1, 2) * idx3(hmatgridp, klz, 2, 2) *
+                                            fac[lx] * fac[ly] * fac[lz] /
+                                            (fac[ilx] * fac[ily] * fac[ilz] * fac[jlx] * fac[jly] * fac[jlz] * fac[klx] * fac[kly] * fac[klz]);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    memcpy(coef_xyz->data, coef_ijk.data, sizeof(double) * coef_ijk.alloc_size_);
+    free(coef_ijk.data);
+    free(hmatgridp.data);
+}
+
 /* // ***************************************************************************** */
-void grid_prepare_coef_generic(const int *lmax,
-                               const int *lmin,
-                               const int lp,
-                               const double prefactor,
-                               const double dh[3][3],
-                               const tensor *coef_xyz,
-                               const tensor *coef_non_ortho) //[lp+1][lp+1][lp+1]
+void grid_transform_coef_xyz_to_ijk_variant(const double dh[3][3],
+                                            const double dh_inv[3][3],
+                                            const tensor *coef_xyz)
 {
 
     tensor power;
+    tensor coef_ijk;
 
+    initialize_tensor_3(&coef_ijk, coef_xyz->size[0], coef_xyz->size[1], coef_xyz->size[2]);
+    posix_memalign((void **)&coef_ijk.data, 32, sizeof(double) * coef_xyz->alloc_size_);
+    memset(coef_ijk.data, 0, sizeof(double) * coef_xyz->alloc_size_);
 
     initialize_tensor_3(&power, coef_xyz->size[0], 3, 3);
 
-    posix_memalign(&power.data, 32, power.alloc_size_ * sizeof(double));
+    posix_memalign((void **)&power.data, 32, power.alloc_size_ * sizeof(double));
 
     idx3(power, 0, 0, 0) = 1.0;
     idx3(power, 0, 0, 1) = 1.0;
@@ -413,7 +502,7 @@ void grid_prepare_coef_generic(const int *lmax,
                         for (int l3 = 0; l3 < return_length_l(b1); l3++) {
                             int alpha_part3, gamma_part3, beta_part3;
                             const double multinomial3 = return_multimonial_prefactor(b1, l3, &alpha_part3, &gamma_part3, &beta_part3, &power, 1);
-                            idx3(coef_non_ortho[0], a1, g1, b1) += multinomial3 *
+                            idx3(coef_ijk, a1, g1, b1) += multinomial3 *
                                 multinomial2 *
                                 multinomial1 *
                                 idx3(coef_xyz[0],
@@ -426,7 +515,10 @@ void grid_prepare_coef_generic(const int *lmax,
             }
         }
     }
+
+    memcpy(coef_xyz->data, coef_ijk.data, sizeof(double) * coef_ijk.alloc_size_);
     free(power.data);
+    free(coef_ijk.data);
 }
 
 
@@ -438,7 +530,7 @@ void compute_two_gaussian_coefficients(const tensor *const coef,
     tensor power;
 
     initialize_tensor_4(&power, 2, 3, lmax[0] + lmax[1] + 1, lmax[0] + lmax[1] + 1);
-    posix_memalign(power.data, 32, sizeof(double) * power.alloc_size_);
+    posix_memalign((void **)&power.data, 32, sizeof(double) * power.alloc_size_);
 
     for (int dir = 0; dir < 3; dir++) {
         double tmp = rab[dir] - ra[dir];
@@ -472,7 +564,7 @@ void compute_two_gaussian_coefficients(const tensor *const coef,
 
     }
 
-    /* We can also do that dgemm actually. Use of collocate seems possible */
+    /* We can also use dgemm actually. Use of collocate seems possible */
 
 
     for (int l1 = lmin[0]; l1 <= lmax[0]; l1++) {

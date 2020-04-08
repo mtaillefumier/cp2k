@@ -9,7 +9,7 @@ grid_collocate_replay.o: grid_collocate_cpu.o
 %.o: %.c
 	$(CC) -c $(CFLAGS) $<
 
-grid_collocate_miniapp.x: grid_collocate_miniapp.o grid_collocate_replay.o grid_collocate_cpu.o grid_prepare_pab.o tmp.o utils.o thpool.o
+grid_collocate_miniapp.x: grid_collocate_miniapp.o grid_collocate_replay.o grid_collocate_cpu.o grid_prepare_pab.o utils.o thpool.o coefficients.o grid_integrate_cpu.o
 	$(CC) $(CFLAGS) -o $@ $^ -lxsmmnoblas -lxsmm -lmkl_rt -lm
 
 clean:
