@@ -220,60 +220,44 @@ void extract_cube(const int *lower_boundaries_cube,
 
     int z1 = position[0];
     int z_offset = 0;
+    int lower_corner[3];
+    int upper_corner[3];
     for (int z = 0; (z < cube->size[0]); z++, z1++) {
-
-        const int zmin = z1;
-        for (int z2 = z;((z1 < grid->size[0]) || (z1 < period[0])) && (z2 < cube->size[0]); z1++, z2++);
-        const int zmax = z1 /* + (z1 == (grid->size[0] - 1)) */;
+        /* see utils.h */
+        lower_corner[0] = z1;
+        upper_corner[0] = compute_next_boundaries(&z1, z, grid->size[0], period[0], cube->size[0]);
 
         /* // We have a full plane. */
-        if (zmax - zmin) {
+        if (upper_corner[0] - lower_corner[0]) {
             int y1 = position[1];
             int y_offset = 0;
             for (int y = 0; y < cube->size[1]; y1++, y++) {
-                const int ymin = y1;
+                /* see utils.h */
+                lower_corner[1] = y1;
+                upper_corner[1] = compute_next_boundaries(&y1, y, grid->size[1], period[1], cube->size[1]);
 
-                for (int y2 = y;((y1 < grid->size[1]) ||
-                                 (y1 < period[1])) &&
-                         (y2 < cube->size[1]);
-                     y1++, y2++);
+                if (upper_corner[1] - lower_corner[1]) {
 
-                const int ymax = y1;
-
-                if (ymax - ymin) {
-
-                    if ((zmin > grid->size[0]) || (zmax > grid->size[0]) || (ymin > grid->size[1]) || (ymax > grid->size[1])) {
+                    if ((upper_corner[0] > grid->size[0]) ||
+                        (upper_corner[0] > grid->size[0]) ||
+                        (lower_corner[1] > grid->size[1]) ||
+                        (upper_corner[1] > grid->size[1])) {
                         printf("Problem with the subblock boundaries. Some of them are outside the grid\n");
                         printf("Grid size     : %d %d %d\n", grid->size[0], grid->size[1], grid->size[2]);
                         printf("Grid lb_grid  : %d %d %d\n", lb_grid[0], lb_grid[1], lb_grid[2]);
-                        printf("zmin-zmax     : %d %d\n", zmin, zmax);
-                        printf("ymin-ymax     : %d %d\n", ymin, ymax);
+                        printf("zmin-zmax     : %d %d\n", lower_corner[0], upper_corner[0]);
+                        printf("ymin-ymax     : %d %d\n", lower_corner[1], upper_corner[1]);
                         printf("Cube position : %d %d %d\n", position[0], position[1], position[2]);
                         abort();
                     }
 
                     int x1 = position[2];
                     int x_offset = 0;
-
                     for (int x = 0; x < cube->size[2]; x++, x1++) {
-
-                        const int xmin = x1;
-                        for (int x2 = x;
-                             ((x1 < grid->size[2]) || (x1 < period[2]))
-                                 &&
-                                 (x2 < cube->size[2]);
-                             x1++, x2++);
-                        const int xmax = x1;
-
-                        if (xmax - xmin) {
-                            const int lower_corner[3] = {zmin,
-                                                         ymin,
-                                                         xmin};
-
-                            const int upper_corner[3] = {zmax,
-                                                         ymax,
-                                                         xmax};
-
+                        /* see utils.h */
+                        lower_corner[2] = x1;
+                        upper_corner[2] = compute_next_boundaries(&x1, x, grid->size[2], period[2], cube->size[2]);
+                        if (upper_corner[2] - lower_corner[2]) {
                             int position2[3]= {z_offset, y_offset, x_offset};
 
                             extract_sub_grid(lower_corner,
@@ -283,22 +267,12 @@ void extract_cube(const int *lower_boundaries_cube,
                                              cube);
 
                         }
-                        x_offset += xmax - xmin;
-                        x += xmax - xmin - 1;
-                        if (x1 == grid->size[2])
-                            x1 = -1;
+                        update_loop_index(lower_corner[2], upper_corner[2], grid->size[2], period[2], &x_offset, &x, &x1);
                     }
-                    if (y1 == grid->size[1])
-                        y1 = -1;
-
-                    y_offset += (ymax - ymin);
-                    y += ymax - ymin - 1;
                 }
+                update_loop_index(lower_corner[1], upper_corner[1], grid->size[1], period[1], &y_offset, &y, &y1);
             }
-            if (z1 == grid->size[0])
-                z1 = -1;
-            z_offset += (zmax - zmin);
-            z += zmax - zmin - 1;
         }
+        update_loop_index(lower_corner[0], upper_corner[0], grid->size[0], period[0], &z_offset, &z, &z1);
     }
 }
