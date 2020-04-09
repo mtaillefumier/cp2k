@@ -23,7 +23,6 @@
 #include "grid_collocate_cpu.h"
 #include "grid_prepare_pab.h"
 #include "grid_common.h"
-#include "tensor_local.h"
 #include "collocation_integration.h"
 #include "utils.h"
 #include "coefficients.h"
@@ -100,421 +99,6 @@ void add_collocation_block(struct collocation_integration_ *const handle,
 void release_collocation_block_memory(struct collocation_list_ *const list_collocation);
 void calculate_collocation(void *const list_);
 
-/*
- * create a collocation list of a fixed number of elements
- * first parameter : number of elements in the list
- * second parameter : do we integrate or collocate. For integration a local copy
- * of the grid might be stored for convenience
- */
-collocation_list *create_collocation_list(const int num_elem, const int integration)
-{
-    struct collocation_list_ *list = (struct collocation_list_ *) malloc(sizeof(struct collocation_list_));
-    list->total_number_of_elements_ = num_elem;
-
-    list->list = (struct collocation_block_ *) malloc(sizeof(struct collocation_block_) * list->total_number_of_elements_);
-
-    memset(list->list, 0, sizeof(struct collocation_block_) * list->total_number_of_elements_);
-
-    if (!list->list)
-        abort();
-
-    list->number_of_elements_ = 0;
-    list->first_round = true;
-    list->done = 0;
-    list->cube_alloc_size = 0;
-    list->alpha_alloc_size = 0;
-    list->coef_alloc_size = 0;
-    list->pol_alloc_size = 0;
-    list->T_alloc_size = 0;
-    list->W_alloc_size = 0;
-    list->scratch_size = 0;
-    list->scratch = NULL;
-    list->integration = integration;
-    return list;
-}
-
-void destroy_collocation_list(struct collocation_list_ *list_collocation)
-{
-    if (list_collocation != NULL) {
-        free(list_collocation->list);
-        free(list_collocation->scratch);
-        free(list_collocation);
-    }
-}
-
-void print_collocation_block(const struct collocation_block_ *const list)
-{
-    if (!list)
-        abort();
-    printf("-------------------------\n\n");
-    printf("pol address  : %p\n\n", (void*)list->pol.data);
-
-    printf("-------------------------\n\n");
-    printf("Cube address : %p\n", list->cube.data);
-    printf("Cube offset  : %d %d %d\n", list->position_inside_cube[0], list->position_inside_cube[1], list->position_inside_cube[2]);
-    printf("cube size    : %d %d %d\n", list->cube.size[0], list->cube.size[1], list->cube.size[2]);
-    printf("-------------------------\n\n");
-    printf("grid info\n");
-    printf("grid size    : %d %d %d\n", list->grid.size[0], list->grid.size[1], list->grid.size[2]);
-    printf("lower corner : %d %d %d\n", list->lower_corner[0], list->lower_corner[1], list->lower_corner[2]);
-    printf("upper corner : %d %d %d\n", list->upper_corner[0], list->upper_corner[1], list->upper_corner[2]);
-}
-
-void *print_collocation_list(void *const handler)
-{
-    struct collocation_list_ *list = (struct collocation_list_*)handler;
-
-    if (list->number_of_elements_ == 0)
-        return NULL;
-
-    if (list->done)
-        return NULL;
-
-    printf("list block              %p\n", list);
-    printf("list number of elements %d\n", list->number_of_elements_);
-    for (int l = 0; l < list->number_of_elements_; l++){
-        printf("block %d\n", l);
-        print_collocation_block(list->list + l);
-    }
-
-    return NULL;
-}
-
-void mark_collocation_new_pair(struct collocation_integration_ *const handler)
-{
-    if(handler == NULL) {
-        abort();
-    }
-
-
-    struct collocation_list_ *list_collocation = handler->current_list;
-
-    if (handler->current_list == NULL) {
-        list_collocation = handler->list[0];
-    }
-
-    if (list_collocation->number_of_elements_ < list_collocation->total_number_of_elements_) {
-        struct collocation_block_ *list = &list_collocation->list[list_collocation->number_of_elements_];
-        list->new_gaussian_pair_ = true;
-    }
-}
-
-void add_collocation_block(struct collocation_integration_ *const handler,
-                           const int *period,
-                           const int *cube_size,
-                           const int *position_inside_cube,
-                           const int *lower_corner,
-                           const int *upper_corner,
-                           const tensor *Exp,
-                           tensor *grid)
-{
-    int position1[3];
-    if (position_inside_cube) {
-        position1[0] = position_inside_cube[0];
-        position1[1] = position_inside_cube[1];
-        position1[2] = position_inside_cube[2];
-    } else {
-        position1[0] = 0;
-        position1[1] = 0;
-        position1[2] = 0;
-    }
-
-    struct collocation_list_ *list_collocation = handler->current_list;
-
-    if (list_collocation == NULL) {
-        /* It means that the two queues are empty */
-        handler->current_list = handler->list[0];
-        handler->working_thread = 0;
-        list_collocation = handler->current_list;
-        handler->list[0]->first_round = false;
-        handler->list[1]->first_round = true;
-        handler->list[1]->cube_alloc_size = 0;
-        handler->list[0]->cube_alloc_size = 0;
-    }
-
-    if (list_collocation->number_of_elements_ == list_collocation->total_number_of_elements_) {
-        /* the list of blocks is full. Two steps
-         *
-         * 1) wait for the thread pool to finish currently processed jobs. If
-         * the list is small for instance, it might take more time to process is
-         * than to create it. So we have to wait before switching
-
-         * 2) start the new one
-         * 3) swap the working lists
-         */
-
-        /* step one : wait */
-        if (!handler->sequential_mode) {
-            thpool_wait(handler->thpool);
-
-            /* do not permute the two lines because otherwise the code waits for the */
-            /*        two queues to finish */
-
-            /*            step two */
-            /* allocate new table for the coefficients because the memory is
-             * freed inside calculate_collocation. So we can have an invalid
-             * pointer sometimes when the blocks of a given gaussian set are
-             * distributed over two lists. Basically it is a corner case */
-            thpool_add_work(handler->thpool, (void*)calculate_collocation, (void*)list_collocation);
-        } else {
-            calculate_collocation(list_collocation);
-        }
-
-        handler->working_thread++;
-
-
-        /* we only have two lists */
-        if (list_collocation == handler->list[0]) {
-            /* work is done in the second list. We can use it for storing the block */
-            handler->current_list = handler->list[1];
-            handler->list[1]->done = false;
-            handler->list[1]->first_round = false;
-            handler->list[1]->list[0].new_gaussian_pair_ = true;
-        } else {
-            /* work is done in the first list. We can use it for storing the block */
-            handler->current_list = handler->list[0];
-            handler->list[0]->done = false;
-            handler->list[0]->first_round = false;
-            /* the first element is indicated as a new gaussian pair. It might
-             * involve recomputing the cube but it avoids interference between
-             * the two lists */
-            handler->list[0]->list[0].new_gaussian_pair_ = true;
-            handler->list[0]->T_alloc_size = 0;
-            handler->list[0]->W_alloc_size = 0;
-        }
-
-        /* again do not permute this. It should be last */
-        list_collocation = handler->current_list;
-        list_collocation->cube_alloc_size = 0;
-    }
-
-    struct collocation_block_ *list = &list_collocation->list[list_collocation->number_of_elements_];
-
-    list->period[0] = period[0];
-    list->period[1] = period[1];
-    list->period[2] = period[2];
-
-/* starting point for the polynomials */
-    list->position_inside_cube[0] = position1[0];
-    list->position_inside_cube[1] = position1[1];
-    list->position_inside_cube[2] = position1[2];
-
-    list->lower_corner[0] = lower_corner[0];
-    list->lower_corner[1] = lower_corner[1];
-    list->lower_corner[2] = lower_corner[2];
-
-    list->upper_corner[0] = upper_corner[0];
-    list->upper_corner[1] = upper_corner[1];
-    list->upper_corner[2] = upper_corner[2];
-
-    list->Exp.data = NULL;
-    list->pol.data = NULL;
-    list->cube.data = NULL;
-    list->coefs.data = NULL;
-    /* I do not allocate memory yet. It will be done when we do the actual calculations */
-    initialize_tensor_3(&list->cube,
-                        cube_size[0],
-                        cube_size[1],
-                        cube_size[2]);
-
-    /* compute the size of the largest cube */
-    list_collocation->cube_alloc_size = max(list_collocation->cube_alloc_size, list->cube.alloc_size_);
-
-    if (list->new_gaussian_pair_) {
-        initialize_tensor_3(&list->coefs, handler->coef.size[0], handler->coef.size[1], handler->coef.size[2]);
-
-        posix_memalign((void **)&list->coefs.data, 64, sizeof(double) * handler->coef.alloc_size_);
-        memcpy(list->coefs.data, handler->coef.data, sizeof(double) * handler->coef.alloc_size_);
-
-
-        if (Exp != NULL) {
-            initialize_tensor_3(&list->Exp, Exp->size[0], Exp->size[1], Exp->size[2]);
-            posix_memalign((void **)&list->Exp.data, 64, sizeof(double) * Exp->alloc_size_);
-            memcpy(list->Exp.data, Exp->data, sizeof(double) * Exp->alloc_size_);
-        }
-
-        initialize_tensor_3(&list->pol,
-                            handler->pol.size[0],
-                            handler->pol.size[1],
-                            handler->pol.size[2]);
-        posix_memalign((void **)&list->pol.data, 64, sizeof(double) * handler->pol.alloc_size_);
-        memcpy(list->pol.data, handler->pol.data, sizeof(double) * handler->pol.alloc_size_);
-
-        /* It is for the second variant of collocate_dgemm only three dgemm */
-        list_collocation->T_alloc_size = max(list_collocation->T_alloc_size,
-                                             compute_memory_space_tensor_3(handler->coef.size[0] /* alpha */,
-                                                                           handler->coef.size[1] /* gamma */,
-                                                                           cube_size[1] /* j */));
-
-        list_collocation->W_alloc_size = max(list_collocation->W_alloc_size,
-                                             compute_memory_space_tensor_3(handler->coef.size[1] /* gamma */ ,
-                                                                           cube_size[1] /* j */,
-                                                                           cube_size[2] /* i */));
-
-        handler->W_alloc_size = max(handler->W_alloc_size, list_collocation->W_alloc_size);
-        handler->T_alloc_size = max(handler->T_alloc_size, list_collocation->T_alloc_size);
-    }
-
-    /* we could put that in handle ? */
-    initialize_tensor_3(&list->grid, grid->size[0], grid->size[1], grid->size[2]);
-    list->grid.data = grid->data;
-    list->initialized_ = 1;
-    list_collocation->number_of_elements_++;
-}
-
-void *collocate_create_handle(const int device_id, const int number_of_gaussian, const bool sequential_mode)
-{
-    struct collocation_integration_ *handle = NULL;
-    handle = (struct collocation_integration_ *) malloc(sizeof(struct collocation_integration_));
-
-    if (handle == NULL) {
-        abort();
-    }
-
-    memset(handle, 0, sizeof(struct collocation_integration_));
-    handle->gpu_id = device_id;
-
-    handle->sequential_mode = sequential_mode;
-
-    if (!handle->sequential_mode)
-        handle->thpool = thpool_init(1);
-
-    handle->list[0] = create_collocation_list(number_of_gaussian, 0);
-    handle->list[1] = create_collocation_list(number_of_gaussian, 0);
-    handle->number_of_gaussian = number_of_gaussian;
-    handle->list[0]->initialized_ = 0;
-    handle->list[1]->initialized_ = 0;
-    handle->list[0]->done = 0;
-    handle->list[1]->done = 0;
-    handle->list[0]->number_of_elements_ = 0;
-    handle->list[1]->number_of_elements_ = 0;
-    handle->current_list = NULL;
-    handle->working_thread = 0;
-    handle->alpha.data = NULL;
-    handle->coef.data = NULL;
-    handle->cube.data = NULL;
-    handle->pol.data = NULL;
-    handle->coef_alloc_size = 0;
-    handle->alpha_alloc_size = 0;
-    handle->cube_alloc_size = 0;
-    handle->pol_alloc_size = 0;
-    handle->T_alloc_size = 0;
-    handle->W_alloc_size = 0;
-    handle->scratch = NULL;
-    return (void*)handle;
-}
-
-void collocate_synchronize(void *gaussian_handler)
-{
-    if (gaussian_handler == NULL) {
-        abort();
-    }
-
-    struct collocation_integration_ *handler = (struct collocation_integration_ *)gaussian_handler;
-
-    if (handler == NULL) {
-        abort();
-    }
-
-    if (handler->sequential_mode)
-        return;
-
-    thpool_wait(handler->thpool);
-
-    if ((handler->list[0]->number_of_elements_ > 0) && (!handler->list[0]->done)) {
-        calculate_collocation(handler->list[0]);
-    }
-
-    if ((handler->list[1]->number_of_elements_ > 0) && (!handler->list[1]->done)) {
-        calculate_collocation(handler->list[1]);
-    }
-}
-
-void collocate_finalize(void *gaussian_handle)
-{
-    collocate_synchronize(gaussian_handle);
-    struct collocation_integration_ *handle = (struct collocation_integration_ *)gaussian_handle;
-
-    destroy_collocation_list(handle->list[0]);
-    destroy_collocation_list(handle->list[1]);
-
-    free(handle->alpha.data);
-    free(handle->coef.data);
-
-    /* release the thread pool */
-    if (!handle->sequential_mode)
-        thpool_destroy(handle->thpool);
-
-    free(handle->scratch);
-    free(handle->pol.data);
-    free(handle->cube.data);
-
-    handle->alpha.data = NULL;
-    handle->coef.data = NULL;
-    free(handle);
-
-    handle = NULL;
-}
-
-void calculate_collocation(void *const in)
-{
-    struct collocation_list_ *const list_ = (struct collocation_list_ *)in;
-
-    if (list_->scratch == NULL) {
-        list_->scratch_size = list_->cube_alloc_size + list_->T_alloc_size + list_->W_alloc_size;
-        posix_memalign((void **)&list_->scratch, 64, sizeof(double) * list_->scratch_size);
-    }
-
-    if (list_->scratch_size < (list_->cube_alloc_size + list_->T_alloc_size + list_->W_alloc_size))
-    {
-        list_->scratch_size = list_->cube_alloc_size + list_->T_alloc_size + list_->W_alloc_size;
-        free(list_->scratch);
-        posix_memalign((void **)&list_->scratch, 64, sizeof(double) * list_->scratch_size);
-    }
-
-    for (int i = 0; i < list_->number_of_elements_; i++) {
-
-        /* print_collocation_block(list_->list + i); */
-
-        list_->list[i].cube.data = list_->scratch;
-
-        if (list_->list[i].new_gaussian_pair_) {
-            collocate_core_rectangular(list_->scratch + list_->list[i].cube.alloc_size_,
-                                       1.0,
-                                       &list_->list[i].coefs,
-                                       &list_->list[i].pol,
-                                       &list_->list[i].cube);
-
-
-            free(list_->list[i].pol.data);
-            free(list_->list[i].coefs.data);
-            if (list_->list[i].Exp.data) {
-
-                // Well self explanatory
-                apply_non_orthorombic_corrections(&list_->list[i].Exp,
-                                                  &list_->list[i].cube);
-
-                free(list_->list[i].Exp.data);
-            }
-            list_->list[i].Exp.data = NULL;
-            list_->list[i].pol.data = NULL;
-            list_->list[i].coefs.data = NULL;
-        }
-
-        add_sub_grid(list_->list[i].lower_corner, // lower corner position where the subgrid should placed
-                     list_->list[i].upper_corner, // upper boundary
-                     list_->list[i].position_inside_cube, // starting position of in the subgrid
-                     &list_->list[i].cube, // subgrid
-                     &list_->list[i].grid);
-
-        // I forgot that one !!!!!!!
-        list_->list[i].new_gaussian_pair_ = false;
-    }
-
-    list_->done = true;
-    list_->number_of_elements_ = 0;
-    return;
-}
 
 void collocate_l0(const struct tensor_ *co,
                   const struct tensor_ *p_alpha_beta_reduced_,
@@ -524,42 +108,35 @@ void collocate_l0(const struct tensor_ *co,
     const double *__restrict py = &idx3(p_alpha_beta_reduced_[0], 1, 0, 0); /* j indice */
     const double *__restrict px = &idx3(p_alpha_beta_reduced_[0], 2, 0, 0); /* i indice */
     const double coo = idx3 (co[0], 0, 0, 0);
-    for (int y1 = 0; y1 < cube->size[1]; y1++) {
-        const double tmp = coo * py[y1];
-        double *__restrict dst = &idx3(cube[0], 0, y1, 0);
-#pragma GCC unroll 4
-#pragma GCC ivdep
-        for (int x1 = 0; x1 < cube->size[2]; x1++) {
-            dst[x1] = tmp * px[x1];
-        }
-    }
+
+    memset(&idx3(cube[0], 0, 0, 0), 0, sizeof(double) * cube->alloc_size_);
+
+    cblas_dger (CblasRowMajor,
+                cube->size[1],
+                cube->size[2],
+                idx3(co[0], 0, 0, 0),
+                py,
+                1,
+                px,
+                1,
+                &idx3(cube[0], 0, 0, 0),
+                cube->ld_);
 
     for (int z1 = 1; z1 < cube->size[0]; z1++) {
         const double tz = pz[z1];
-        double *__restrict dst = &idx3(cube[0], z1, 0, 0);
-        const double *__restrict src = &idx3(cube[0], 0, 0, 0);
-
-#pragma GCC unroll 4
-#pragma GCC ivdep
-        for (int y1 = 0; y1 < cube->size[1]; y1++) {
-            for (int x1 = 0; x1 < cube->size[2]; x1++) {
-                dst[x1] = src[x1] * tz;
-            }
-            dst += cube->ld_;
-            src += cube->ld_;
-        }
+        cblas_daxpy(cube->size[1] * cube->ld_,
+                    pz[z1],
+                    &idx3(cube[0], 0, 0, 0),
+                    1,
+                    &idx3(cube[0], z1, 0, 0),
+                    1);
     }
 
-    double *__restrict src = &idx3(cube[0], 0, 0, 0);
     const double tz = pz[0];
-#pragma GCC unroll 4
-#pragma GCC ivdep
-    for (int y1 = 0; y1 < cube->size[1]; y1++) {
-        for (int x1 = 0; x1 < cube->size[2]; x1++) {
-            src[x1] *= tz;
-        }
-        src += cube->ld_;
-    }
+    cblas_dscal(cube->size[1] * cube->ld_,
+                tz,
+                &idx3(cube[0], 0, 0, 0),
+                1);
 }
 
 /* compute the functions (x - x_i)^l exp (-eta (x - x_i)^2) for l = 0..lp using
@@ -708,6 +285,11 @@ void collocate_core_rectangular(double *scratch,
 {
     if (co->size[0] > 1) {
         struct {
+#if defined(__LIBXSMM)
+            libxsmm_dmmfunction kernel;
+            int prefetch;
+            int flags;
+#endif
             double alpha;
             double beta;
             double *a, *b, *c;
@@ -796,47 +378,93 @@ void collocate_core_rectangular(double *scratch,
         m3.ldc = cube->ld_ * cube->size[1];
 
 #if defined(__LIBXSMM)
-        libxsmm_dgemm("N",
-                      "N",
-                      &m1.n,
-                      &m1.m,
-                      &m1.k,
-                      &m1.alpha,
-                      m1.b,
-                      &m1.ldb,
-                      m1.a,
-                      &m1.lda,
-                      &m1.beta,
-                      m1.c, // tmp_{alpha, gamma, j}
-                      &m1.ldc);
+        m1.prefetch = LIBXSMM_PREFETCH_AUTO;
+        m1.flags = LIBXSMM_GEMM_FLAG_NONE;
+        m1.kernel = libxsmm_dmmdispatch(m1.n,
+                                        m1.m,
+                                        m1.k,
+                                        &m1.ldb,
+                                        &m1.lda,
+                                        &m1.ldc,
+                                        &m1.alpha,
+                                        &m1.beta,
+                                        &m1.flags,
+                                        &m1.prefetch);
 
-        libxsmm_dgemm("N",
-                      "T",
-                      &m2.n,
-                      &m2.m,
-                      &m2.k,
-                      &m2.alpha,
-                      m2.b, // X_{alpha, i}
-                      &m2.ldb,
-                      m2.a, // T_{\alpha, \gamma, j} -> transposed such that T_{\gamma, j, \alpha}
-                      &m2.lda,
-                      &m2.beta,
-                      m2.c, // W_{\gamma, j, i}
-                      &m2.ldc);
+        m1.kernel(m1.b, m1.a, m1.c);
 
-        libxsmm_dgemm("N",
-                      "T",
-                      &m3.n,
-                      &m3.m,
-                      &m3.k,
-                      &m3.alpha,
-                      m3.b, // W_{gamma, j, i}
-                      &m3.ldb,
-                      m3.a, // Z_{\gamma, k} -> Transposed Z_{k, \gamma}
-                      &m3.lda,
-                      &m3.beta,
-                      m3.c, // cube_{kji}
-                      &m3.ldc);
+        /* libxsmm_dgemm("N", */
+        /*               "N", */
+        /*               &m1.n, */
+        /*               &m1.m, */
+        /*               &m1.k, */
+        /*               &m1.alpha, */
+        /*               m1.b, */
+        /*               &m1.ldb, */
+        /*               m1.a, */
+        /*               &m1.lda, */
+        /*               &m1.beta, */
+        /*               m1.c, // tmp_{alpha, gamma, j} */
+        /*               &m1.ldc); */
+
+        m2.prefetch = LIBXSMM_PREFETCH_AUTO;
+        m2.flags = LIBXSMM_GEMM_FLAG_TRANS_B;
+        m2.kernel = libxsmm_dmmdispatch(m2.n,
+                                        m2.m,
+                                        m2.k,
+                                        &m2.ldb,
+                                        &m2.lda,
+                                        &m2.ldc,
+                                        &m2.alpha,
+                                        &m2.beta,
+                                        &m2.flags,
+                                        &m2.prefetch);
+
+        m2.kernel(m2.b, m2.a, m2.c);
+
+        /* libxsmm_dgemm("N", */
+        /*               "T", */
+        /*               &m2.n, */
+        /*               &m2.m, */
+        /*               &m2.k, */
+        /*               &m2.alpha, */
+        /*               m2.b, // X_{alpha, i} */
+        /*               &m2.ldb, */
+        /*               m2.a, // T_{\alpha, \gamma, j} -> transposed such that T_{\gamma, j, \alpha} */
+        /*               &m2.lda, */
+        /*               &m2.beta, */
+        /*               m2.c, // W_{\gamma, j, i} */
+        /*               &m2.ldc); */
+
+        m3.prefetch = LIBXSMM_PREFETCH_AUTO;
+        m3.flags = LIBXSMM_GEMM_FLAG_TRANS_B;
+        m3.kernel = libxsmm_dmmdispatch(m3.n,
+                                        m3.m,
+                                        m3.k,
+                                        &m3.ldb,
+                                        &m3.lda,
+                                        &m3.ldc,
+                                        &m3.alpha,
+                                        &m3.beta,
+                                        &m3.flags,
+                                        &m3.prefetch);
+
+        m3.kernel(m3.b, m3.a, m3.c);
+
+        /* libxsmm_dgemm("N", */
+        /*               "T", */
+        /*               &m3.n, */
+        /*               &m3.m, */
+        /*               &m3.k, */
+        /*               &m3.alpha, */
+        /*               m3.b, // W_{gamma, j, i} */
+        /*               &m3.ldb, */
+        /*               m3.a, // Z_{\gamma, k} -> Transposed Z_{k, \gamma} */
+        /*               &m3.lda, */
+        /*               &m3.beta, */
+        /*               m3.c, // cube_{kji} */
+        /*               &m3.ldc); */
+
 
 #elif defined(__MKL)
         cblas_dgemm(CblasRowMajor,
@@ -1029,7 +657,6 @@ void compute_blocks(collocation_integration *const handler,
                 update_loop_index(lower_corner[1], upper_corner[1], grid->size[1], period[1], &y_offset, &y, &y1);
             }
         }
-
         update_loop_index(lower_corner[0], upper_corner[0], grid->size[0], period[0], &z_offset, &z, &z1);
     }
 }
@@ -1079,15 +706,9 @@ void apply_mapping_cubic(const int *lower_boundaries_cube,
     }
 
 
-    int offset[3];
-    int loop_number[3];
-    int reminder[3];
-
-    for (int d = 0; d < 3; d++) {
-        offset[d] = min(grid->size[d] - position[d], cube->size[d]);
-        loop_number[d] = (cube->size[d] - offset[d]) / period[d];
-        reminder[d] = min(grid->size[d], cube->size[d] - offset[d] - loop_number[d] * period[d]);
-    }
+    const int offset_x = min(grid->size[2] - position[2], cube->size[2]);;
+    const int loop_number_x = (cube->size[2] - offset_x) / period[2];
+    const int reminder_x = min(grid->size[2], cube->size[2] - offset_x - loop_number_x * period[2]);
 
     int z1 = position[0];
     int z_offset = 0;
@@ -1127,25 +748,23 @@ void apply_mapping_cubic(const int *lower_boundaries_cube,
                         for (int y2 = 0; y2 < upper_corner[1] - lower_corner[1]; y2++) {
 
                             // the tail of the queue.
-//#pragma omp simd
-#pragma GCC ivdep
-                            for (int x = 0; x < offset[2]; x++)
+                            LIBXSMM_PRAGMA_SIMD
+                            for (int x = 0; x < offset_x; x++)
                                 dst[x + position[2]] += src[x];
 
-                            int shift = offset[2];
-                            for (int l = 0; l < loop_number[2]; l++) {
-//#pragma omp simd
-#pragma GCC unroll 4
-#pragma GCC ivdep
-                                for (int x = 0; x < grid->size[2]; x++)
-                                    dst[x] += src[shift + x];
+                            int shift = offset_x;
 
-                                shift = offset[2] + (l + 1)  * period[2];
+                            if (loop_number_x) {
+                                for (int l = 0; l < loop_number_x; l++) {
+                                    LIBXSMM_PRAGMA_SIMD
+                                    for (int x = 0; x < grid->size[2]; x++)
+                                        dst[x] += src[shift + x];
+
+                                    shift = offset_x + (l + 1)  * period[2];
+                                }
                             }
-//#pragma omp simd
-#pragma GCC unroll 4
-#pragma GCC ivdep
-                            for (int x = 0; x < reminder[2]; x++)
+                            LIBXSMM_PRAGMA_SIMD
+                            for (int x = 0; x < reminder_x; x++)
                                 dst[x] += src[shift + x];
 
                             dst += grid->ld_;
@@ -1155,7 +774,6 @@ void apply_mapping_cubic(const int *lower_boundaries_cube,
                     update_loop_index(lower_corner[1], upper_corner[1], grid->size[1], period[1], &y_offset, &y, &y1);
                 }
             }
-
             update_loop_index(lower_corner[0], upper_corner[0], grid->size[0], period[0], &z_offset, &z, &z1);
         }
     }
@@ -1802,19 +1420,31 @@ void grid_collocate_internal(collocation_integration *const handler,
 
 // initialy cp2k stores coef_xyz as coef[z][y][x]. this is fine but I
         // need them to be stored as
-
-        grid_collocate_general(lp,
+        const int period[3] = {npts[2], npts[1], npts[0]};
+        const int lb_grid_bis[3] = {lb_grid[2], lb_grid[1], lb_grid[0]};
+        const bool periodic_bis[3] = {periodic[2], periodic[1], periodic[0]};
+        grid_collocate_generic(handler,
                                zetp,
-                               &handler->coef,
                                dh,
                                dh_inv,
                                rp,
-                               npts,
-                               lb_grid,
-                               periodic,
+                               period,
+                               lb_grid_bis,
+                               periodic_bis,
                                radius,
-                               ngrid,
                                grid);
+        /* grid_collocate_general(lp, */
+        /*                        zetp, */
+        /*                        &handler->coef, */
+        /*                        dh, */
+        /*                        dh_inv, */
+        /*                        rp, */
+        /*                        npts, */
+        /*                        lb_grid, */
+        /*                        periodic, */
+        /*                        radius, */
+        /*                        ngrid, */
+        /*                        grid); */
 
     }
 }

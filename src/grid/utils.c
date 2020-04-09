@@ -19,8 +19,7 @@
 #endif
 
 #include "utils.h"
-
-
+#include "tensor_local.h"
 void extract_sub_grid(const int *lower_corner,
                       const int *upper_corner,
                       const int *position,
@@ -59,8 +58,34 @@ void extract_sub_grid(const int *lower_corner,
     const int sizey = upper_corner[1] - lower_corner[1];
     const int sizez = upper_corner[0] - lower_corner[0];
 
+#if defined(__LIBXSMM)
+    const libxsmm_mcopy_descriptor* desc;
+    libxsmm_xmcopyfunction kernel;
+    libxsmm_descriptor_blob blob;
+    int prefetch = 1;
+    desc = libxsmm_mcopy_descriptor_init(&blob, sizeof(double),
+                                         sizex,
+                                         sizey,
+                                         subgrid->ld_,
+                                         grid->ld_,
+                                         LIBXSMM_MATCOPY_FLAG_DEFAULT,
+                                         LIBXSMM_PREFETCH_AUTO,
+                                         NULL);
+
+    kernel = libxsmm_dispatch_mcopy(desc);
+    if (kernel == 0) {
+        printf("JIT error -> exit!!!!\n");
+        exit(EXIT_FAILURE);
+    }
+#endif
     for (int z = 0; z < sizez; z++) {
-#if defined(__MKL)
+#if defined(__LIBXSMM)
+        kernel(&idx3(grid[0], lower_corner[0] + z, lower_corner[1], lower_corner[2]),
+               &grid->ld_,
+               &idx3(subgrid[0], position1[0] + z, position1[1], position1[2]),
+               &subgrid->ld_,
+               &prefetch);
+#elif defined(__MKL)
         mkl_domatcopy(CblasRowMajor,
                       CblasNoTrans,
                       sizey,
@@ -79,6 +104,9 @@ void extract_sub_grid(const int *lower_corner,
 #endif
     }
 
+#if defined(__LIBXSMM)
+    libxsmm_release_kernel(kernel);
+#endif
     return;
 }
 
@@ -126,31 +154,31 @@ void add_sub_grid(const int *lower_corner,
 /*     posix_memalign(&tmp, 32, sizeof(double) * sizey * sizex); */
 /* #endif */
 
-#if defined (__MKL)
-    for (int z = 0; z < sizez; z++) {
-        double *__restrict__ dst = &idx3(grid[0], lower_corner[0] + z, lower_corner[1], lower_corner[2]);
-        double *__restrict__ src = &idx3(subgrid[0], position1[0] + z, position1[1], position1[2]);
+/* #if defined (__MKL) */
+/*     for (int z = 0; z < sizez; z++) { */
+/*         double *__restrict__ dst = &idx3(grid[0], lower_corner[0] + z, lower_corner[1], lower_corner[2]); */
+/*         double *__restrict__ src = &idx3(subgrid[0], position1[0] + z, position1[1], position1[2]); */
 
-        /* for (int y = 0; y < sizey; y++) */
-        /*     memcpy(tmp + y * sizex, */
-        /*            &idx3(grid[0], lower_corner[0] + z, lower_corner[1] + y, lower_corner[2]), */
-        /*            sizeof(double) * sizex); */
+/*         /\* for (int y = 0; y < sizey; y++) *\/ */
+/*         /\*     memcpy(tmp + y * sizex, *\/ */
+/*         /\*            &idx3(grid[0], lower_corner[0] + z, lower_corner[1] + y, lower_corner[2]), *\/ */
+/*         /\*            sizeof(double) * sizex); *\/ */
 
-        mkl_domatadd ('r',
-                      'N',
-                      'N',
-                      sizey,
-                      sizex,
-                      1.0,
-                      src,
-                      subgrid->ld_,
-                      1.0,
-                      dst,
-                      grid->ld_,
-                      dst,
-                      grid->ld_);
-    }
-#else
+/*         mkl_domatadd ('r', */
+/*                       'N', */
+/*                       'N', */
+/*                       sizey, */
+/*                       sizex, */
+/*                       1.0, */
+/*                       src, */
+/*                       subgrid->ld_, */
+/*                       1.0, */
+/*                       dst, */
+/*                       grid->ld_, */
+/*                       dst, */
+/*                       grid->ld_); */
+/*     } */
+/* #else */
 
     for (int z = 0; z < sizez; z++) {
         double *__restrict__ dst = &idx3(grid[0], lower_corner[0] + z, lower_corner[1], lower_corner[2]);
@@ -165,7 +193,7 @@ void add_sub_grid(const int *lower_corner,
             src += subgrid->ld_;
         }
     }
-#endif
+/* #endif */
 
 /* #if defined(__MKL) */
 /*     free(tmp); */
@@ -313,24 +341,15 @@ inline int compute_cube_properties(const bool ortho,
         const double norm3 = sqrt(dh[2][0] * dh[2][0] + dh[2][1] * dh[2][1] + dh[2][2] * dh[2][2]);
         const double theta = acos((dh[0][0] * dh[1][0] + dh[0][1] * dh[1][1] + dh[0][2] * dh[1][2]) / (norm1 * norm2));
         const double phi = acos((dh[0][0] * dh[2][0] + dh[0][1] * dh[2][1] + dh[0][2] * dh[2][2]) / (norm1 * norm3));
-        const int l2 = ceil(2 * radius / (norm2 * sin(theta))) + 1;
-        const int l1 = ceil(2 * radius / (norm1 * cos(M_PI * 0.5 - theta))) + 1;
-        const int l3 = ceil(2 * radius / (norm3 * sin(phi))) + 1;
+        lb_cube[1] = ceil(-radius / (norm2 * sin(theta)) - 1e-8);
+        lb_cube[2] = ceil(-radius / (norm1 * cos(M_PI * 0.5 - theta)) - 1e-8);
+        lb_cube[0] = ceil(-radius / (norm3 * sin(phi)) - 1e-8);
 
-        cube_size[0] = l3;
-        cube_size[1] = l2;
-        cube_size[2] = l1;
-
-        lb_cube[0] = -l3 / 2;
-        lb_cube[1] = -l2 / 2;
-        lb_cube[2] = -l1 / 2;
-        ub_cube[0] = l3 / 2;
-        ub_cube[1] = l2 / 2;
-        ub_cube[2] = l1 / 2;
 
         /* compute the offset now in the lattice basis */
         double rp1[3];
 
+        /* compute the cube center */
         for (int i=0; i<3; i++) {
             double dh_inv_rp = 0.0;
             for (int j=0; j<3; j++) {
@@ -346,10 +365,20 @@ inline int compute_cube_properties(const bool ortho,
     }
 
     for (int i = 0; i < 3; i++) {
+        ub_cube[i] = 1 - lb_cube[i];
+    }
+
+/* compute the cube size ignoring periodicity */
+    cube_size[0] = ub_cube[0] - lb_cube[0] + 1;
+    cube_size[1] = ub_cube[1] - lb_cube[1] + 1;
+    cube_size[2] = ub_cube[2] - lb_cube[2] + 1;
+
+
+    for (int i = 0; i < 3; i++) {
         cmax = max(cmax, cube_size[i]);
     }
 
-    return (cmax - 1) / 2;
+    return cmax;
 }
 
 void  return_cube_position(const int *grid_size,
@@ -541,6 +570,57 @@ void compute_folded_polynomial(const int cube_center,
     }
 }
 
+double exp_recursive(const double c_exp, const double c_exp_minus_1, const int index)
+{
+    if (index == 0)
+        return 1.0;
+
+    if (index == -1)
+        return c_exp_minus_1;
+
+    if (index == 1)
+        return c_exp;
+
+    double res = 1.0;
+
+    if (index < 0) {
+        for (int i = 0; i < -index; i++) {
+            res *= c_exp_minus_1;
+        }
+        return res;
+    }
+
+    if (index > 0) {
+        for (int i = 0; i < index; i++) {
+            res *= c_exp;
+        }
+        return res;
+    }
+}
+void exp_i(const double alpha, const int imin, const int imax, double *__restrict__ const res)
+{
+    const double c_exp = exp(alpha);
+    const double c_exp_minus_1 = 1/ c_exp;
+    for (int i = 0; i < (imax - imin); i++) {
+        res[i] = exp_recursive(c_exp, c_exp_minus_1, (i + imin));
+    }
+}
+
+
+void exp_ij(const double alpha, const int imin, const int imax, const int jmin, const int jmax, tensor *exp_ij_)
+{
+    const double c_exp = exp(alpha);
+    const double c_exp_minus_1 = 1/ c_exp;
+
+    for (int i = 0; i < (imax - imin); i++) {
+        const double c_exp_2 = exp_recursive(c_exp, c_exp_minus_1, (i + imin));
+        for (int j = 0; j < (jmax - jmin); j++) {
+            idx2(exp_ij_[0], i, j) = exp_recursive(c_exp_2, 1.0 / c_exp_2, j + jmin);
+            //printf("%d %d %.15lf\n", i, j, idx2(exp_ij_[0], i, j));
+        }
+    }
+}
+
 
 void calculate_non_orthorombic_corrections_tensor(const double mu_mean,
                                                   const double *r_ab,
@@ -559,23 +639,52 @@ void calculate_non_orthorombic_corrections_tensor(const double mu_mean,
         /* alpha gamma */
         -2.0 * (basis[0][0] * basis[2][0] + basis[0][1] * basis[2][1] + basis[0][2] * basis[2][2]),
         /* alpha beta */
-        -2.0 * (basis[0][0] * basis[1][0] + basis[0][1] * basis[1][1] + basis[0][2] * basis[1][2])
-    };
+        -2.0 * (basis[0][0] * basis[1][0] + basis[0][1] * basis[1][1] + basis[0][2] * basis[1][2])};
+
+    /* a naive implementation of the computation of exp(-2 (v_i . v_j) (i
+     * - r_i) (j _ r_j)) requires n m exponentials but we can do much much
+     * better with only 7 exponentials
+     *
+     * first expand it. we get exp(2 (v_i . v_j) i j) exp(2 (v_i . v_j) i r_j)
+     * exp(2 (v_i . v_j) j r_i) exp(2 (v_i . v_j) r_i r_j). we can use the fact
+     * that the sum of two terms in an exponential is equal to the product of
+     * the two exponentials.
+     *
+     * this means that exp (a i) with i integer can be computed recursively with
+     * one exponential only
+     */
+    tensor tmp, exp_tmp;
+    initialize_tensor_2(&tmp, Exp->size[1], Exp->size[2]);
+    initialize_tensor_2(&exp_tmp, Exp->size[1], Exp->size[2]);
+    posix_memalign((void **)&tmp.data, 64, sizeof(double) * tmp.alloc_size_);
+    double *x1, *x2;
+    const int max_elem = max(max(1 - 2 * size[0], 1 - 2 * size[1]), 1 - 2 * size[2]);
+    posix_memalign((void **)&x1, 64, sizeof(double) * max_elem);
+    posix_memalign((void **)&x2, 64, sizeof(double) * max_elem);
 
     for (int dir = 0; dir < 3; dir++) {
         int d1 = n[dir][0];
         int d2 = n[dir][1];
+        const double c_exp_const = exp(-mu_mean * c[dir] * r_ab[d1] * r_ab[d2]);
 
-        const double coef = c[dir];
+        exp_i(2.0 * mu_mean * r_ab[d1], size[d1], 1 - size[d1], x1);
+        exp_i(2.0 * mu_mean * r_ab[d2], size[d2], 1 - size[d2], x2);
 
-        for (int alpha = -size[d1] / 2; alpha <= size[d1] / 2; alpha++) {
-            double alpha_d = alpha - r_ab[d1];
-            for (int beta = -size[d2] / 2; beta <= size[d2] / 2; beta++) {
-                int beta_d = beta  - r_ab[d2];
-                idx3(Exp[0], dir, alpha, beta) = exp(-coef * mu_mean * alpha_d * beta_d);
+        exp_tmp.data = &idx3(Exp[0], dir, 0, 0);
+        exp_ij(c[dir] * mu_mean, size[d1], 1 - size[d1], size[d2], 1 - size[d2], &exp_tmp);
+        memset(tmp.data, 0, sizeof(double) * tmp.alloc_size_);
+        cblas_dger(CblasRowMajor, 1 - 2 * size[d1], 1 - 2 * size[d2], c_exp_const, x1, 1, x2, 1, tmp.data, tmp.ld_);
+
+        for (int i = 0; i < 1 - 2 * size[d1]; i++) {
+            for (int j = 0; j < 1 - 2 * size[d2]; j++) {
+                idx3(Exp[0], dir, i, j) *= idx2(tmp, i, j);
             }
         }
     }
+
+    free(x1);
+    free(x2);
+    free(tmp.data);
 }
 
 void apply_non_orthorombic_corrections(const tensor *const Exp,
@@ -589,11 +698,14 @@ void apply_non_orthorombic_corrections(const tensor *const Exp,
 #pragma GCC ivdep
             for (int x = 0; x < cube->size[2]; x++) {
                 idx3(cube[0], z, y, x) *= zx[x] * zy * yx[x];
+                /* printf("Exp(%d, %d) = %.15lf\n", y, x, idx3(cube[0], z, y, x)); */
             }
             zx += Exp->ld_;
             yx += Exp->ld_;
         }
+        /* printf("\n"); */
     }
+    /* abort(); */
 }
 
 int return_exponents(const int index) {

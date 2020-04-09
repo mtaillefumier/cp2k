@@ -1,6 +1,7 @@
 #ifndef __COLLOCATION_INTEGRATION_H
 #define __COLLOCATION_INTEGRATION_H
 #include <stdio.h>
+#include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include "tensor_local.h"
@@ -95,4 +96,23 @@ typedef struct collocation_integration_ {
 
     void *scratch;
 } collocation_integration;
+
+extern collocation_list *create_collocation_list(const int num_elem, const int integration);
+extern void destroy_collocation_list(struct collocation_list_ *list_collocation);
+extern void print_collocation_block(const struct collocation_block_ *const list);
+extern void *print_collocation_list(void *const handler);
+extern void mark_collocation_new_pair(struct collocation_integration_ *const handler);
+extern void add_collocation_block(struct collocation_integration_ *const handler,
+                                  const int *period,
+                                  const int *cube_size,
+                                  const int *position_inside_cube,
+                                  const int *lower_corner,
+                                  const int *upper_corner,
+                                  const tensor *Exp,
+                                  tensor *grid);
+extern void *collocate_create_handle(const int device_id, const int number_of_gaussian, const bool sequential_mode);
+extern void collocate_synchronize(void *gaussian_handler);
+extern void collocate_finalize(void *gaussian_handle);
+extern void calculate_collocation(void *const in);
+
 #endif

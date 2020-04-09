@@ -59,13 +59,15 @@ inline void update_loop_index(const int xmin, const int xmax, const int local_gr
 inline int compute_next_boundaries(int *y1, int y, const int local_grid_size, const int global_grid_size, const int cube_size)
 {
     int y11 = *y1;
-    for (int y2 = y; ((y11 < local_grid_size) ||
-                      (y11 < global_grid_size)) &&
-             (y2 < cube_size);
-         y11++, y2++);
 
-    *y1 = y11;
-    return y11;
+    *y1 += min(cube_size - y, min(local_grid_size, global_grid_size) - *y1);
+    /* for (int y2 = y; ((y11 < local_grid_size) || */
+    /*                   (y11 < global_grid_size)) && */
+    /*          (y2 < cube_size); */
+    /*      y11++, y2++); */
+
+    /* *y1 = y11; */
+    return *y1;
 }
 
 
