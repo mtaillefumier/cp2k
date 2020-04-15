@@ -26,7 +26,8 @@ extern void apply_non_orthorombic_corrections(const tensor *const Exp,
 extern void calculate_non_orthorombic_corrections_tensor(const double mu_mean,
                                                          const double *r_ab,
                                                          const double basis[3][3],
-                                                         const int *const size,
+                                                         const int *const xmin,
+                                                         const int *const xmax,
                                                          tensor *const Exp);
 
 inline int return_length_l(const int l) {

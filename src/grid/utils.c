@@ -341,11 +341,9 @@ inline int compute_cube_properties(const bool ortho,
         const double norm3 = sqrt(dh[2][0] * dh[2][0] + dh[2][1] * dh[2][1] + dh[2][2] * dh[2][2]);
         const double theta = acos((dh[0][0] * dh[1][0] + dh[0][1] * dh[1][1] + dh[0][2] * dh[1][2]) / (norm1 * norm2));
         const double phi = acos((dh[0][0] * dh[2][0] + dh[0][1] * dh[2][1] + dh[0][2] * dh[2][2]) / (norm1 * norm3));
-        lb_cube[1] = ceil(-radius / (norm2 * sin(theta)) - 1e-8);
-        lb_cube[2] = ceil(-radius / (norm1 * cos(M_PI * 0.5 - theta)) - 1e-8);
-        lb_cube[0] = ceil(-radius / (norm3 * sin(phi)) - 1e-8);
-
-
+        lb_cube[1] = ceil(-radius / (norm2 * sin(theta)) - 1e-8) - 1;
+        lb_cube[2] = ceil(-radius / (norm1 * cos(M_PI * 0.5 - theta)) - 1e-8) - 1;
+        lb_cube[0] = ceil(-radius / (norm3 * sin(phi)) - 1e-8) - 1;
         /* compute the offset now in the lattice basis */
         double rp1[3];
 
@@ -360,7 +358,7 @@ inline int compute_cube_properties(const bool ortho,
 
         double dx[3] = {norm3, norm2, norm1};
         for (int i=0; i<3; i++) {
-            roffset[i] = rp1[i] - ((double) cubecenter[i]) * dx[i];
+            roffset[i] = rp1[i] - ((double) cubecenter[i]);
         }
     }
 
@@ -609,15 +607,16 @@ void exp_i(const double alpha, const int imin, const int imax, double *__restric
 
 void exp_ij(const double alpha, const int imin, const int imax, const int jmin, const int jmax, tensor *exp_ij_)
 {
-    const double c_exp = exp(alpha);
-    const double c_exp_minus_1 = 1/ c_exp;
+    double c_exp = exp(alpha * imin);
+    const double c_exp_co = exp(alpha);
 
     for (int i = 0; i < (imax - imin); i++) {
-        const double c_exp_2 = exp_recursive(c_exp, c_exp_minus_1, (i + imin));
+        double *__restrict dst = &idx2(exp_ij_[0], i, 0);
+#pragma GCC ivdep
         for (int j = 0; j < (jmax - jmin); j++) {
-            idx2(exp_ij_[0], i, j) = exp_recursive(c_exp_2, 1.0 / c_exp_2, j + jmin);
-            //printf("%d %d %.15lf\n", i, j, idx2(exp_ij_[0], i, j));
+            dst[j] *= exp_recursive(c_exp, 1.0 / c_exp, j + jmin);
         }
+        c_exp *= c_exp_co;
     }
 }
 
@@ -625,21 +624,23 @@ void exp_ij(const double alpha, const int imin, const int imax, const int jmin, 
 void calculate_non_orthorombic_corrections_tensor(const double mu_mean,
                                                   const double *r_ab,
                                                   const double basis[3][3],
-                                                  const int *const size,
+                                                  const int *const xmin,
+                                                  const int *const xmax,
                                                   tensor *const Exp)
 {
+    // zx, zy, yx
     const int n[3][2] = {{0, 2},
                          {0, 1},
                          {1, 2}};
 
     // need to review this
     const double c[3] = {
-        /* beta gamma */
-        -2.0 * (basis[1][0] * basis[2][0] + basis[1][1] * basis[2][1] + basis[1][2] * basis[2][2]),
         /* alpha gamma */
-        -2.0 * (basis[0][0] * basis[2][0] + basis[0][1] * basis[2][1] + basis[0][2] * basis[2][2]),
+        -2.0 * mu_mean * (basis[0][0] * basis[2][0] + basis[0][1] * basis[2][1] + basis[0][2] * basis[2][2]),
+        /* beta gamma */
+        -2.0 * mu_mean * (basis[1][0] * basis[2][0] + basis[1][1] * basis[2][1] + basis[1][2] * basis[2][2]),
         /* alpha beta */
-        -2.0 * (basis[0][0] * basis[1][0] + basis[0][1] * basis[1][1] + basis[0][2] * basis[1][2])};
+        -2.0 * mu_mean * (basis[0][0] * basis[1][0] + basis[0][1] * basis[1][1] + basis[0][2] * basis[1][2])};
 
     /* a naive implementation of the computation of exp(-2 (v_i . v_j) (i
      * - r_i) (j _ r_j)) requires n m exponentials but we can do much much
@@ -653,38 +654,36 @@ void calculate_non_orthorombic_corrections_tensor(const double mu_mean,
      * this means that exp (a i) with i integer can be computed recursively with
      * one exponential only
      */
-    tensor tmp, exp_tmp;
-    initialize_tensor_2(&tmp, Exp->size[1], Exp->size[2]);
-    initialize_tensor_2(&exp_tmp, Exp->size[1], Exp->size[2]);
-    posix_memalign((void **)&tmp.data, 64, sizeof(double) * tmp.alloc_size_);
+    tensor exp_tmp;
     double *x1, *x2;
-    const int max_elem = max(max(1 - 2 * size[0], 1 - 2 * size[1]), 1 - 2 * size[2]);
+
+    initialize_tensor_2(&exp_tmp, Exp->size[1], Exp->size[2]);
+    const int max_elem = max(max(xmax[0] - xmin[0], xmax[1] - xmin[1]), xmax[2] - xmin[2]) + 1;
     posix_memalign((void **)&x1, 64, sizeof(double) * max_elem);
     posix_memalign((void **)&x2, 64, sizeof(double) * max_elem);
 
+    memset(Exp->data, 0, sizeof(double) * Exp->alloc_size_);
     for (int dir = 0; dir < 3; dir++) {
         int d1 = n[dir][0];
         int d2 = n[dir][1];
-        const double c_exp_const = exp(-mu_mean * c[dir] * r_ab[d1] * r_ab[d2]);
+        const double c_exp_const = exp(c[dir] * r_ab[d1] * r_ab[d2]);
 
-        exp_i(2.0 * mu_mean * r_ab[d1], size[d1], 1 - size[d1], x1);
-        exp_i(2.0 * mu_mean * r_ab[d2], size[d2], 1 - size[d2], x2);
+        exp_i(-r_ab[d2] * c[dir], xmin[d1], xmax[d1] + 1, x1);
+        exp_i(-r_ab[d1] * c[dir], xmin[d2], xmax[d2] + 1, x2);
 
         exp_tmp.data = &idx3(Exp[0], dir, 0, 0);
-        exp_ij(c[dir] * mu_mean, size[d1], 1 - size[d1], size[d2], 1 - size[d2], &exp_tmp);
-        memset(tmp.data, 0, sizeof(double) * tmp.alloc_size_);
-        cblas_dger(CblasRowMajor, 1 - 2 * size[d1], 1 - 2 * size[d2], c_exp_const, x1, 1, x2, 1, tmp.data, tmp.ld_);
-
-        for (int i = 0; i < 1 - 2 * size[d1]; i++) {
-            for (int j = 0; j < 1 - 2 * size[d2]; j++) {
-                idx3(Exp[0], dir, i, j) *= idx2(tmp, i, j);
-            }
-        }
+        cblas_dger(CblasRowMajor,
+                   xmax[d1] - xmin[d1] + 1,
+                   xmax[d2] - xmin[d2] + 1,
+                   c_exp_const,
+                   x1, 1,
+                   x2, 1,
+                   exp_tmp.data, exp_tmp.ld_);
+        exp_ij(c[dir], xmin[d1], xmax[d1] + 1, xmin[d2], xmax[d2] + 1, &exp_tmp);
     }
 
     free(x1);
     free(x2);
-    free(tmp.data);
 }
 
 void apply_non_orthorombic_corrections(const tensor *const Exp,
@@ -695,7 +694,7 @@ void apply_non_orthorombic_corrections(const tensor *const Exp,
         for (int y = 0; y < cube->size[1]; y++) {
             const double zy = idx3(Exp[0], 0, z, y);
             const double *__restrict__ yx = &idx3(Exp[0], 2, y, 0);
-#pragma GCC ivdep
+            LIBXSMM_PRAGMA_SIMD
             for (int x = 0; x < cube->size[2]; x++) {
                 idx3(cube[0], z, y, x) *= zx[x] * zy * yx[x];
                 /* printf("Exp(%d, %d) = %.15lf\n", y, x, idx3(cube[0], z, y, x)); */

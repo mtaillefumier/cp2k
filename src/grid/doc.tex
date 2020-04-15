@@ -1,0 +1,181 @@
+\documentclass[prb]{revtex4}
+\usepackage{amsmath}
+\begin{document}
+\title{Details about the implementation of collocate and integrate functions in cp2k}
+\section{Introduction}
+CP2K like many other DFT code rely heavily on the implementation of the following two definitions
+\begin{equation}
+  \label{intro:1}
+  n({\bf r}) = \sum_{\alpha} C_{\alpha\beta} f_{\alpha}({\bf r}) f_{\beta}({\bf r}),
+\end{equation}
+and
+\begin{equation}
+  \label{intro:2}
+  V_{\alpha\beta} = \int V({\bf r}) f^\dagger_\alpha({\bf r}) f_\beta({\bf r}),
+\end{equation}
+whre $C_{\alpha}$ is some arbitrary real or complex number $V({\bf r})$ an
+arbitrary distribution (or function) and $f_\alpha({\bf r})$ some well behaved
+complex or real valued function, {\it i.e.}, some continuous function that are
+square integrable. Many DFT codes use plane waves which break the square
+integrability condition but this basis function is a natural choice when
+periodic boundaries conditions are applied.
+
+CP2K use a gaussian basis of the form $f({\bf r}) = P({\bf r}) exp\left(-alpha
+{\bf r}^2\right)$ where $P({\bf r})$ is a polynomial that is a harmonic polynomial
+representation of the spherical harmonic. The goal of this document is to
+describe the numerical evaluation of Eq.\ref{intro:1} and Eq.\ref{intro:2}.
+
+\section{General formalism}
+Projecting Eq.\ref{intro:1} and Eq.\ref{intro:2} on a lattice present no major difficulties.
+We have
+\begin{equation}
+  \label{main:1}
+  n_{ijk} = \sum_{\alpha\beta} C_{\alpha\beta} \left.\left(P_{\alpha}({\bf r})
+  P_{\beta}({\bf r}) \exp\left(-\eta_{\beta} (r - r_{\beta}))^2\right)
+  \exp\left(-\eta_{\alpha} (r - r_{\alpha}))^2\right)\right)\right| _{ijk},
+\end{equation}
+and
+\begin{equation}
+  \label{main:2}
+  V_{\alpha\beta} = \sum_{ijk} V_{ijk} \left.\left(P_{\alpha}({\bf r})
+  P_{\beta}({\bf r}) \exp\left(-\eta_{\beta} (r - r_{\beta}))^2\right)
+  \exp\left(-\eta_{\alpha} (r - r_{\alpha}))^2\right)\right)\right| _{ijk}.
+\end{equation}
+The product of two gaussians centered around ${\bf r}_{\alpha}$ and ${\bf
+  r}_{\beta}$ is a guassian centered around $r_{\alpha\beta}$ times a gaussian
+that depends only on the parameters of the two initial gaussians. This property
+is very useful for computing Eq.\ref{main:1} and Eq.\ref{main:2} and their
+derivatives on a grid.
+
+In the following we will reserve the greek letters for the exponents of the
+polynomials and consider two gaussians centered around ${\bf r}_1$ and ${\bf
+  r}_2$. $n_{ijk}$ and the matrix elements of $V({\bf r})$ become
+\begin{eqnarray}
+  \label{main:3}
+  n_{ijk} &=& C \sum_{\alpha_1\beta_1\gamma_1, \alpha_2\beta_2\gamma_2} C_{\alpha_1\beta_1\gamma_1, \alpha_2\beta_2\gamma_2} (x-x_1)^{\alpha_1} (x-x_2)^{\alpha_2}\nonumber \\
+  &\times&(y-y_1)^{\beta_1} (y-y_2)^{\beta_2}\nonumber \\
+  &\times&(z - z_1)^{\gamma_1} (z-z_2)^{\gamma_2} \exp(-\eta_{12}({\bf r} - {\bf r}_{12})^2)| _{ijk},
+\end{eqnarray}
+and
+\begin{eqnarray}
+  \label{main:4}
+  V_{\alpha_1\beta_1\gamma_1, \alpha_2\beta_2\gamma_2} &=& \sum_{ijk} V_{ijk} (x-x_1)^{\alpha_1} (x-x_2)^{\alpha_2}\nonumber \\
+  &\times&(y-y_1)^{\beta_1} (y-y_2)^{\beta_2}\nonumber \\
+  &\times&(z - z_1)^{\gamma_1} (z-z_2)^{\gamma_2} \exp(-\eta_{12}({\bf r} - {\bf r}_{12})^2)| _{ijk},
+\end{eqnarray}
+$\alpha_1 + \beta_1 + \gamma_1 = l_1$ and $\alpha_2 + \beta_2 + \gamma_2 = l_2$
+(this constrain does not change the logic but is a relicat of the angular
+momentums). The product of polynomials $(x-x_1)^{\alpha_1} (x-x_2)^{\alpha_2}$
+can expressed in term of monomials $(x-x_{12})$:
+\begin{eqnarray}
+  \label{main:5}
+  (x-x_1)^{\alpha_1} (x-x_2)^{\alpha_2} = \sum^{\alpha_1\alpha_2}_{k_1,k_2} \left(\begin{array}{c} \alpha_1\\ k_1\end{array}\right)\left(\begin{array}{c} \alpha_2\\ k_2\end{array}\right)(x - x_{12}) ^{k_1+k_2} (x_{12} - x_1)^{\alpha_1 - k_1}(x_{12} - x_2)^{\alpha_2 - k_2}
+\end{eqnarray}
+Using Eq.\ref{main:3} in Eq.\ref{main:2} and Eq.\ref{main:1} we find that
+\begin{equation}
+  \label{main:6}
+  n_{ijk} = C \sum_{\alpha\beta\gamma} {\tilde C}_{\alpha\beta\gamma} (x-x_{12})^{\alpha} (y-y_{12})^{\beta} (z - z_{12})^{\gamma} \exp(-\eta_{12}({\bf r} - {\bf r}_{12})^2)| _{ijk},
+\end{equation}
+and
+\begin{equation}
+  \label{main:7}
+        {\tilde V}_{\alpha\beta\gamma} = \sum_{ijk} V_{ijk} (x-x_{12})^{\alpha} (y-y_{12})^{\beta} (z - z_{12})^{\gamma} \exp(-\eta_{12}({\bf r} - {\bf r}_{12})^2)| _{ijk}.
+\end{equation}
+the coefficients ${\tilde C}_{\alpha\beta\gamma}$ can be obtained by taking all
+terms for a given triplet $\alpha\beta\gamma$ in Eq.\label{main:3} and summing
+them up. We will derive the expression later on.
+
+We define $({\bf v}_1, {\bf v}_2, {\bf v}_3)$ a set of three independent vectors
+describing the position of a given point of the grid. This set of three vectors
+is not necessarily orthogonal so expanding Eq.\ref{main:3} further in term of
+the indices $ijk$ require an additional step. The position of a point is given
+by ${\bf r} = i v_1 + j v_2 + k v_3$. Changing from cartesian coordinates to
+grid coordinates involves formulas such as
+\begin{equation}
+  (a + b + c) ^ n = \sum_{k_1+k_2+k_3 = n} \left(\begin{array}{c} n\\k_1 k_2 k_3\end{array}\right) a^{k_1} b^{k_2} c^{k_3},
+\end{equation}
+with $\left(\begin{array}{c} n\\k_1 k_2 k_3\end{array}\right)$ the multinomial coefficient.
+The derivation of the coefficients is done in sec.\ref{coeff}. The final expression for ${\tilde V}_{\alpha\beta\gamma}$ and $n_{ijk}$ is given by
+\begin{equation}
+  \label{main:8}
+  n_{ijk} = \sum_{\alpha\beta\gamma}  {\tilde C}_{\alpha\beta\gamma} I_{\alpha i} J_{\beta j} K_{\gamma k} {\sf Exp}_{ij} {\sf Exp}_{jk} {\sf Exp}_{ik},
+\end{equation}
+and
+\begin{eqnarray}
+  \label{main:9}
+  V_{\alpha\beta\gamma} = \sum_{ijk} {V}_{ijk} I_{\alpha i} J_{\beta j} K_{\gamma k} {\sf Exp}_{ij} {\sf Exp}_{jk} {\sf Exp}_{ik},
+\end{eqnarray}
+where
+\begin{eqnarray}
+  \label{main:10}
+  I_{i\alpha} &=& (i - x'_{12})^\alpha \exp(-\eta_{12} (v_1)^2(i - x'_{12})^2)\\
+  J_{j\beta} &=& (j - y'_{12})^\beta \exp(-\eta_{12} (v_2)^2(j  - y'_{12})^2)  \label{main:10b}
+  \\
+  K_{k\gamma} &=& (k - z'_{12})^\gamma \exp(-\eta_{12} (v_3)^2 (k - z'_{12})^2)  \label{main:10c},
+\end{eqnarray}
+and
+\begin{eqnarray}
+  \label{main:11}
+        {\sf Exp}_{ij} &=& \exp\left(2 \eta_{12} ({\bf v}_1 \cdot {\bf v}_2) (i-x'_{12})(j-y'_{12}) \right)\\
+        {\sf Exp}_{jk} &=& \exp\left(2 \eta_{12} ({\bf v}_2 \cdot {\bf v}_3) (j-y'_{12})(k-z'_{12}) \right)  \label{main:11b}\\
+        {\sf Exp}_{ik} &=& \exp\left(2 \eta_{12} ({\bf v}_1 \cdot {\bf v}_3) (i-x'_{12})(k-z'_{12}) \right),  \label{main:11c}
+\end{eqnarray}
+with ${\bf r}_{12} = x'_{12} {\bf v}_1 + y'_{12} {\bf v}_2 + z'_{12} {\bf v}_3$.
+
+Eq\ref{main:8} and Eq.\ref{main:9} are very similar and actually can be treated
+numerically with the same building blocks. To evaluate $n_{ijk}$ we fisrt
+compute
+\begin{equation*}
+  \sum_{\alpha\beta\gamma}  {\tilde C}_{\alpha\beta\gamma} I_{\alpha i} J_{\beta j} K_{\gamma k}.
+\end{equation*}
+It can be done with three matrix-matrix multiplications.
+\begin{eqnarray}
+  \label{main12}
+  T_{\gamma\alpha j} &=& \sum_{\beta} {\tilde C}_{\alpha\gamma\beta} J_{\beta j}\\
+  W_{\alpha j k} &=& ^T T_{\gamma(\alpha j)} K_{\gamma k}\\
+  M_{ijk} &=& ^T I_{\alpha i} W_{\alpha, (jk)}
+\end{eqnarray}
+the indices in parenthesis are treated as composite indices. The final step is
+unfortunately a pointwise multiplication with ${\sf Exp}_{ij} {\sf Exp}_{jk}
+{\sf Exp}_{ik}$. However when the grid is orthorombic the term ${\sf Exp}_{ij}
+{\sf Exp}_{jk} {\sf Exp}_{ik} = 1$, $\forall i,j,k$.
+
+Computing $V_{\alpha\beta\gamma}$ is actually similar to computing $n_{ijk}$.
+First apply ${\sf Exp}_{ij} {\sf Exp}_{jk} {\sf Exp}_{ik}$ to $V_{ijk}$ and then
+apply Eq.\ref{main:12} (permuting $\alpha$ to $i$, etc...)
+
+
+\section{Derivation of the coefficients}\label{coeff}
+\subsection{Change of coordinate system}
+Chaging coordinates system involve this identity
+\begin{equation}
+  \label{coef:1}
+  (a + b + c) ^ n = \sum_{k_1+k_2+k_3 = n} \left(\begin{array}{c} n\\k_1 k_2 k_3\end{array}\right) a^{k_1} b^{k_2} c^{k_3},
+\end{equation}
+and the transfornations
+\begin{eqnarray}
+  \label{coef:2}
+  x &=& v_{11} i + v_{12} j + v_{13} k\\
+  y &=& v_{21} i + v_{22} j + v_{23} k  \label{coef:3}\\
+  z &=& v_{31} i + v_{32} j + v_{33} k  \label{coef:4}.
+\end{eqnarray}
+So a monomial of the form $x^\alpha y ^ \beta z ^\gamma$ becomes
+\begin{eqnarray}
+  \label{coef:5}
+  x^\alpha y ^ \beta z ^\gamma &=& (v_{11} i + v_{12} j + v_{13} k) ^ \alpha (v_{21} i + v_{22} j + v_{23} k) ^ \beta (v_{31} i + v_{32} j + v_{33} k)^\gamma\nonumber\\
+  &=& \sum_{\substack{k_{11} + k_{12} + k_{13} = \alpha\\
+    k_{21} + k_{22} + k_{23} = \beta\\
+    k_{31} + k_{32} + k_{33} = \gamma}} \left(\begin{array}{c}
+    \alpha\\ {\bf k}_1
+  \end{array}\right)\left(\begin{array}{c}
+    \beta\\ {\bf k}_2
+  \end{array}\right)\left(\begin{array}{c}
+    \gamma\\ {\bf k}_3
+  \end{array}\right)v_{11}^{k_{11}}v_{12}^{k_{12}}v_{13}^{k_{13}} v_{21}^{k_{21}}v_{22}^{k_{22}}v_{23}^{k_{23}} v_{31}^{k_{31}}v_{32}^{k_{32}} v_{33}^{k_{33}}\nonumber\\
+  &\times& i ^{k_{11}+k_{21}+k_{31}} j ^{k_{12}+k_{22}+k_{32}} k ^{k_{13}+k_{23}+k_{33}},
+\end{eqnarray}
+with ${\bf k}_i = (k_{i1}, k_{i2}, k_{i3})$ and $\left(\begin{array}{c}
+  \alpha\\ {\bf k}_1
+\end{array}\right) = \left(\frac{\alpha !}{k_{11} ! k_{12} ! k_{13} !}\right)$ the multinomial factor. From a practical point of view, the easiest to compute the coefficients in the new coordinate frame is to compute all terms and add the results to their respective place.
+
+\end{document}

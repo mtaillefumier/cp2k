@@ -320,13 +320,10 @@ void collocate_synchronize(void *gaussian_handler)
 
     struct collocation_integration_ *handler = (struct collocation_integration_ *)gaussian_handler;
 
-    if (handler == NULL) {
-        abort();
-    }
-
     if (handler->sequential_mode)
         return;
 
+    abort();
     thpool_wait(handler->thpool);
 
     if ((handler->list[0]->number_of_elements_ > 0) && (!handler->list[0]->done)) {

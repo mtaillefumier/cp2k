@@ -361,6 +361,12 @@ void grid_transform_coef_xyz_to_ijk(const double dh[3][3],
 {
     const int lp = coef_xyz->size[0] - 1;
     tensor coef_ijk;
+
+    /* this tensor corresponds to the term
+     * $v_{11}^{k_{11}}v_{12}^{k_{12}}v_{13}^{k_{13}}
+     * v_{21}^{k_{21}}v_{22}^{k_{22}}v_{23}^{k_{23}}
+     * v_{31}^{k_{31}}v_{32}^{k_{32}} v_{33}^{k_{33}}$ in Eq.26 found section
+     * III.A of the notes */
     tensor hmatgridp;
 
     initialize_tensor_3(&coef_ijk, coef_xyz->size[0], coef_xyz->size[1], coef_xyz->size[2]);
@@ -420,7 +426,10 @@ void grid_transform_coef_xyz_to_ijk(const double dh[3][3],
                                         const int jl = jlx + jly + jlz;
                                         const int kl = klx + kly + klz;
                                         //const int lijk= coef_map[kl][jl][il];
-                                        idx3(coef_ijk, kl, jl, il) += idx3(coef_xyz[0], lz, ly, lx) *
+                                        /* the fac table is the factorial. It
+                                         * would be better to use the
+                                         * multinomials. */
+                                        idx3(coef_ijk, il, kl, jl) += idx3(coef_xyz[0], lx, lz, ly) *
                                             idx3(hmatgridp, ilx, 0, 0) * idx3(hmatgridp, jlx, 1, 0) * idx3(hmatgridp, klx, 2, 0) *
                                             idx3(hmatgridp, ily, 0, 1) * idx3(hmatgridp, jly, 1, 1) * idx3(hmatgridp, kly, 2, 1) *
                                             idx3(hmatgridp, ilz, 0, 2) * idx3(hmatgridp, jlz, 1, 2) * idx3(hmatgridp, klz, 2, 2) *
