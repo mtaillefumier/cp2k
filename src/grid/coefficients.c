@@ -18,9 +18,8 @@ extern void collocate_core_rectangular(double *scratch,
                                        struct tensor_ *cube);
 
 // *****************************************************************************
-void grid_prepare_coef(const bool ortho,
+void grid_prepare_coef(const int *lmin,
                        const int *lmax,
-                       const int *lmin,
                        const int lp,
                        const double prefactor,
                        const tensor *alpha, // [3][lb_max+1][la_max+1][lp+1]

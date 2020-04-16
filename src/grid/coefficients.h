@@ -12,9 +12,8 @@ extern void grid_prepare_alpha(const double ra[3],
                                const int *lmax,
                                tensor *alpha);
 
-extern void grid_prepare_coef(const bool ortho,
-                              const int *lmax,
-                              const int *lmin,
+extern void grid_prepare_coef(const int *const lmin,
+                              const int *const lmax,
                               const int lp,
                               const double prefactor,
                               const tensor *alpha,

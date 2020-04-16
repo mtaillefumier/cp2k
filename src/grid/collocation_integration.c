@@ -420,3 +420,102 @@ void calculate_collocation(void *const in)
     list_->number_of_elements_ = 0;
     return;
 }
+
+
+/* compute the decomposition of the cube according to the boundaries conditions
+ * and create a list of small tasks with the size and position of the subblock
+ * to be added or extracted from/to the grid. It does not modify the grid what
+ * so ever */
+void compute_blocks(collocation_integration *const handler,
+                    const int *lower_boundaries_cube,
+                    const int *cube_size,
+                    const int *cube_center,
+                    const int *period,
+                    const tensor *Exp,
+                    const int *lb_grid,
+                    tensor *grid)
+{
+    int position[3];
+    return_cube_position(grid->size, lb_grid, cube_center, lower_boundaries_cube, period, position);
+    mark_collocation_new_pair(handler);
+    if ((position[1] + cube_size[1] <= grid->size[1]) &&
+        (position[2] + cube_size[2] <= grid->size[2]) &&
+        (position[0] + cube_size[0] <= grid->size[0])) {
+        // it means that the cube is completely inside the grid without touching
+        // the grid borders. periodic boundaries conditions are pointless here.
+        // we can simply loop over all three dimensions.
+
+        // it also consider the case where they are open boundaries
+
+        const int upper_corner[3] = {position[0] + cube_size[0],
+                                     position[1] + cube_size[1],
+                                     position[2] + cube_size[2]};
+
+        add_collocation_block(handler,
+                              period,
+                              cube_size,
+                              NULL,
+                              position,
+                              upper_corner,
+                              Exp,
+                              grid);
+        return;
+    }
+
+    int z1 = position[0];
+    int z_offset = 0;
+    /* We actually split the cube into smaller parts such that we do not have
+     * to apply pcb as a last stage. The blocking takes care of it */
+
+    int lower_corner[3];
+    int upper_corner[3];
+
+    for (int z = 0; (z < (cube_size[0] - 1)); z++, z1++) {
+        lower_corner[0] = z1;
+        upper_corner[0] = compute_next_boundaries(&z1, z, grid->size[0], period[0], cube_size[0]);
+
+        /* // We have a full plane. */
+
+        if (upper_corner[0] - lower_corner[0] > 0) {
+            int y1 = position[1];
+            int y_offset = 0;
+            for (int y = 0; y < cube_size[1]; y++, y1++) {
+                lower_corner[1] = y1;
+                upper_corner[1] = compute_next_boundaries(&y1, y, grid->size[1], period[1], cube_size[1]);
+
+                /*     // this is needed when the grid is distributed over several ranks. */
+                /* if (y1 >= lb_grid[1] + grid->size[1]) */
+                /*     continue; */
+
+                if (upper_corner[1] - lower_corner[1] > 0) {
+                    int x1 = position[2];
+                    int x_offset = 0;
+
+                    for (int x = 0; x < cube_size[2]; x++, x1++) {
+                        lower_corner[2] = x1;
+                        upper_corner[2] = compute_next_boundaries(&x1, x, grid->size[2], period[2], cube_size[2]);
+                        if (upper_corner[2] - lower_corner[2] > 0) {
+
+                            int position2[3]= {z_offset, y_offset, x_offset};
+
+                            add_collocation_block(handler,
+                                                  period,
+                                                  cube_size,
+                                                  position2, // starting position in the subgrid
+                                                  lower_corner,
+                                                  upper_corner,
+                                                  Exp,
+                                                  grid);
+
+                        }
+
+                        update_loop_index(lower_corner[2], upper_corner[2], grid->size[2], period[2], &x_offset, &x, &x1);
+                    }
+                    /* this dimension of the grid is divided over several ranks */
+                }
+                update_loop_index(lower_corner[1], upper_corner[1], grid->size[1], period[1], &y_offset, &y, &y1);
+            }
+        }
+        update_loop_index(lower_corner[0], upper_corner[0], grid->size[0], period[0], &z_offset, &z, &z1);
+    }
+}

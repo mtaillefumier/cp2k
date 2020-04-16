@@ -28,6 +28,7 @@
 #include "coefficients.h"
 
 void collocate_l0(const struct tensor_ *co,
+
                   const struct tensor_ *p_alpha_beta_reduced_,
                   struct tensor_ *cube);
 
@@ -457,103 +458,6 @@ void collocate_core_rectangular(double *scratch,
     return;
 }
 
-/* It is a sub-optimal version of the mapping in case of a cubic cutoff. But is
- * very general and does not depend on the orthorombic nature of the grid. for
- * orthorombic cases, it is faster to apply PCB directly on the polynomials. */
-
-void compute_blocks(collocation_integration *const handler,
-                    const int *lower_boundaries_cube,
-                    const int *cube_size,
-                    const int *cube_center,
-                    const int *period,
-                    const tensor *Exp,
-                    const int *lb_grid,
-                    tensor *grid)
-{
-    int position[3];
-    return_cube_position(grid->size, lb_grid, cube_center, lower_boundaries_cube, period, position);
-    mark_collocation_new_pair(handler);
-    if ((position[1] + cube_size[1] <= grid->size[1]) &&
-        (position[2] + cube_size[2] <= grid->size[2]) &&
-        (position[0] + cube_size[0] <= grid->size[0])) {
-        // it means that the cube is completely inside the grid without touching
-        // the grid borders. periodic boundaries conditions are pointless here.
-        // we can simply loop over all three dimensions.
-
-        // it also consider the case where they are open boundaries
-
-        const int upper_corner[3] = {position[0] + cube_size[0],
-                                     position[1] + cube_size[1],
-                                     position[2] + cube_size[2]};
-
-        add_collocation_block(handler,
-                              period,
-                              cube_size,
-                              NULL,
-                              position,
-                              upper_corner,
-                              Exp,
-                              grid);
-        return;
-    }
-
-    int z1 = position[0];
-    int z_offset = 0;
-    /* We actually split the cube into smaller parts such that we do not have
-     * to apply pcb as a last stage. The blocking takes care of it */
-
-    int lower_corner[3];
-    int upper_corner[3];
-
-    for (int z = 0; (z < (cube_size[0] - 1)); z++, z1++) {
-        lower_corner[0] = z1;
-        upper_corner[0] = compute_next_boundaries(&z1, z, grid->size[0], period[0], cube_size[0]);
-
-        /* // We have a full plane. */
-
-        if (upper_corner[0] - lower_corner[0] > 0) {
-            int y1 = position[1];
-            int y_offset = 0;
-            for (int y = 0; y < cube_size[1]; y++, y1++) {
-                lower_corner[1] = y1;
-                upper_corner[1] = compute_next_boundaries(&y1, y, grid->size[1], period[1], cube_size[1]);
-
-                /*     // this is needed when the grid is distributed over several ranks. */
-                /* if (y1 >= lb_grid[1] + grid->size[1]) */
-                /*     continue; */
-
-                if (upper_corner[1] - lower_corner[1] > 0) {
-                    int x1 = position[2];
-                    int x_offset = 0;
-
-                    for (int x = 0; x < cube_size[2]; x++, x1++) {
-                        lower_corner[2] = x1;
-                        upper_corner[2] = compute_next_boundaries(&x1, x, grid->size[2], period[2], cube_size[2]);
-                        if (upper_corner[2] - lower_corner[2] > 0) {
-
-                            int position2[3]= {z_offset, y_offset, x_offset};
-
-                            add_collocation_block(handler,
-                                                  period,
-                                                  cube_size,
-                                                  position2, // starting position in the subgrid
-                                                  lower_corner,
-                                                  upper_corner,
-                                                  Exp,
-                                                  grid);
-
-                        }
-
-                        update_loop_index(lower_corner[2], upper_corner[2], grid->size[2], period[2], &x_offset, &x, &x1);
-                    }
-                    /* this dimension of the grid is divided over several ranks */
-                }
-                update_loop_index(lower_corner[1], upper_corner[1], grid->size[1], period[1], &y_offset, &y, &y1);
-            }
-        }
-        update_loop_index(lower_corner[0], upper_corner[0], grid->size[0], period[0], &z_offset, &z, &z1);
-    }
-}
 
 /* It is a sub-optimal version of the mapping in case of a cubic cutoff. But is
  * very general and does not depend on the orthorombic nature of the grid. for
@@ -820,27 +724,51 @@ void grid_collocate(collocation_integration *const handler,
 
 
 // *****************************************************************************
-void grid_collocate_internal(collocation_integration *const handler,
-                             const bool use_ortho,
-                             const int func,
-                             const int *lmax,
-                             const int *lmin,
-                             const double zeta,
-                             const double zetb,
-                             const double rscale,
-                             const double dh[3][3],
-                             const double dh_inv[3][3],
-                             const double ra[3],
-                             const double rab[3],
-                             const int npts[3],
-                             const int lb_grid[3],
-                             const bool periodic[3],
-                             const double radius,
-                             const int *offsets,
-                             const int *pab_size, // n1, n2
-                             const double pab[pab_size[1]][pab_size[0]],
-                             tensor *grid)
+void grid_collocate_pgf_product_cpu(void *const handle,
+                                    const bool use_ortho,
+                                    const int func,
+                                    const int la_max,
+                                    const int la_min,
+                                    const int lb_max,
+                                    const int lb_min,
+                                    const double zeta,
+                                    const double zetb,
+                                    const double rscale,
+                                    const double dh[3][3],
+                                    const double dh_inv[3][3],
+                                    const double ra[3],
+                                    const double rab[3],
+                                    const int npts[3],
+                                    const int ngrid[3],
+                                    const int lb_grid[3],
+                                    const bool periodic[3],
+                                    const double radius,
+                                    const int o1,
+                                    const int o2,
+                                    const int n1,
+                                    const int n2,
+                                    const double pab[n2][n1],
+                                    double *grid_)
 {
+
+    if (!handle) {
+        abort();
+    }
+
+    collocation_integration *handler = (collocation_integration *)handle;
+// Uncomment this to dump all tasks to file.
+// #define __GRID_DUMP_TASKS
+    tensor grid;
+    int offset[2] = {o1, o2};
+    int pab_size[2] = {n2, n1};
+
+    int lmax[2] = {la_max, lb_max};
+    int lmin[2] = {la_min, lb_min};
+
+    initialize_tensor_3(&grid, ngrid[2], ngrid[1], ngrid[0]);
+    grid.ld_ = ngrid[0];
+    grid.data = grid_;
+
 
     const double zetp = zeta + zetb;
     const double f = zetb / zetp;
@@ -877,7 +805,7 @@ void grid_collocate_internal(collocation_integration *const handler,
 
     memset(pab_prep, 0, n2_prep * n1_prep * sizeof(double));
 
-    grid_prepare_pab(func, offsets[0], offsets[1], lmax,
+    grid_prepare_pab(func, offset[0], offset[1], lmax,
                      lmin, zeta, zetb, pab_size[0], pab_size[1], pab, n1_prep, n2_prep, pab_prep);
 
     //   *** initialise the coefficient matrix, we transform the sum
@@ -932,9 +860,8 @@ void grid_collocate_internal(collocation_integration *const handler,
     //
 
     // coef[x][z][y]
-    grid_prepare_coef(true,
+    grid_prepare_coef(lmin_prep,
                       lmax_prep,
-                      lmin_prep,
                       lp,
                       prefactor,
                       &handler->alpha,
@@ -951,119 +878,5 @@ void grid_collocate_internal(collocation_integration *const handler,
                    lb_grid_bis,
                    periodic_bis,
                    radius,
-                   grid);
+                   &grid);
 }
-
-
-// *****************************************************************************
-void grid_collocate_pgf_product_cpu(void *const handle,
-                                    const bool use_ortho,
-                                    const int func,
-                                    const int la_max,
-                                    const int la_min,
-                                    const int lb_max,
-                                    const int lb_min,
-                                    const double zeta,
-                                    const double zetb,
-                                    const double rscale,
-                                    const double dh[3][3],
-                                    const double dh_inv[3][3],
-                                    const double ra[3],
-                                    const double rab[3],
-                                    const int npts[3],
-                                    const int ngrid[3],
-                                    const int lb_grid[3],
-                                    const bool periodic[3],
-                                    const double radius,
-                                    const int o1,
-                                    const int o2,
-                                    const int n1,
-                                    const int n2,
-                                    const double pab[n2][n1],
-                                    double *grid_)
-{
-
-// Uncomment this to dump all tasks to file.
-// #define __GRID_DUMP_TASKS
-    tensor grid;
-    int offset[2] = {o1, o2};
-    int pab_size[2] = {n2, n1};
-
-    int lmax[2] = {la_max, lb_max};
-    int lmin[2] = {la_min, lb_min};
-
-    initialize_tensor_3(&grid, ngrid[2], ngrid[1], ngrid[0]);
-    grid.ld_ = ngrid[0];
-    grid.data = grid_;
-
-#ifdef __GRID_DUMP_TASKS
-
-    tensor grid_before;
-    initialize_tensor_3(&grid_before, ngrid[2], ngrid[1], ngrid[0]);
-    posix_memalign((void**)&grid_before.data, 64, sizeof(double) * grid_before.alloc_size_);
-    // we have a buffer of 4 M
-
-    for (int i = 0; i < ngrid[2]; i++) {
-        for (int j = 0; j < ngrid[1]; j++) {
-            for (int k = 0; k < ngrid[0]; k++) {
-                idx3(grid_before, i, j, k) = idx3(grid, i, j, k);
-            }
-        }
-    }
-    memset(grid.data, 0, sizeof(double) grid.alloc_size_);
-#endif
-
-    grid_collocate_internal(handle,
-                            use_ortho,
-                            func,
-                            lmax,
-                            lmin,
-                            zeta,
-                            zetb,
-                            rscale,
-                            dh,
-                            dh_inv,
-                            ra,
-                            rab,
-                            npts,
-                            lb_grid,
-                            periodic,
-                            radius,
-                            offset,
-                            pab_size,
-                            pab,
-                            &grid);
-#ifdef __GRID_DUMP_TASKS
-
-    grid_collocate_record(use_ortho,
-                          func,
-                          la_max,
-                          la_min,
-                          lb_max,
-                          lb_min,
-                          zeta,
-                          zetb,
-                          rscale,
-                          dh,
-                          dh_inv,
-                          ra,
-                          rab,
-                          npts,
-                          ngrid,
-                          lb_grid,
-                          periodic,
-                          radius,
-                          o1,
-                          o2,
-                          n1,
-                          n2,
-                          pab,
-                          grid);
-
-    cblas_daxpy(grid->alloc_size_, 1.0, grid_before->data, 1, grid->data, 1);
-    free(grid_before.data);
-#endif
-
-}
-
-//EOF

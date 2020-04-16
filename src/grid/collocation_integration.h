@@ -114,5 +114,12 @@ extern void *collocate_create_handle(const int device_id, const int number_of_ga
 extern void collocate_synchronize(void *gaussian_handler);
 extern void collocate_finalize(void *gaussian_handle);
 extern void calculate_collocation(void *const in);
-
+extern void compute_blocks(collocation_integration *const handler,
+                           const int *const lower_boundaries_cube,
+                           const int *const cube_size,
+                           const int *const cube_center,
+                           const int *const period,
+                           const tensor *const Exp,
+                           const int *const lb_grid,
+                           tensor *grid);
 #endif
