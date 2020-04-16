@@ -316,7 +316,7 @@ inline int compute_cube_properties(const bool ortho,
 
         for (int i = 0; i < 3; i++) {
             lb_cube[i] = ceil(-1e-8 - *disr_radius * dx_inv[i]);
-            ub_cube[i] = 1 - lb_cube[i];
+            ub_cube[i] = - lb_cube[i];
         }
 
         /* compute the cube size ignoring periodicity */
@@ -339,11 +339,35 @@ inline int compute_cube_properties(const bool ortho,
         const double norm1 = sqrt(dh[0][0] * dh[0][0] + dh[0][1] * dh[0][1] + dh[0][2] * dh[0][2]);
         const double norm2 = sqrt(dh[1][0] * dh[1][0] + dh[1][1] * dh[1][1] + dh[1][2] * dh[1][2]);
         const double norm3 = sqrt(dh[2][0] * dh[2][0] + dh[2][1] * dh[2][1] + dh[2][2] * dh[2][2]);
-        const double theta = acos((dh[0][0] * dh[1][0] + dh[0][1] * dh[1][1] + dh[0][2] * dh[1][2]) / (norm1 * norm2));
-        const double phi = acos((dh[0][0] * dh[2][0] + dh[0][1] * dh[2][1] + dh[0][2] * dh[2][2]) / (norm1 * norm3));
-        lb_cube[1] = ceil(-radius / (norm2 * sin(theta)) - 1e-8) - 1;
-        lb_cube[2] = ceil(-radius / (norm1 * cos(M_PI * 0.5 - theta)) - 1e-8) - 1;
-        lb_cube[0] = ceil(-radius / (norm3 * sin(phi)) - 1e-8) - 1;
+        /* const double theta = acos((dh[0][0] * dh[1][0] + dh[0][1] * dh[1][1] + dh[0][2] * dh[1][2]) / (norm1 * norm2)); */
+        /* const double phi = acos((dh[0][0] * dh[2][0] + dh[0][1] * dh[2][1] + dh[0][2] * dh[2][2]) / (norm1 * norm3)); */
+        /* lb_cube[1] = ceil(-radius / (norm2 * sin(theta)) - 1e-8); */
+        /* lb_cube[2] = ceil(-radius / (norm1 * cos(M_PI * 0.5 - theta)) - 1e-8); */
+        /* lb_cube[0] = ceil(-radius / (norm3 * sin(phi)) - 1e-8); */
+
+        for (int idir=0; idir<3; idir++) {
+            lb_cube[idir] = INT_MAX;
+            ub_cube[idir] = INT_MIN;
+        }
+        for (int i=-1; i<=1; i++) {
+            for (int j=-1; j<=1; j++) {
+                for (int k=-1; k<=1; k++) {
+                    const double x = rp[0] + i * radius;
+                    const double y = rp[1] + j * radius;
+                    const double z = rp[2] + k * radius;
+                    for (int idir=0; idir<3; idir++) {
+                        const double resc = dh_inv[0][idir] * x + dh_inv[1][idir] * y + dh_inv[2][idir] * z;
+                        lb_cube[idir] = min(lb_cube[idir], floor(resc));
+                        ub_cube[idir] = max(ub_cube[idir], ceil(resc));
+                    }
+                }
+            }
+        }
+
+        for (int i = 0; i < 3; i++) {
+            lb_cube[i] = -(ub_cube[i] - lb_cube[i]) / 2;
+        }
+
         /* compute the offset now in the lattice basis */
         double rp1[3];
 
@@ -362,8 +386,9 @@ inline int compute_cube_properties(const bool ortho,
         }
     }
 
+    // Symetric interval
     for (int i = 0; i < 3; i++) {
-        ub_cube[i] = 1 - lb_cube[i];
+        ub_cube[i] = - lb_cube[i];
     }
 
 /* compute the cube size ignoring periodicity */
@@ -395,178 +420,6 @@ void  return_cube_position(const int *grid_size,
     }
 }
 
-/* this function needs serious rethinking. Basically we apply a spherical mask
- * on a 3D grid and then add the result on a grid with PBC */
-
-void apply_mapping(const double disr_radius,
-                   const double dh[3][3],
-                   const double dh_inv[3][3],
-                   const int *map[3],
-                   const int lb_cube[3],
-                   tensor *cube,
-                   const int cmax,
-                   tensor *grid)
-{
-    const int kgmin = ceil(-1e-8 - disr_radius * dh_inv[2][2]);
-
-    const double dz = dh[2][2];
-    const double dy = dh[1][1];
-    const double inv_dy = dh_inv[1][1];
-    const double inv_dx = dh_inv[0][0];
-    const int *__restrict map_x = map[2];
-    const int *__restrict map_y = map[1];
-    const int *__restrict map_z = map[0];
-
-    for (int kg = kgmin; kg <= 1 - kgmin; kg++) {
-        const int k = map_z[kg + cmax];   // target location on the grid
-        const int kd = (2 * kg - 1) / 2;     // distance from center in grid points
-        const double kr = kd * dz;   // distance from center in a.u.
-        const double kremain = disr_radius * disr_radius - kr * kr;
-        const int jgmin = ceil(-1e-8 - sqrt(max(0.0, kremain)) * inv_dy);
-        for (int jg = jgmin; jg <= 1 - jgmin; jg++) {
-            const int j = map_y[jg + cmax];  // target location on the grid
-            const int jd = (2 * jg - 1) / 2;    // distance from center in grid points
-            const double jr = jd * dy;  // distance from center in a.u.
-            const double jremain = kremain - jr * jr;
-            const int igmin = ceil(-1e-8 - sqrt(max(0.0, jremain)) * inv_dx);
-            double *__restrict dst = &idx3(grid[0], k - 1, j - 1, 0);
-            const double *__restrict src = &idx3(cube[0], kg - lb_cube[0], jg - lb_cube[1], - lb_cube[2]);
-            for (int ig = igmin; ig <= 1 - igmin; ig++) {
-                const int i = map_x[ig + cmax];  // target location on the grid
-                dst[i - 1] += src[ig];
-            }
-        }
-    }
-}
-
-
-// *****************************************************************************
-static void grid_fill_map(const bool periodic,
-                          const int lb_cube,
-                          const int ub_cube,
-                          const int cubecenter,
-                          const int lb_grid,
-                          const int npts,
-                          const int ngrid,
-                          const int cmax,
-                          int *map)
-{
-    if (periodic) {
-        /* for (int i=0; i <= 2*cmax; i++) */
-        /*     map[i] = mod(cubecenter + i - cmax, npts) + 1; */
-        int start = lb_cube;
-        while (true) {
-            const int offset = mod(cubecenter + start, npts)  + 1 - start;
-            const int length = min(ub_cube, npts - offset) - start;
-            for (int ig = start; ig <= start + length; ig++) {
-                map[ig + cmax] = ig + offset;
-            }
-            if (start + length >= ub_cube){
-                break;
-            }
-            start += length + 1;
-        }
-    } else {
-        // this takes partial grid + border regions into account
-        const int offset = mod(cubecenter + lb_cube + lb_grid, npts) + 1 - lb_cube;
-        // check for out of bounds
-        assert(ub_cube + offset <= ngrid);
-        assert(lb_cube + offset >= 1);
-        for (int ig = lb_cube; ig <= ub_cube; ig++) {
-            map[ig + cmax] = ig + offset;
-        }
-    }
-}
-
-/* this function needs serious rethinking. Basically we apply a spherical mask
- * on a 3D grid and then add the result on a grid with PBC */
-
-void apply_spherical_cutoff(const double disr_radius,
-                            const double dh[3][3],
-                            const double dh_inv[3][3],
-                            const int lb_cube[3],
-                            const int cmax,
-                            tensor *cube)
-{
-    const int kgmin = (cube->size[0] - 1) / 2;
-    const int jgmin = (cube->size[1] - 1) / 2;
-    const int igmin = (cube->size[2] - 1) / 2;
-    const double r2 = disr_radius * disr_radius;
-    const double inv_dx = 1.0 / dh[0][0];
-    const double rx = dh[0][0];
-    const double ry = dh[1][1];
-    const double rz = dh[2][2];
-
-    for (int kg = -kgmin; kg <= kgmin + 1; kg++) {
-        double kr = ((double)kg) * rz;   // distance from center in a.u.
-        kr *= kr;
-        for (int jg = -jgmin; jg <= jgmin + 1; jg++) {
-            double jr = ((double)jg) * ry;   // distance from center in a.u.
-            jr *= jr;
-            const double rest = r2 - kr - jr;
-            if (rest < 1e-8) {
-                memset(&idx3(cube[0], kg + kgmin, jg + jgmin, 0), 0, cube->size[2] * sizeof(double));
-                continue;
-            }
-            double *__restrict dst =  &idx3(cube[0], kg + kgmin, jg + jgmin, 0);
-            int rix = ceil(-1e-8 - sqrt(max(0.0, rest)) * inv_dx);
-            for (int ig = -igmin; ig <= rix; ig ++) {
-                dst[ig + igmin] = 0.0;
-            }
-            for (int ig = -rix + 1; ig < cube->size[2]; ig ++) {
-                dst[ig + igmin] = 0.0;
-            }
-        }
-    }
-}
-
-
-void compute_folded_polynomial(const int cube_center,
-                               const int pol_length,
-                               const int period,
-                               const int grid_size,
-                               const int grid_lower_boundaries,
-                               const int *__restrict non_zero_elements,
-                               const double *__restrict pol,
-                               double *__restrict res,
-                               double *__restrict tmp)
-{
-
-    const int start = (cube_center - grid_lower_boundaries - (pol_length - 1) / 2 + 32 * period) % period;
-
-#pragma GCC unroll 4
-#pragma GCC ivdep
-    for (int s = start; s < min(grid_size, pol_length + start); s++) {
-        tmp[s] = pol[s - start];
-    }
-
-    for (int s = min(grid_size - start, pol_length); s < pol_length; s++) {
-#pragma GCC unroll 4
-#pragma GCC ivdep
-        for (int s1 = 0; s1 < min(grid_size, pol_length - s); s1++)
-            tmp[s1] += pol[s + s1];
-
-        s += period;
-    }
-
-    // now compress the all thing. I do not care about zeros.
-    int offset = 0;
-
-    for (int s = 0; s < grid_size; s++) {
-        /* if (non_zero_elements[s] == 0) */
-        /*     continue; */
-        for (; (s < grid_size - 1) && (non_zero_elements[s] == 0); s++);
-        int smin = s;
-
-        for (; (s < grid_size - 1) && (non_zero_elements[s] == 1); s++);
-
-        int smax = s + non_zero_elements[s];
-
-        for (int si = 0; si < (smax - smin); si++)
-            res[offset + si] = tmp[smin + si];
-        offset += smax - smin;
-    }
-}
 
 double exp_recursive(const double c_exp, const double c_exp_minus_1, const int index)
 {
@@ -595,15 +448,15 @@ double exp_recursive(const double c_exp, const double c_exp_minus_1, const int i
         return res;
     }
 }
+
 void exp_i(const double alpha, const int imin, const int imax, double *__restrict__ const res)
 {
-    const double c_exp = exp(alpha);
-    const double c_exp_minus_1 = 1/ c_exp;
+    const double c_exp_co = exp(alpha);
+    /* const double c_exp_minus_1 = 1/ c_exp; */
     for (int i = 0; i < (imax - imin); i++) {
-        res[i] = exp_recursive(c_exp, c_exp_minus_1, (i + imin));
+        res[i] = exp_recursive(c_exp_co, 1.0 / c_exp_co, i + imin);
     }
 }
-
 
 void exp_ij(const double alpha, const int imin, const int imax, const int jmin, const int jmax, tensor *exp_ij_)
 {
@@ -619,7 +472,6 @@ void exp_ij(const double alpha, const int imin, const int imax, const int jmin, 
         c_exp *= c_exp_co;
     }
 }
-
 
 void calculate_non_orthorombic_corrections_tensor(const double mu_mean,
                                                   const double *r_ab,
@@ -690,21 +542,16 @@ void apply_non_orthorombic_corrections(const tensor *const Exp,
                                        tensor *const cube)
 {
     for (int z = 0; z < cube->size[0]; z++) {
-        double *__restrict__ zx = &idx3(Exp[0], 1, z, 0);
+        double *__restrict__ zx = &idx3(Exp[0], 0, z, 0);
         for (int y = 0; y < cube->size[1]; y++) {
-            const double zy = idx3(Exp[0], 0, z, y);
+            const double zy = idx3(Exp[0], 1, z, y);
             const double *__restrict__ yx = &idx3(Exp[0], 2, y, 0);
             LIBXSMM_PRAGMA_SIMD
             for (int x = 0; x < cube->size[2]; x++) {
                 idx3(cube[0], z, y, x) *= zx[x] * zy * yx[x];
-                /* printf("Exp(%d, %d) = %.15lf\n", y, x, idx3(cube[0], z, y, x)); */
             }
-            zx += Exp->ld_;
-            yx += Exp->ld_;
         }
-        /* printf("\n"); */
     }
-    /* abort(); */
 }
 
 int return_exponents(const int index) {

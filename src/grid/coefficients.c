@@ -11,30 +11,6 @@
 #include "tensor_local.h"
 #include "coefficients.h"
 
-// binomial coefficients n = 0 ... 20
-const static int binomial[21][21] = {{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-                                     {1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-                                     {1, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-                                     {1, 3, 3, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-                                     {1, 4, 6, 4, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-                                     {1, 5, 10, 10, 5, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-                                     {1, 6, 15, 20, 15, 6, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-                                     {1, 7, 21, 35, 35, 21, 7, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-                                     {1, 8, 28, 56, 70, 56, 28, 8, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-                                     {1, 9, 36,  84, 126, 126, 84, 36, 9, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-                                     {1, 10, 45, 120, 210, 252, 210, 120, 45, 10, 1, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0},
-                                     {1, 11, 55, 165, 330, 462, 462, 330, 165, 55, 11, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-                                     {1, 12, 66, 220, 495, 792, 924, 792, 495, 220, 66, 12, 1, 0, 0, 0, 0, 0, 0, 0, 0},
-                                     {1, 13, 78, 286, 715, 1287, 1716, 1716, 1287, 715, 286, 78, 13, 1, 0, 0, 0, 0, 0, 0, 0},
-                                     {1, 14, 91, 364, 1001, 2002, 3003, 3432, 3003, 2002, 1001, 364, 91, 14, 1, 0, 0, 0, 0, 0, 0},
-                                     {1, 15, 105, 455, 1365, 3003, 5005, 6435, 6435, 5005, 3003, 1365, 455, 105, 15, 1, 0, 0, 0, 0, 0},
-                                     {1, 16, 120, 560, 1820, 4368, 8008, 11440, 12870, 11440, 8008, 4368, 1820, 560, 120, 16, 1, 0, 0, 0, 0},
-                                     {1, 17, 136, 680, 2380, 6188, 12376, 19448, 24310, 24310, 19448, 12376, 6188, 2380, 680, 136, 17, 1, 0, 0, 0},
-                                     {1, 18, 153, 816, 3060, 8568, 18564, 31824, 43758, 48620, 43758, 31824, 18564, 8568, 3060, 816, 153, 18, 1, 0, 0},
-                                     {1, 19, 171, 969, 3876, 11628, 27132, 50388, 75582, 92378, 92378, 75582, 50388,  27132, 11628, 3876, 969, 171, 19, 1, 0},
-                                     {1, 20, 190, 1140, 4845, 15504, 38760, 77520, 125970, 167960, 184756, 167960, 125970, 77520, 38760, 15504, 4845, 1140, 190, 20, 1}};
-
-
 extern void collocate_core_rectangular(double *scratch,
                                        const double prefactor,
                                        const struct tensor_ *co,
@@ -62,11 +38,7 @@ void grid_prepare_coef(const bool ortho,
 
     for (int lzb = 0; lzb<=lmax[1]; lzb++) {
         for (int lza = 0; lza<=lmax[0]; lza++) {
-            for (int lyp = 0; lyp<=lp-lza-lzb; lyp++) {
-                for (int lxp = 0; lxp<=lp-lza-lzb-lyp; lxp++) {
-                    coef_xyt[lyp][lxp] = 0.0;
-                }
-            }
+            memset(coef_xyt, 0, sizeof(double) * (lp + 1)* (lp + 1));
             for (int lyb = 0; lyb<=lmax[1]-lzb; lyb++) {
                 for (int lya = 0; lya<=lmax[0]-lza; lya++) {
                     const int lxpm = (lmax[1]-lzb-lyb) + (lmax[0]-lza-lya);
@@ -90,21 +62,11 @@ void grid_prepare_coef(const bool ortho,
                     }
                 }
             }
-            if (ortho) {
-                /* I need to permute two fo the indices for the orthogonal case */
-                for (int lzp = 0; lzp<=lza+lzb; lzp++) {
-                    for (int lyp = 0; lyp<=lp-lza-lzb; lyp++) {
-                        for (int lxp = 0; lxp<=lp-lza-lzb-lyp; lxp++) {
-                            idx3(coef_xyz[0], lxp, lzp, lyp) += idx4(alpha[0], 2, lzb, lza, lzp) * coef_xyt[lyp][lxp];
-                        }
-                    }
-                }
-            } else {
-                for (int lzp = 0; lzp<=lza+lzb; lzp++) {
-                    for (int lyp = 0; lyp<=lp-lza-lzb; lyp++) {
-                        for (int lxp = 0; lxp<=lp-lza-lzb-lyp; lxp++) {
-                            idx3(coef_xyz[0], lzp, lyp, lxp) += idx4(alpha[0], 2, lzb, lza, lzp) * coef_xyt[lyp][lxp];
-                        }
+            /* I need to permute two fo the indices for the orthogonal case */
+            for (int lzp = 0; lzp<=lza+lzb; lzp++) {
+                for (int lyp = 0; lyp<=lp-lza-lzb; lyp++) {
+                    for (int lxp = 0; lxp<=lp-lza-lzb-lyp; lxp++) {
+                        idx3(coef_xyz[0], lxp, lzp, lyp) += idx4(alpha[0], 2, lzb, lza, lzp) * coef_xyt[lyp][lxp];
                     }
                 }
             }
@@ -371,10 +333,10 @@ void grid_transform_coef_xyz_to_ijk(const double dh[3][3],
 
     initialize_tensor_3(&coef_ijk, coef_xyz->size[0], coef_xyz->size[1], coef_xyz->size[2]);
 
-    if(posix_memalign((void **)&coef_ijk.data, 32, sizeof(double) * coef_xyz->alloc_size_) != 0)
+    if(posix_memalign((void **)&coef_ijk.data, 32, sizeof(double) * coef_ijk.alloc_size_) != 0)
         abort();
 
-    memset(coef_ijk.data, 0, sizeof(double) * coef_xyz->alloc_size_);
+    memset(coef_ijk.data, 0, sizeof(double) * coef_ijk.alloc_size_);
     initialize_tensor_3(&hmatgridp, coef_xyz->size[0], 3, 3);
 
     posix_memalign((void **)&hmatgridp.data, 32, sizeof(double) * hmatgridp.alloc_size_);
@@ -391,10 +353,10 @@ void grid_transform_coef_xyz_to_ijk(const double dh[3][3],
     /* } */
 
     // transform using multinomials
-    for (int i=0; i<3; i++) {
-        for (int j=0; j<3; j++) {
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
             idx3(hmatgridp, 0, j, i) = 1.0;
-            for (int k=1; k<=lp; k++) {
+            for (int k = 1; k <= lp; k++) {
                 idx3(hmatgridp, k, j, i) = idx3(hmatgridp, k - 1, j, i) * dh[j][i];
             }
         }
@@ -408,19 +370,19 @@ void grid_transform_coef_xyz_to_ijk(const double dh[3][3],
     /* } */
 
     const int lpx = lp;
-    for (int klx=0; klx<=lpx; klx++) {
-        for (int jlx=0; jlx<=lpx-klx; jlx++) {
-            for (int ilx=0; ilx<=lpx-klx-jlx; ilx++) {
+    for (int klx = 0; klx <= lpx; klx++) {
+        for (int jlx = 0; jlx <= lpx - klx; jlx++) {
+            for (int ilx = 0; ilx <= lpx - klx - jlx; ilx++) {
                 const int lx = ilx + jlx + klx;
                 const int lpy = lp - lx;
-                for (int kly=0; kly<=lpy; kly++) {
-                    for (int jly=0; jly<=lpy-kly; jly++) {
-                        for (int ily=0; ily<=lpy-kly-jly; ily++) {
+                for (int kly = 0; kly <= lpy; kly++) {
+                    for (int jly = 0; jly <= lpy - kly; jly++) {
+                        for (int ily = 0; ily <= lpy - kly - jly; ily++) {
                             const int ly = ily + jly + kly;
                             const int lpz = lp - lx - ly;
-                            for (int klz=0; klz<=lpz; klz++) {
-                                for (int jlz=0; jlz<=lpz-klz; jlz++) {
-                                    for (int ilz=0; ilz<=lpz-klz-jlz; ilz++) {
+                            for (int klz = 0; klz <= lpz; klz++) {
+                                for (int jlz = 0; jlz <= lpz - klz; jlz++) {
+                                    for (int ilz = 0; ilz <= lpz - klz - jlz; ilz++) {
                                         const int lz = ilz + jlz + klz;
                                         const int il = ilx + ily + ilz;
                                         const int jl = jlx + jly + jlz;
@@ -531,90 +493,90 @@ void grid_transform_coef_xyz_to_ijk_variant(const double dh[3][3],
 }
 
 
-void compute_two_gaussian_coefficients(const tensor *const coef,
-                                       const int *const lmin, const int *const lmax,
-                                       const double *rab, const double *ra, const double *rb,
-                                       tensor *const co)
-{
-    tensor power;
+/* void compute_two_gaussian_coefficients(const tensor *const coef, */
+/*                                        const int *const lmin, const int *const lmax, */
+/*                                        const double *rab, const double *ra, const double *rb, */
+/*                                        tensor *const co) */
+/* { */
+/*     tensor power; */
 
-    initialize_tensor_4(&power, 2, 3, lmax[0] + lmax[1] + 1, lmax[0] + lmax[1] + 1);
-    posix_memalign((void **)&power.data, 32, sizeof(double) * power.alloc_size_);
+/*     initialize_tensor_4(&power, 2, 3, lmax[0] + lmax[1] + 1, lmax[0] + lmax[1] + 1); */
+/*     posix_memalign((void **)&power.data, 32, sizeof(double) * power.alloc_size_); */
 
-    for (int dir = 0; dir < 3; dir++) {
-        double tmp = rab[dir] - ra[dir];
-        idx4(power, 0, dir, 0, 0) = 1.0;
-        for (int k = 1; k < lmax[0] + lmax[1] + 1; k++)
-            idx4(power, 0, dir, 0, k) = tmp * idx4(power, 0, dir, 0, k - 1);
+/*     for (int dir = 0; dir < 3; dir++) { */
+/*         double tmp = rab[dir] - ra[dir]; */
+/*         idx4(power, 0, dir, 0, 0) = 1.0; */
+/*         for (int k = 1; k < lmax[0] + lmax[1] + 1; k++) */
+/*             idx4(power, 0, dir, 0, k) = tmp * idx4(power, 0, dir, 0, k - 1); */
 
-        for (int k = 1; k < lmax[0] + lmax[1] + 1; k++)
-            memcpy(&idx4(power, 0, dir, k ,0),
-                   &idx4(power, 0, dir, k - 1, 0),
-                   sizeof(double) * power.size[3]);
+/*         for (int k = 1; k < lmax[0] + lmax[1] + 1; k++) */
+/*             memcpy(&idx4(power, 0, dir, k ,0), */
+/*                    &idx4(power, 0, dir, k - 1, 0), */
+/*                    sizeof(double) * power.size[3]); */
 
-        tmp = rab[dir] - rb[dir];
+/*         tmp = rab[dir] - rb[dir]; */
 
-        idx4(power, 1, dir, 0, 0) = 1.0;
-        for (int k = 1; k < lmax[0] + lmax[1] + 1; k++)
-            idx4(power, 1, dir, 0, k) = tmp * idx4(power, 1, dir, 0, k - 1);
+/*         idx4(power, 1, dir, 0, 0) = 1.0; */
+/*         for (int k = 1; k < lmax[0] + lmax[1] + 1; k++) */
+/*             idx4(power, 1, dir, 0, k) = tmp * idx4(power, 1, dir, 0, k - 1); */
 
-        for (int k = 1; k < lmax[0] + lmax[1] + 1; k++)
-            memcpy(&idx4(power, 1, dir, k ,0),
-                   &idx4(power,1, dir, k - 1, 0),
-                   sizeof(double) * power.size[3]);
+/*         for (int k = 1; k < lmax[0] + lmax[1] + 1; k++) */
+/*             memcpy(&idx4(power, 1, dir, k ,0), */
+/*                    &idx4(power,1, dir, k - 1, 0), */
+/*                    sizeof(double) * power.size[3]); */
 
-        for (int a1 = 0; a1 < lmax[0] + lmax[1] + 1; a1++)
-            for (int k = 0; k < lmax[0] + lmax[1] + 1; k++)
-                idx4(power, 0, dir, a1, k) *= binomial[a1][k];
+/*         for (int a1 = 0; a1 < lmax[0] + lmax[1] + 1; a1++) */
+/*             for (int k = 0; k < lmax[0] + lmax[1] + 1; k++) */
+/*                 idx4(power, 0, dir, a1, k) *= binomial[a1][k]; */
 
-        for (int a1 = 0; a1 < lmax[0] + lmax[1] + 1; a1++)
-            for (int k = 0; k < lmax[0] + lmax[1] + 1; k++)
-                idx4(power, 1, dir, a1, k) *= binomial[a1][k];
+/*         for (int a1 = 0; a1 < lmax[0] + lmax[1] + 1; a1++) */
+/*             for (int k = 0; k < lmax[0] + lmax[1] + 1; k++) */
+/*                 idx4(power, 1, dir, a1, k) *= binomial[a1][k]; */
 
-    }
+/*     } */
 
-    /* We can also use dgemm actually. Use of collocate seems possible */
+/*     /\* We can also use dgemm actually. Use of collocate seems possible *\/ */
 
 
-    for (int l1 = lmin[0]; l1 <= lmax[0]; l1++) {
-        for (int l2 = lmin[1]; l2 <= lmax[1]; l2++) {
-            for (int alpha1 = 0; alpha1 <= l1; alpha1++) {
-                for (int alpha2 = 0; alpha2 <= l2; alpha2++) {
-                    for (int beta1 = 0; beta1 <= (l1 - alpha1); beta1++) {
-                        const int gamma1 = l1 - alpha1 - beta1;
-                        for (int beta2 = 0; beta2 <= (l2 - alpha2); beta2++) {
-                            const int gamma2 = l2 - alpha2 - beta2;
-                            double tmp = 0.0;
-                            for (int k1 = 0; k1 <= alpha1; k1++) {
-                                /*
-                                  WARNING : We may have to permute the indices
-                                */
+/*     for (int l1 = lmin[0]; l1 <= lmax[0]; l1++) { */
+/*         for (int l2 = lmin[1]; l2 <= lmax[1]; l2++) { */
+/*             for (int alpha1 = 0; alpha1 <= l1; alpha1++) { */
+/*                 for (int alpha2 = 0; alpha2 <= l2; alpha2++) { */
+/*                     for (int beta1 = 0; beta1 <= (l1 - alpha1); beta1++) { */
+/*                         const int gamma1 = l1 - alpha1 - beta1; */
+/*                         for (int beta2 = 0; beta2 <= (l2 - alpha2); beta2++) { */
+/*                             const int gamma2 = l2 - alpha2 - beta2; */
+/*                             double tmp = 0.0; */
+/*                             for (int k1 = 0; k1 <= alpha1; k1++) { */
+/*                                 /\* */
+/*                                   WARNING : We may have to permute the indices */
+/*                                 *\/ */
 
-                                const double c1 = idx4(power, 2, 0, alpha1, k1);
-                                for (int k2 = 0; k2 <= alpha2; k2++) {
-                                    const double c2 = c1 * idx4(power, 2, 1, alpha2, k2);
-                                    for (int k3 = 0; k3 <= beta1; k3++) {
-                                        const double c3 = c2 * idx4(power, 1, 0, beta1, k3);
-                                        for (int k4 = 0; k4 <= beta2; k4++) {
-                                            const double c4 = c3 * idx4(power, 1, 1, beta2, k4);
-                                            for (int k5 = 0; k5 <= gamma1; k5++) {
-                                                const double c5 = c4 * idx4(power, 0, 0, gamma1, k5);
-                                                const double *__restrict__ src = &idx3(coef[0], k3 + k4, k1 + k2, k5);
-                                                for (int k6 = 0; k6 <= gamma2; k6++) {
-                                                    tmp += c5 * src[k6] * idx4(power, 0, 1, gamma2, k6);
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+/*                                 const double c1 = idx4(power, 2, 0, alpha1, k1); */
+/*                                 for (int k2 = 0; k2 <= alpha2; k2++) { */
+/*                                     const double c2 = c1 * idx4(power, 2, 1, alpha2, k2); */
+/*                                     for (int k3 = 0; k3 <= beta1; k3++) { */
+/*                                         const double c3 = c2 * idx4(power, 1, 0, beta1, k3); */
+/*                                         for (int k4 = 0; k4 <= beta2; k4++) { */
+/*                                             const double c4 = c3 * idx4(power, 1, 1, beta2, k4); */
+/*                                             for (int k5 = 0; k5 <= gamma1; k5++) { */
+/*                                                 const double c5 = c4 * idx4(power, 0, 0, gamma1, k5); */
+/*                                                 const double *__restrict__ src = &idx3(coef[0], k3 + k4, k1 + k2, k5); */
+/*                                                 for (int k6 = 0; k6 <= gamma2; k6++) { */
+/*                                                     tmp += c5 * src[k6] * idx4(power, 0, 1, gamma2, k6); */
+/*                                                 } */
+/*                                             } */
+/*                                         } */
+/*                                     } */
+/*                                 } */
+/*                             } */
 
-                            idx2(co[0], return_linear_index_from_exponents(gamma1, beta1, alpha1),
-                                 return_linear_index_from_exponents(gamma2, beta2, alpha2)) = tmp;
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
+/*                             idx2(co[0], return_linear_index_from_exponents(gamma1, beta1, alpha1), */
+/*                                  return_linear_index_from_exponents(gamma2, beta2, alpha2)) = tmp; */
+/*                         } */
+/*                     } */
+/*                 } */
+/*             } */
+/*         } */
+/*     } */
+/* } */
