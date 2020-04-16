@@ -19,8 +19,7 @@
 
 
 // *****************************************************************************
-void grid_collocate_record(const bool sequential,
-                           const bool use_ortho,
+void grid_collocate_record(const bool use_ortho,
                            const int func,
                            const int la_max,
                            const int la_min,
@@ -307,7 +306,7 @@ double grid_collocate_replay(const char* filename, const int cycles, const int n
                                        ngrid,
                                        lb_grid,
                                        periodic,
-                                       radius * (1 - 0.5 * drand48()),
+                                       radius,
                                        o1,
                                        o2,
                                        n1,

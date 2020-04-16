@@ -10,7 +10,7 @@ typedef struct tensor_ {
     size_t alloc_size_;
     size_t offsets[4];
     double *data;
-    int ld_;
+    unsigned int ld_;
 } tensor;
 
 /* initialize a tensor structure for a tensor of dimension dim <= 4 */

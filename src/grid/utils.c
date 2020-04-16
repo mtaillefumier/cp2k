@@ -334,17 +334,6 @@ inline int compute_cube_properties(const bool ortho,
 
         return cmax;
     } else {
-        /* A little bit of simple geometry. What it the smallest parallelepiped
-           that contains the sphere of radius r centered around the origin */
-        const double norm1 = sqrt(dh[0][0] * dh[0][0] + dh[0][1] * dh[0][1] + dh[0][2] * dh[0][2]);
-        const double norm2 = sqrt(dh[1][0] * dh[1][0] + dh[1][1] * dh[1][1] + dh[1][2] * dh[1][2]);
-        const double norm3 = sqrt(dh[2][0] * dh[2][0] + dh[2][1] * dh[2][1] + dh[2][2] * dh[2][2]);
-        /* const double theta = acos((dh[0][0] * dh[1][0] + dh[0][1] * dh[1][1] + dh[0][2] * dh[1][2]) / (norm1 * norm2)); */
-        /* const double phi = acos((dh[0][0] * dh[2][0] + dh[0][1] * dh[2][1] + dh[0][2] * dh[2][2]) / (norm1 * norm3)); */
-        /* lb_cube[1] = ceil(-radius / (norm2 * sin(theta)) - 1e-8); */
-        /* lb_cube[2] = ceil(-radius / (norm1 * cos(M_PI * 0.5 - theta)) - 1e-8); */
-        /* lb_cube[0] = ceil(-radius / (norm3 * sin(phi)) - 1e-8); */
-
         for (int idir=0; idir<3; idir++) {
             lb_cube[idir] = INT_MAX;
             ub_cube[idir] = INT_MIN;
@@ -380,7 +369,6 @@ inline int compute_cube_properties(const bool ortho,
             rp1[2 - i] = dh_inv_rp;
         }
 
-        double dx[3] = {norm3, norm2, norm1};
         for (int i=0; i<3; i++) {
             roffset[i] = rp1[i] - ((double) cubecenter[i]);
         }
@@ -423,8 +411,6 @@ void  return_cube_position(const int *grid_size,
 
 double exp_recursive(const double c_exp, const double c_exp_minus_1, const int index)
 {
-    if (index == 0)
-        return 1.0;
 
     if (index == -1)
         return c_exp_minus_1;
@@ -447,6 +433,8 @@ double exp_recursive(const double c_exp, const double c_exp_minus_1, const int i
         }
         return res;
     }
+
+    return 1.0;
 }
 
 void exp_i(const double alpha, const int imin, const int imax, double *__restrict__ const res)

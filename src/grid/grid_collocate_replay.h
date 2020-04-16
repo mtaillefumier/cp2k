@@ -8,8 +8,7 @@
 
 #include <stdbool.h>
 
-void grid_collocate_record(const bool sequential,
-                           const bool use_ortho,
+void grid_collocate_record(const bool use_ortho,
                            const int func,
                            const int la_max,
                            const int la_min,

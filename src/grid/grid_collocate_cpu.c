@@ -61,8 +61,6 @@ void collocate_l0(const struct tensor_ *co,
     const double *__restrict pz = &idx3(p_alpha_beta_reduced_[0], 0, 0, 0); /* k indice */
     const double *__restrict py = &idx3(p_alpha_beta_reduced_[0], 1, 0, 0); /* j indice */
     const double *__restrict px = &idx3(p_alpha_beta_reduced_[0], 2, 0, 0); /* i indice */
-    const double coo = idx3 (co[0], 0, 0, 0);
-
     memset(&idx3(cube[0], 0, 0, 0), 0, sizeof(double) * cube->alloc_size_);
 
     cblas_dger (CblasRowMajor,
@@ -77,7 +75,6 @@ void collocate_l0(const struct tensor_ *co,
                 cube->ld_);
 
     for (int z1 = 1; z1 < cube->size[0]; z1++) {
-        const double tz = pz[z1];
         cblas_daxpy(cube->size[1] * cube->ld_,
                     pz[z1],
                     &idx3(cube[0], 0, 0, 0),
@@ -86,9 +83,8 @@ void collocate_l0(const struct tensor_ *co,
                     1);
     }
 
-    const double tz = pz[0];
     cblas_dscal(cube->size[1] * cube->ld_,
-                tz,
+                pz[0],
                 &idx3(cube[0], 0, 0, 0),
                 1);
 }
@@ -130,8 +126,7 @@ void grid_fill_pol(const bool transpose,
             t_exp_min_1 *= t_exp_min_2 * t_exp_1;
             t_exp_min_2 *= t_exp_2;
             double pg = t_exp_min_1;
-            // pg  = EXP(-zetp*rpg**2)
-            for (int icoef=0; icoef<=lp; icoef++) {
+            for (int icoef = 0; icoef <= lp; icoef++) {
                 idx2(pol, ig - xmin, icoef) = pg;
                 pg *= rpg;
             }
@@ -144,7 +139,6 @@ void grid_fill_pol(const bool transpose,
             t_exp_plus_1 *= t_exp_plus_2 * t_exp_1;
             t_exp_plus_2 *= t_exp_2;
             double pg = t_exp_plus_1;
-            // pg  = EXP(-zetp*rpg**2)
             for (int icoef = 0; icoef <= lp; icoef++) {
                 idx2(pol, ig - xmin, icoef) = pg;
                 pg *= rpg;
@@ -169,13 +163,9 @@ void grid_fill_pol(const bool transpose,
             t_exp_min_1 *= t_exp_min_2 * t_exp_1;
             t_exp_min_2 *= t_exp_2;
             double pg = t_exp_min_1;
-            // pg  = EXP(-zetp*rpg**2)
-            /* for (int icoef=0; icoef <= lp; icoef++) { */
             idx2(pol, 0, ig - xmin) = pg;
             if (lp > 0)
                 idx2(pol, 1, ig - xmin) = rpg;
-            /* pg *= rpg; */
-            /* } */
         }
 
         for (int ig = 1; ig <= xmax; ig++) {
@@ -183,13 +173,9 @@ void grid_fill_pol(const bool transpose,
             t_exp_plus_1 *= t_exp_plus_2 * t_exp_1;
             t_exp_plus_2 *= t_exp_2;
             double pg = t_exp_plus_1;
-            // pg  = EXP(-zetp*rpg**2)
-            /* for (int icoef = 0; icoef <= lp; icoef++) { */
             idx2(pol, 0, ig - xmin) = pg;
             if (lp > 0)
                 idx2(pol, 1, ig - xmin) = rpg;
-            /* pg *= rpg; */
-            /* } */
         }
 
         /* compute the remaining powers using previously computed stuff */
@@ -225,7 +211,6 @@ void grid_fill_pol(const bool transpose,
         }
     }
 }
-
 
 /* compute the following operation (variant)
 
@@ -345,22 +330,7 @@ void collocate_core_rectangular(double *scratch,
                                         &m1.beta,
                                         &m1.flags,
                                         &m1.prefetch);
-
         m1.kernel(m1.b, m1.a, m1.c);
-
-        /* libxsmm_dgemm("N", */
-        /*               "N", */
-        /*               &m1.n, */
-        /*               &m1.m, */
-        /*               &m1.k, */
-        /*               &m1.alpha, */
-        /*               m1.b, */
-        /*               &m1.ldb, */
-        /*               m1.a, */
-        /*               &m1.lda, */
-        /*               &m1.beta, */
-        /*               m1.c, // tmp_{alpha, gamma, j} */
-        /*               &m1.ldc); */
 
         m2.prefetch = LIBXSMM_PREFETCH_AUTO;
         m2.flags = LIBXSMM_GEMM_FLAG_TRANS_B;
@@ -374,22 +344,7 @@ void collocate_core_rectangular(double *scratch,
                                         &m2.beta,
                                         &m2.flags,
                                         &m2.prefetch);
-
         m2.kernel(m2.b, m2.a, m2.c);
-
-        /* libxsmm_dgemm("N", */
-        /*               "T", */
-        /*               &m2.n, */
-        /*               &m2.m, */
-        /*               &m2.k, */
-        /*               &m2.alpha, */
-        /*               m2.b, // X_{alpha, i} */
-        /*               &m2.ldb, */
-        /*               m2.a, // T_{\alpha, \gamma, j} -> transposed such that T_{\gamma, j, \alpha} */
-        /*               &m2.lda, */
-        /*               &m2.beta, */
-        /*               m2.c, // W_{\gamma, j, i} */
-        /*               &m2.ldc); */
 
         m3.prefetch = LIBXSMM_PREFETCH_AUTO;
         m3.flags = LIBXSMM_GEMM_FLAG_TRANS_B;
@@ -403,23 +358,7 @@ void collocate_core_rectangular(double *scratch,
                                         &m3.beta,
                                         &m3.flags,
                                         &m3.prefetch);
-
         m3.kernel(m3.b, m3.a, m3.c);
-
-        /* libxsmm_dgemm("N", */
-        /*               "T", */
-        /*               &m3.n, */
-        /*               &m3.m, */
-        /*               &m3.k, */
-        /*               &m3.alpha, */
-        /*               m3.b, // W_{gamma, j, i} */
-        /*               &m3.ldb, */
-        /*               m3.a, // Z_{\gamma, k} -> Transposed Z_{k, \gamma} */
-        /*               &m3.lda, */
-        /*               &m3.beta, */
-        /*               m3.c, // cube_{kji} */
-        /*               &m3.ldc); */
-
 
 #elif defined(__MKL)
         cblas_dgemm(CblasRowMajor,
@@ -894,7 +833,6 @@ void grid_collocate_internal(collocation_integration *const handler,
                              const double ra[3],
                              const double rab[3],
                              const int npts[3],
-                             const int ngrid[3],
                              const int lb_grid[3],
                              const bool periodic[3],
                              const double radius,
@@ -1048,7 +986,6 @@ void grid_collocate_pgf_product_cpu(void *const handle,
 // Uncomment this to dump all tasks to file.
 // #define __GRID_DUMP_TASKS
     tensor grid;
-    char *scratch = NULL;
     int offset[2] = {o1, o2};
     int pab_size[2] = {n2, n1};
 
@@ -1089,7 +1026,6 @@ void grid_collocate_pgf_product_cpu(void *const handle,
                             ra,
                             rab,
                             npts,
-                            ngrid,
                             lb_grid,
                             periodic,
                             radius,
