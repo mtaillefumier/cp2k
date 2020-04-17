@@ -17,6 +17,51 @@ extern void collocate_core_rectangular(double *scratch,
                                        const struct tensor_ *p_alpha_beta_reduced_,
                                        struct tensor_ *cube);
 
+void transform_xyz_to_triangular(const tensor *const coef, double  *const  coef_xyz)
+{
+    int lxyz = 0;
+    const int lp = (coef->size[0] - 1);
+    for (int lzp = 0; lzp <= lp; lzp++) {
+        for (int lyp = 0; lyp <= lp - lzp; lyp++) {
+            for (int lxp = 0; lxp <= lp - lzp - lyp; lxp++, lxyz++) {
+                coef_xyz[lxyz] = idx3(coef[0], lzp, lyp, lxp);
+            }
+        }
+    }
+}
+
+
+void transform_yxz_to_triangular(const tensor *const coef, double  *const coef_xyz)
+{
+    int lxyz = 0;
+    const int lp = (coef->size[0] - 1);
+    for (int lzp = 0; lzp <= lp; lzp++) {
+        for (int lyp = 0; lyp <= lp - lzp; lyp++) {
+            for (int lxp = 0; lxp <= lp - lzp - lyp; lxp++, lxyz++) {
+                coef_xyz[lxyz] = idx3(coef[0], lyp, lxp, lzp);
+            }
+        }
+    }
+}
+
+
+void transform_triangular_to_xyz(const double const *coef_xyz, tensor *const coef)
+{
+    int lxyz = 0;
+    const int lp = coef->size[0] - 1;
+    for (int lzp = 0; lzp <= lp; lzp++) {
+        for (int lyp = 0; lyp <= lp - lzp; lyp++) {
+            for (int lxp = 0; lxp <= lp - lzp - lyp; lxp++, lxyz++) {
+                idx3(coef[0], lzp, lyp, lxp) = coef_xyz[lxyz];
+            }
+            /* initialize the remaining coefficients to zero */
+            for (int lxp = lp - lzp - lyp + 1; lxp <= lp; lxp++)
+                idx3(coef[0], lzp, lyp, lxp) = 0.0;
+        }
+    }
+}
+
+
 // *****************************************************************************
 void grid_prepare_coef(const int *lmin,
                        const int *lmax,
@@ -29,7 +74,6 @@ void grid_prepare_coef(const int *lmin,
 
 
     memset(coef_xyz->data, 0, coef_xyz->alloc_size_ * sizeof(double));
-
     // we need a proper fix for that. We can use the tensor structure for this
 
     double coef_xyt[lp+1][lp+1];
@@ -409,6 +453,19 @@ void grid_transform_coef_xyz_to_ijk(const double dh[3][3],
     memcpy(coef_xyz->data, coef_ijk.data, sizeof(double) * coef_ijk.alloc_size_);
     free(coef_ijk.data);
     free(hmatgridp.data);
+}
+
+
+/* this function computes the coefficients initially expressed in the cartesian
+ * space to the grid space. It is inplane */
+
+void grid_transform_coef_ijk_to_xyz(const double dh[3][3],
+                                    const double dh_inv[3][3],
+                                    const tensor *coef_xyz)
+{
+    grid_transform_coef_xyz_to_ijk(dh_inv,
+                                   dh,
+                                   coef_xyz);
 }
 
 /* // ***************************************************************************** */

@@ -27,8 +27,7 @@
 #include "utils.h"
 #include "coefficients.h"
 
-void collocate_l0(const struct tensor_ *co,
-
+void collocate_l0(double co,
                   const struct tensor_ *p_alpha_beta_reduced_,
                   struct tensor_ *cube);
 
@@ -55,7 +54,7 @@ void release_collocation_block_memory(struct collocation_list_ *const list_collo
 void calculate_collocation(void *const list_);
 
 
-void collocate_l0(const struct tensor_ *co,
+void collocate_l0(double co,
                   const struct tensor_ *p_alpha_beta_reduced_,
                   struct tensor_ *cube)
 {
@@ -64,16 +63,22 @@ void collocate_l0(const struct tensor_ *co,
     const double *__restrict px = &idx3(p_alpha_beta_reduced_[0], 2, 0, 0); /* i indice */
     memset(&idx3(cube[0], 0, 0, 0), 0, sizeof(double) * cube->alloc_size_);
 
-    cblas_dger (CblasRowMajor,
-                cube->size[1],
-                cube->size[2],
-                idx3(co[0], 0, 0, 0),
-                py,
-                1,
-                px,
-                1,
-                &idx3(cube[0], 0, 0, 0),
-                cube->ld_);
+    for (int y = 0; y < cube->size[1]; y++) {
+        const double coef = co * py[y];
+        for (int x = 0; x < cube->size[2]; x++) {
+            idx3(cube[0], 0, y, x) = coef * px[x];
+        }
+    }
+    /* cblas_dger (CblasRowMajor, */
+    /*             cube->size[1], */
+    /*             cube->size[2], */
+    /*             idx3(co[0], 0, 0, 0), */
+    /*             py, */
+    /*             1, */
+    /*             px, */
+    /*             1, */
+    /*             &idx3(cube[0], 0, 0, 0), */
+    /*             cube->ld_); */
 
     for (int z1 = 1; z1 < cube->size[0]; z1++) {
         cblas_daxpy(cube->size[1] * cube->ld_,
@@ -224,6 +229,28 @@ void collocate_core_rectangular(double *scratch,
                                 const struct tensor_ *p_alpha_beta_reduced_,
                                 struct tensor_ *cube)
 {
+    /* it is very specific to integrate because we might end up with a single
+     * element after the tensor product. In that case, I call the specific case
+     * with l = 0 and then do a scalar product between the two. We can not get
+     * one of the dimensions at 1 and all the other above. It is physics non
+     * sense */
+
+    if (cube->size[0] == 1) {
+        double coe = 0.0;
+
+        tensor cube_tmp;
+
+        initialize_tensor_3(&cube_tmp, co->size[0], co->size[1], co->size[2]);
+        posix_memalign((void **)&cube_tmp.data, 32, sizeof(double) * cube_tmp.alloc_size_);
+        memset(cube_tmp.data, 0, sizeof(double) * cube_tmp.alloc_size_);
+        collocate_l0(1.0,
+                     p_alpha_beta_reduced_,
+                     &cube_tmp);
+        cube->data[0] = cblas_ddot(cube_tmp.alloc_size_, cube_tmp.data, 1, co->data, 1);
+        free(cube_tmp.data);
+        return;
+    }
+
     if (co->size[0] > 1) {
         struct {
 #if defined(__LIBXSMM)
@@ -277,7 +304,7 @@ void collocate_core_rectangular(double *scratch,
          *
          * We compute then
          *
-         * W_{alpha, k, j} = sum_{\gamma} T_{\gamma, j, alpha} X_{\alpha, i}
+         * W_{gamma, j, i} = sum_{\alpha} T_{\gamma, j, alpha} X_{\alpha, i}
          *
          * which means we need to transpose T_{\alpha, \gamma, j} to get
          * T_{\gamma, j, \alpha}. Fortunately we can do it while doing the
@@ -286,11 +313,11 @@ void collocate_core_rectangular(double *scratch,
 
         m2.alpha = 1.0;
         m2.beta = 0.0;
-        m2.m = cube->size[1] * co->size[1]; // \gamma j direction
+        m2.m = cube->size[1] * co->size[0]; // \gamma j direction
         m2.n = cube->size[2]; // i
         m2.k = co->size[2]; // alpha
         m2.a = T.data; // T_{\alpha, \gamma, j}
-        m2.lda = T.ld_ * co->size[2];
+        m2.lda = T.ld_ * co->size[0];
         m2.b = px; // X_{alpha, i}  = p_alpha_beta_reduced(0, alpha, i)
         m2.ldb = p_alpha_beta_reduced_->ld_;
         m2.c = W.data; // W_{\gamma, j, i}
@@ -310,7 +337,7 @@ void collocate_core_rectangular(double *scratch,
         m3.beta = 0.0;
         m3.m = cube->size[0]; // Z_{k \gamma}
         m3.n = cube->size[1] * cube->size[2]; // (ji) direction
-        m3.k = co->size[2]; // \gamma
+        m3.k = co->size[0]; // \gamma
         m3.a = pz; // p_alpha_beta_reduced(0, gamma, i)
         m3.lda = p_alpha_beta_reduced_->ld_;
         m3.b = &idx3(W, 0, 0, 0); // W_{\gamma, j, i}
@@ -331,6 +358,9 @@ void collocate_core_rectangular(double *scratch,
                                         &m1.beta,
                                         &m1.flags,
                                         &m1.prefetch);
+        if (!m1.kernel)
+            abort();
+
         m1.kernel(m1.b, m1.a, m1.c);
 
         m2.prefetch = LIBXSMM_PREFETCH_AUTO;
@@ -345,7 +375,29 @@ void collocate_core_rectangular(double *scratch,
                                         &m2.beta,
                                         &m2.flags,
                                         &m2.prefetch);
-        m2.kernel(m2.b, m2.a, m2.c);
+        if (!m2.kernel)
+        {
+            printf("matrix size m = %d, n = %d, k = %d\n", m2.m, m2.n, m2.k);
+            printf("leading dimensions lda = %d, ldb = %d, ldc = %d\n", m2.lda, m2.ldb, m2.ldc);
+
+            // fall back to mkl
+            cblas_dgemm(CblasRowMajor,
+                        CblasTrans,
+                        CblasNoTrans,
+                        m2.m,
+                        m2.n,
+                        m2.k,
+                        1.0,
+                        m2.a, // T_{\alpha, \gamma, j} -> transposed such that T_{\gamma, j, \alpha}
+                        m2.lda,
+                        m2.b, // X_{alpha, i}
+                        m2.ldb,
+                        0.0,
+                        m2.c, // W_{\gamma, j, i}
+                        m2.ldc);
+        } else {
+            m2.kernel(m2.b, m2.a, m2.c);
+        }
 
         m3.prefetch = LIBXSMM_PREFETCH_AUTO;
         m3.flags = LIBXSMM_GEMM_FLAG_TRANS_B;
@@ -359,6 +411,10 @@ void collocate_core_rectangular(double *scratch,
                                         &m3.beta,
                                         &m3.flags,
                                         &m3.prefetch);
+
+        if (!m3.kernel)
+            abort();
+
         m3.kernel(m3.b, m3.a, m3.c);
 
 #elif defined(__MKL)
@@ -452,7 +508,7 @@ void collocate_core_rectangular(double *scratch,
 #endif
         return;
     }
-    collocate_l0(co,
+    collocate_l0(co->data[0],
                  p_alpha_beta_reduced_,
                  cube);
     return;
@@ -642,25 +698,7 @@ void grid_collocate(collocation_integration *const handler,
                                                   handler->cube.alloc_size_,
                                                   (void **)&handler->cube.data);
 
-        size_t tmp1 = max(handler->T_alloc_size,
-                                 compute_memory_space_tensor_3(handler->coef.size[0] /* alpha */,
-                                                               handler->coef.size[1] /* gamma */,
-                                                               cube_size[1] /* j */));
-
-        size_t tmp2 = max(handler->W_alloc_size,
-                          compute_memory_space_tensor_3(handler->coef.size[1] /* gamma */ ,
-                                                        cube_size[1] /* j */,
-                                                        cube_size[2] /* i */));
-
-        if (((tmp1 + tmp2) > (handler->T_alloc_size + handler->W_alloc_size)) ||
-            (handler->scratch == NULL)) {
-            handler->T_alloc_size = tmp1;
-            handler->W_alloc_size = tmp2;
-            if (handler->scratch)
-                free(handler->scratch);
-            if (posix_memalign(&handler->scratch, 64, sizeof(double) * (tmp1 + tmp2)) != 0)
-                abort();
-        }
+        initialize_W_and_T(handler, &handler->cube, &handler->coef);
     }
 
     /* compute the polynomials */

@@ -519,3 +519,26 @@ void compute_blocks(collocation_integration *const handler,
         update_loop_index(lower_corner[0], upper_corner[0], grid->size[0], period[0], &z_offset, &z, &z1);
     }
 }
+
+void initialize_W_and_T(collocation_integration *const handler, const tensor *cube, const tensor *coef)
+{
+    size_t tmp1 = max(handler->T_alloc_size,
+                      compute_memory_space_tensor_3(coef->size[0] /* alpha */,
+                                                    coef->size[1] /* gamma */,
+                                                    cube->size[1] /* j */));
+
+    size_t tmp2 = max(handler->W_alloc_size,
+                      compute_memory_space_tensor_3(coef->size[1] /* gamma */ ,
+                                                    cube->size[1] /* j */,
+                                                    cube->size[2] /* i */));
+
+    if (((tmp1 + tmp2) > (handler->T_alloc_size + handler->W_alloc_size)) ||
+        (handler->scratch == NULL)) {
+        handler->T_alloc_size = tmp1;
+        handler->W_alloc_size = tmp2;
+        if (handler->scratch)
+            free(handler->scratch);
+        if (posix_memalign(&handler->scratch, 64, sizeof(double) * (tmp1 + tmp2)) != 0)
+            abort();
+    }
+}

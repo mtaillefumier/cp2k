@@ -122,4 +122,5 @@ extern void compute_blocks(collocation_integration *const handler,
                            const tensor *const Exp,
                            const int *const lb_grid,
                            tensor *grid);
+extern void initialize_W_and_T(collocation_integration *const handler, const tensor *cube, const tensor *coef);
 #endif
