@@ -81,8 +81,11 @@ MODULE mp2_ri_grad
    USE qs_environment_types,            ONLY: get_qs_env,&
                                               qs_environment_type
    USE qs_force_types,                  ONLY: qs_force_type
-   USE qs_integrate_potential,          ONLY: integrate_pgf_product,&
-                                              integrate_v_rspace
+   USE grid_api,                        ONLY: integrate_pgf_product,&
+        collocate_pgf_create_handle,&
+        collocate_pgf_finalize, &
+        collocate_pgf_synchronize
+   USE qs_integrate_potential,          ONLY: integrate_v_rspace
    USE qs_kind_types,                   ONLY: get_qs_kind,&
                                               qs_kind_type
    USE qs_ks_types,                     ONLY: qs_ks_env_type
@@ -95,6 +98,7 @@ MODULE mp2_ri_grad
    USE task_list_types,                 ONLY: task_list_type
    USE util,                            ONLY: get_limit
    USE virial_types,                    ONLY: virial_type
+   USE iso_c_binding,                  ONLY: C_PTR, C_NULL_PTR
 #include "./base/base_uses.f90"
 
    IMPLICIT NONE
@@ -206,8 +210,13 @@ CONTAINS
       TYPE(realspace_grid_p_type), DIMENSION(:), POINTER :: rs_v
       TYPE(task_list_type), POINTER                      :: task_list_sub
       TYPE(virial_type), POINTER                         :: virial
-
+      TYPE(C_PTR)                                        :: gaussian_handle
       CALL timeset(routineN, handle)
+
+      gaussian_handle = C_NULL_PTR
+
+      ! sequential mode
+      gaussian_handle = collocate_pgf_create_handle(0, 128, .TRUE.)
 
       eri_method = mp2_env%eri_method
       eri_param => mp2_env%eri_mme_param
@@ -577,20 +586,21 @@ CONTAINS
                                                           eps=dft_control%qs_control%eps_gvg_rspace, &
                                                           prefactor=1.0_dp, cutoff=1.0_dp)
 
-                        CALL integrate_pgf_product(la_max=la_max(iset), zeta=zeta(ipgf, iset)/2.0_dp, la_min=la_min(iset), &
-                                                   lb_max=0, zetb=zeta(ipgf, iset)/2.0_dp, lb_min=0, &
-                                                   ra=ra, rab=(/0.0_dp, 0.0_dp, 0.0_dp/), &
-                                                   rsgrid=rs_v(igrid_level)%rs_grid, &
-                                                   cell=cell, &
-                                                   cube_info=pw_env_sub%cube_info(igrid_level), &
-                                                   hab=I_tmp2, &
-                                                   pab=pab, &
-                                                   o1=na1 - 1, &
-                                                   o2=0, &
-                                                   radius=radius, &
-                                                   calculate_forces=.TRUE., &
-                                                   force_a=force_a, force_b=force_b, &
-                                                   use_virial=use_virial, my_virial_a=my_virial_a, my_virial_b=my_virial_b)
+                        CALL integrate_pgf_product(gaussian_handle, la_max=la_max(iset), &
+                             zeta=zeta(ipgf, iset)/2.0_dp, la_min=la_min(iset), &
+                             lb_max=0, zetb=zeta(ipgf, iset)/2.0_dp, lb_min=0, &
+                             ra=ra, rab=(/0.0_dp, 0.0_dp, 0.0_dp/), &
+                             rsgrid=rs_v(igrid_level)%rs_grid, &
+                             cell=cell, &
+                             cube_info=pw_env_sub%cube_info(igrid_level), &
+                             hab=I_tmp2, &
+                             pab=pab, &
+                             o1=na1 - 1, &
+                             o2=0, &
+                             radius=radius, &
+                             calculate_forces=.TRUE., &
+                             force_a=force_a, force_b=force_b, &
+                             use_virial=use_virial, my_virial_a=my_virial_a, my_virial_b=my_virial_b)
 
                      END DO
 
@@ -831,20 +841,21 @@ CONTAINS
                                                           eps=dft_control%qs_control%eps_gvg_rspace, &
                                                           prefactor=1.0_dp, cutoff=1.0_dp)
 
-                        CALL integrate_pgf_product(la_max=la_max(iset), zeta=zeta(ipgf, iset)/2.0_dp, la_min=la_min(iset), &
-                                                   lb_max=0, zetb=zeta(ipgf, iset)/2.0_dp, lb_min=0, &
-                                                   ra=ra, rab=(/0.0_dp, 0.0_dp, 0.0_dp/), &
-                                                   rsgrid=rs_v(igrid_level)%rs_grid, &
-                                                   cell=cell, &
-                                                   cube_info=pw_env_sub%cube_info(igrid_level), &
-                                                   hab=I_tmp2, &
-                                                   pab=pab, &
-                                                   o1=na1 - 1, &
-                                                   o2=0, &
-                                                   radius=radius, &
-                                                   calculate_forces=.TRUE., &
-                                                   force_a=force_a, force_b=force_b, &
-                                                   use_virial=use_virial, my_virial_a=my_virial_a, my_virial_b=my_virial_b)
+                        CALL integrate_pgf_product(gaussian_handle, la_max=la_max(iset), &
+                             zeta=zeta(ipgf, iset)/2.0_dp, la_min=la_min(iset), &
+                             lb_max=0, zetb=zeta(ipgf, iset)/2.0_dp, lb_min=0, &
+                             ra=ra, rab=(/0.0_dp, 0.0_dp, 0.0_dp/), &
+                             rsgrid=rs_v(igrid_level)%rs_grid, &
+                             cell=cell, &
+                             cube_info=pw_env_sub%cube_info(igrid_level), &
+                             hab=I_tmp2, &
+                             pab=pab, &
+                             o1=na1 - 1, &
+                             o2=0, &
+                             radius=radius, &
+                             calculate_forces=.TRUE., &
+                             force_a=force_a, force_b=force_b, &
+                             use_virial=use_virial, my_virial_a=my_virial_a, my_virial_b=my_virial_b)
                      END DO
                      ! CALL dgemm("T","N".0_dp,sphi_a(1,sgfa),SIZE(sphi_a,1),&
                      !             I_tmp2(1,1),SIZE(I_tmp2,1),&
@@ -991,7 +1002,7 @@ CONTAINS
                          para_env_sub, Eigenval_beta, L1_mu_i_beta, L2_nu_a_beta, &
                          factor, .TRUE.)
       ENDIF
-
+      CALL collocate_pgf_finalize(gaussian_handle)
       CALL timestop(handle)
 
    END SUBROUTINE calc_ri_mp2_nonsep

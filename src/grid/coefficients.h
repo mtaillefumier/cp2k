@@ -31,10 +31,12 @@ extern void compute_compact_polynomial_coefficients(const tensor *coef,
                                                     tensor *co);
 
 extern void grid_transform_coef_xyz_to_ijk(const double dh[3][3],
-                                           const double dh_inv[3][3],
                                            const tensor *coef_xyz);
 
+extern void grid_transform_coef_jik_to_yxz(const double dh[3][3],
+                                           const tensor *coef_xyz);
 extern void transform_triangular_to_xyz(const double *const coef_xyz, tensor *const coef);
 extern void transform_xyz_to_triangular(const tensor *const coef, double *const coef_xyz);
 extern void transform_yxz_to_triangular(const tensor *const coef, double *const coef_xyz);
+
 #endif

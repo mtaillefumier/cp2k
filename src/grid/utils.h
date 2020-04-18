@@ -14,6 +14,33 @@
 
 #include "tensor_local.h"
 
+#if defined(__MKL) || defined(HAVE_MKL)
+#include <mkl.h>
+#include <mkl_cblas.h>
+#endif
+
+#ifdef __LIBXSMM
+#include <libxsmm.h>
+#endif
+
+typedef struct dgemm_params_ {
+    char storage;
+    char op1;
+    char op2;
+#if defined(__LIBXSMM)
+    libxsmm_dmmfunction kernel;
+    int prefetch;
+    int flags;
+#endif
+    double alpha;
+    double beta;
+    double *a, *b, *c;
+    int m, n, k, lda, ldb, ldc;
+} dgemm_params;
+
+
+extern void dgemm_simplified(dgemm_params *const m, const bool use_libxsmm);
+
 extern void find_interval(const int start, const int end, const int *non_zero_elements_, int *zmin, int *zmax);
 
 extern int multinomial3(const int a, const int b, const int c);
@@ -74,8 +101,8 @@ inline int return_linear_index_from_exponents(const int alpha, const int beta,
 extern void extract_sub_grid(const int *lower_corner,
                              const int *upper_corner,
                              const int *position,
-                             const tensor *grid,
-                             const tensor *subgrid);
+                             const tensor *const grid,
+                             tensor *const subgrid);
 
 extern void add_sub_grid(const int *lower_corner,
                          const int *upper_corner,

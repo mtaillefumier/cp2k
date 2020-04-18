@@ -47,8 +47,11 @@ MODULE mp2_eri_gpw
    USE qs_collocate_density,            ONLY: calculate_wavefunction
    USE qs_environment_types,            ONLY: get_qs_env,&
                                               qs_environment_type
-   USE qs_integrate_potential,          ONLY: integrate_pgf_product,&
-                                              integrate_v_rspace
+   USE grid_api,                        ONLY:  collocate_pgf_create_handle,&
+        integrate_pgf_product,&
+        collocate_pgf_finalize, &
+        collocate_pgf_synchronize
+   USE qs_integrate_potential,          ONLY: integrate_v_rspace
    USE qs_kind_types,                   ONLY: get_qs_kind,&
                                               qs_kind_type
    USE qs_ks_types,                     ONLY: qs_ks_env_type
@@ -62,7 +65,7 @@ MODULE mp2_eri_gpw
    USE task_list_types,                 ONLY: allocate_task_list,&
                                               deallocate_task_list,&
                                               task_list_type
-
+   USE iso_c_binding,                  ONLY: C_PTR, C_NULL_PTR
 !$ USE OMP_LIB, ONLY: omp_get_max_threads, omp_get_thread_num
 #include "./base/base_uses.f90"
 
@@ -203,6 +206,7 @@ CONTAINS
          POINTER                                         :: rs_descs
       TYPE(realspace_grid_p_type), DIMENSION(:), POINTER :: rs_v
       TYPE(task_list_type), POINTER                      :: task_list_sub
+      TYPE(C_PTR)                                        :: gaussian_handle
 
       CALL timeset(routineN, handle)
 
@@ -214,7 +218,8 @@ CONTAINS
       CALL get_qs_env(qs_env, cell=cell, qs_kind_set=qs_kind_set, atomic_kind_set=atomic_kind_set, particle_set=particle_set)
 
       L_local_col = 0.0_dp
-
+      ! need to change this name
+      gaussian_handle = collocate_pgf_create_handle(0, 128, .TRUE.)
       i_counter = 0
       DO LLL = my_group_L_start, my_group_L_end
          i_counter = i_counter + 1
@@ -313,7 +318,7 @@ CONTAINS
                                                        eps=dft_control%qs_control%eps_gvg_rspace, &
                                                        prefactor=1.0_dp, cutoff=1.0_dp)
 
-                     CALL integrate_pgf_product( &
+                     CALL integrate_pgf_product(gaussian_handle, &
                         la_max=la_max(iset), zeta=zeta(ipgf, iset)/2.0_dp, la_min=la_min(iset), &
                         lb_max=0, zetb=zeta(ipgf, iset)/2.0_dp, lb_min=0, &
                         ra=ra, rab=(/0.0_dp, 0.0_dp, 0.0_dp/), &
@@ -353,7 +358,7 @@ CONTAINS
 
       CALL cleanup_gpw(qs_env, e_cutoff_old, cutoff_old, relative_cutoff_old, pw_env_sub, &
                        task_list_sub, auxbas_pw_pool, rho_r, rho_g, pot_g, psi_L)
-
+      CALL collocate_pgf_finalize(gaussian_handle)
       CALL timestop(handle)
 
    END SUBROUTINE

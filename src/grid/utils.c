@@ -5,14 +5,8 @@
 #include <assert.h>
 #include <string.h>
 #include <math.h>
-#if defined(__MKL) || defined(HAVE_MKL)
-#include <mkl.h>
-#include <mkl_cblas.h>
-#endif
 
-#ifdef __LIBXSMM
-#include <libxsmm.h>
-#endif
+
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -20,11 +14,127 @@
 
 #include "utils.h"
 #include "tensor_local.h"
+
+size_t realloc_tensor(tensor *t)
+{
+    if (t == NULL) {
+        abort();
+    }
+
+    if (t->alloc_size_ == 0) {
+        /* there is a mistake somewhere. We can not have t->old_alloc_size_ != 0 and no allocation */
+        abort();
+    }
+
+    if ((t->old_alloc_size_ >= t->alloc_size_) && (t->data != NULL))
+        return t->alloc_size_;
+
+    if ((t->old_alloc_size_ < t->alloc_size_) && (t->data != NULL)) {
+        free(t->data);
+    }
+
+    t->data = NULL;
+
+    if (t->data == NULL) {
+        if (posix_memalign((void **)&t->data, 32, sizeof(double) * t->alloc_size_) != 0)
+            abort();
+        t->old_alloc_size_ = t->alloc_size_;
+    }
+
+    return t->alloc_size_;
+}
+
+void dgemm_simplified(dgemm_params *const m, const bool use_libxsmm)
+{
+    if (m == NULL)
+        abort();
+
+#if defined(__LIBXSMM)
+    if (use_libxsmm) {
+        /* we are in row major but xsmm is in column major */
+        m->prefetch = LIBXSMM_PREFETCH_AUTO;
+        if ((m->op1 == 'N') && (m->op2 == 'N')) {
+            m->flags =  LIBXSMM_GEMM_FLAG_NONE;
+        }
+
+        if ((m->op1 == 'T') && (m->op2 == 'N')) {
+            m->flags =  LIBXSMM_GEMM_FLAG_TRANS_B;
+        }
+
+        if ((m->op1 == 'N') && (m->op2 == 'T')) {
+            m->flags =  LIBXSMM_GEMM_FLAG_TRANS_A;
+        }
+
+        if ((m->op1 == 'T') && (m->op2 == 'T')) {
+            m->flags =  LIBXSMM_GEMM_FLAG_TRANS_A | LIBXSMM_GEMM_FLAG_TRANS_B;
+        }
+
+        m->kernel = libxsmm_dmmdispatch(m->n,
+                                        m->m,
+                                        m->k,
+                                        &m->ldb,
+                                        &m->lda,
+                                        &m->ldc,
+                                        &m->alpha,
+                                        &m->beta,
+                                        &m->flags,
+                                        &m->prefetch);
+
+        if (m->kernel) {
+            m->kernel(m->b, m->a, m->c);
+            return;
+        }
+    }
+#endif
+
+#if defined(__MKL)
+    // fall back to mkl
+    if ((m->op1 == 'N') && (m->op2 == 'N'))
+        cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
+                    m->m, m->n, m->k, m->alpha,
+                    m->a, m->lda, m->b, m->ldb,
+                    m->beta, m->c, m->ldc);
+
+    if ((m->op1 == 'T') && (m->op2 == 'N'))
+        cblas_dgemm(CblasRowMajor, CblasTrans, CblasNoTrans,
+                    m->m, m->n, m->k, m->alpha,
+                    m->a, m->lda, m->b, m->ldb,
+                    m->beta, m->c, m->ldc);
+
+    if ((m->op1 == 'N') && (m->op2 == 'T'))
+        cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
+                    m->m, m->n, m->k, m->alpha,
+                    m->a, m->lda, m->b, m->ldb,
+                    m->beta, m->c, m->ldc);
+
+    if ((m->op1 == 'T') && (m->op2 == 'T'))
+        cblas_dgemm(CblasRowMajor, CblasTrans, CblasTrans,
+                    m->m, m->n, m->k, m->alpha,
+                    m->a, m->lda, m->b, m->ldb,
+                    m->beta, m->c, m->ldc);
+
+#else
+
+    if ((m->op1 == 'N') && (m->op2 == 'N'))
+        dgemm_("N", "N", &m->n, &m->m, &m->k, &m->alpha, m->b, &m->ldb, m->a, &m->lda, &m->beta, m->c, &m->ldc);
+
+    if ((m->op1 == 'T') && (m->op2 == 'N'))
+        dgemm_("N", "T", &m->n, &m->m, &m->k, &m->alpha, m->b, &m->ldb, m->a, &m->lda, &m->beta, m->c, &m->ldc);
+
+    if ((m->op1 == 'T') && (m->op2 == 'T'))
+        dgemm_("T", "T", &m->n, &m->m, &m->k, &m->alpha, m->b, &m->ldb, m->a, &m->lda, &m->beta, m->c, &m->ldc);
+
+    if ((m->op1 == 'N') && (m->op2 == 'T'))
+        dgemm_("T", "N", &m->n, &m->m, &m->k, &m->alpha, m->b, &m->ldb, m->a, &m->lda, &m->beta, m->c, &m->ldc);
+
+#endif
+}
+
 void extract_sub_grid(const int *lower_corner,
                       const int *upper_corner,
                       const int *position,
-                      const tensor *grid,
-                      const tensor *subgrid)
+                      const tensor *const grid,
+                      tensor *const subgrid)
 {
     for (int d = 0; d < 3; d++) {
         if ((lower_corner[d] >= grid->size[d]) ||
@@ -58,55 +168,16 @@ void extract_sub_grid(const int *lower_corner,
     const int sizey = upper_corner[1] - lower_corner[1];
     const int sizez = upper_corner[0] - lower_corner[0];
 
-#if defined(__LIBXSMM)
-    const libxsmm_mcopy_descriptor* desc;
-    libxsmm_xmcopyfunction kernel;
-    libxsmm_descriptor_blob blob;
-    int prefetch = 1;
-    desc = libxsmm_mcopy_descriptor_init(&blob, sizeof(double),
-                                         sizex,
-                                         sizey,
-                                         subgrid->ld_,
-                                         grid->ld_,
-                                         LIBXSMM_MATCOPY_FLAG_DEFAULT,
-                                         LIBXSMM_PREFETCH_AUTO,
-                                         NULL);
-
-    kernel = libxsmm_dispatch_mcopy(desc);
-    if (kernel == 0) {
-        printf("JIT error -> exit!!!!\n");
-        exit(EXIT_FAILURE);
-    }
-#endif
     for (int z = 0; z < sizez; z++) {
-#if defined(__LIBXSMM)
-        kernel(&idx3(grid[0], lower_corner[0] + z, lower_corner[1], lower_corner[2]),
-               &grid->ld_,
-               &idx3(subgrid[0], position1[0] + z, position1[1], position1[2]),
-               &subgrid->ld_,
-               &prefetch);
-#elif defined(__MKL)
-        mkl_domatcopy(CblasRowMajor,
-                      CblasNoTrans,
-                      sizey,
-                      sizex,
-                      1.0,
-                      &idx3(grid[0], lower_corner[0] + z, lower_corner[1], lower_corner[2]),
-                      grid->ld_,
-                      &idx3(subgrid[0], position1[0] + z, position1[1], position1[2]),
-                      subgrid->ld_);
-#else
         for (int y = 0; y < sizey; y++) {
-            memcpy(&idx3(subgrid[0], position1[0] + z, position1[1] + y, position1[2]),
-                   &idx3(grid[0], lower_corner[0] + z, lower_corner[1] + y, lower_corner[2]),
-                   sizeof(double) * sizex);
+            double *__restrict__ src = &idx3(grid[0], lower_corner[0] + z, lower_corner[1] + y, lower_corner[2]);
+            double *__restrict__ dst = &idx3(subgrid[0], position1[0] + z, position1[1] + y, position1[2]);
+            for (int x = 0; x < sizex; x++) {
+                dst[x] = src[x];
+            }
         }
-#endif
     }
 
-#if defined(__LIBXSMM)
-    libxsmm_release_kernel(kernel);
-#endif
     return;
 }
 
@@ -149,36 +220,6 @@ void add_sub_grid(const int *lower_corner,
     const int sizey = upper_corner[1] - lower_corner[1];
     const int sizez = upper_corner[0] - lower_corner[0];
 
-/* #if defined (__MKL) */
-/*     double *tmp = NULL; */
-/*     posix_memalign(&tmp, 32, sizeof(double) * sizey * sizex); */
-/* #endif */
-
-/* #if defined (__MKL) */
-/*     for (int z = 0; z < sizez; z++) { */
-/*         double *__restrict__ dst = &idx3(grid[0], lower_corner[0] + z, lower_corner[1], lower_corner[2]); */
-/*         double *__restrict__ src = &idx3(subgrid[0], position1[0] + z, position1[1], position1[2]); */
-
-/*         /\* for (int y = 0; y < sizey; y++) *\/ */
-/*         /\*     memcpy(tmp + y * sizex, *\/ */
-/*         /\*            &idx3(grid[0], lower_corner[0] + z, lower_corner[1] + y, lower_corner[2]), *\/ */
-/*         /\*            sizeof(double) * sizex); *\/ */
-
-/*         mkl_domatadd ('r', */
-/*                       'N', */
-/*                       'N', */
-/*                       sizey, */
-/*                       sizex, */
-/*                       1.0, */
-/*                       src, */
-/*                       subgrid->ld_, */
-/*                       1.0, */
-/*                       dst, */
-/*                       grid->ld_, */
-/*                       dst, */
-/*                       grid->ld_); */
-/*     } */
-/* #else */
 
     for (int z = 0; z < sizez; z++) {
         double *__restrict__ dst = &idx3(grid[0], lower_corner[0] + z, lower_corner[1], lower_corner[2]);
@@ -193,11 +234,6 @@ void add_sub_grid(const int *lower_corner,
             src += subgrid->ld_;
         }
     }
-/* #endif */
-
-/* #if defined(__MKL) */
-/*     free(tmp); */
-/* #endif */
     return;
 }
 
@@ -292,12 +328,16 @@ inline int compute_cube_properties(const bool ortho,
 {
     int cmax = 0;
 
+    /* center of the gaussian in the lattice coordinates */
+    double rp1[3];
+
     /* it is in the lattice vector frame */
     for (int i=0; i<3; i++) {
         double dh_inv_rp = 0.0;
         for (int j=0; j<3; j++) {
             dh_inv_rp += dh_inv[j][i] * rp[j];
         }
+        rp1[2 - i] = dh_inv_rp;
         cubecenter[2 - i] = floor(dh_inv_rp);
     }
 
@@ -312,27 +352,15 @@ inline int compute_cube_properties(const bool ortho,
 
         // Historically, the radius gets discretized.
         const double drmin = min(dh[0][0], min(dh[1][1], dh[2][2]));
-        *disr_radius = drmin * max(1, ceil(radius/drmin));
-
-        for (int i = 0; i < 3; i++) {
-            lb_cube[i] = ceil(-1e-8 - *disr_radius * dx_inv[i]);
-            ub_cube[i] = - lb_cube[i];
-        }
-
-        /* compute the cube size ignoring periodicity */
-        cube_size[0] = ub_cube[0] - lb_cube[0] + 1;
-        cube_size[1] = ub_cube[1] - lb_cube[1] + 1;
-        cube_size[2] = ub_cube[2] - lb_cube[2] + 1;
+        *disr_radius = drmin * max(1.0, ceil(radius/drmin));
 
         for (int i=0; i<3; i++) {
             roffset[i] = rp[2 - i] - ((double) cubecenter[i]) * dx[i];
         }
 
         for (int i = 0; i < 3; i++) {
-            cmax = max(cmax, ub_cube[i]);
+            lb_cube[i] = ceil(-1e-8 - *disr_radius * dx_inv[i]);
         }
-
-        return cmax;
     } else {
         for (int idir=0; idir<3; idir++) {
             lb_cube[idir] = INT_MAX;
@@ -341,13 +369,13 @@ inline int compute_cube_properties(const bool ortho,
         for (int i=-1; i<=1; i++) {
             for (int j=-1; j<=1; j++) {
                 for (int k=-1; k<=1; k++) {
-                    const double x = rp[0] + i * radius;
-                    const double y = rp[1] + j * radius;
-                    const double z = rp[2] + k * radius;
+                    const double x = /* rp[0] + */ ((double)i) * radius;
+                    const double y = /* rp[1] + */ ((double)j) * radius;
+                    const double z = /* rp[2] + */ ((double)k) * radius;
                     for (int idir=0; idir<3; idir++) {
                         const double resc = dh_inv[0][idir] * x + dh_inv[1][idir] * y + dh_inv[2][idir] * z;
-                        lb_cube[idir] = min(lb_cube[idir], floor(resc));
-                        ub_cube[idir] = max(ub_cube[idir], ceil(resc));
+                        lb_cube[idir] = min(lb_cube[idir], lrint(resc));
+                        ub_cube[idir] = max(ub_cube[idir], lrint(resc));
                     }
                 }
             }
@@ -357,20 +385,10 @@ inline int compute_cube_properties(const bool ortho,
             lb_cube[i] = -(ub_cube[i] - lb_cube[i]) / 2;
         }
 
-        /* compute the offset now in the lattice basis */
-        double rp1[3];
-
-        /* compute the cube center */
-        for (int i=0; i<3; i++) {
-            double dh_inv_rp = 0.0;
-            for (int j=0; j<3; j++) {
-                dh_inv_rp += dh_inv[j][i] * rp[j];
-            }
-            rp1[2 - i] = dh_inv_rp;
-        }
+        /* compute the offset in lattice coordinates */
 
         for (int i=0; i<3; i++) {
-            roffset[i] = rp1[i] - ((double) cubecenter[i]);
+            roffset[i] = rp1[i] - cubecenter[i];
         }
     }
 
@@ -389,7 +407,7 @@ inline int compute_cube_properties(const bool ortho,
         cmax = max(cmax, cube_size[i]);
     }
 
-    return cmax;
+    return cmax + 1;
 }
 
 void  return_cube_position(const int *grid_size,

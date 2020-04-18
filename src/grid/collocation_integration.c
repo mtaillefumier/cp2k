@@ -170,7 +170,6 @@ void add_collocation_block(struct collocation_integration_ *const handler,
 
         handler->working_thread++;
 
-
         /* we only have two lists */
         if (list_collocation == handler->list[0]) {
             /* work is done in the second list. We can use it for storing the block */
@@ -296,19 +295,30 @@ void *collocate_create_handle(const int device_id, const int number_of_gaussian,
     handle->list[1]->done = 0;
     handle->list[0]->number_of_elements_ = 0;
     handle->list[1]->number_of_elements_ = 0;
-    handle->current_list = NULL;
-    handle->working_thread = 0;
-    handle->alpha.data = NULL;
-    handle->coef.data = NULL;
-    handle->cube.data = NULL;
-    handle->pol.data = NULL;
-    handle->coef_alloc_size = 0;
-    handle->alpha_alloc_size = 0;
-    handle->cube_alloc_size = 0;
-    handle->pol_alloc_size = 0;
-    handle->T_alloc_size = 0;
-    handle->W_alloc_size = 0;
-    handle->scratch = NULL;
+
+    if (sequential_mode) {
+        posix_memalign((void**)&handle->alpha.data, 32, sizeof(double) * 16384);
+        handle->alpha_alloc_size = 16384;
+        handle->alpha.alloc_size_ = 16384;
+        handle->alpha.old_alloc_size_ = 16384;
+        posix_memalign((void**)&handle->coef.data, 32, sizeof(double) * 1024);
+        handle->coef_alloc_size = 1024;
+        handle->coef.alloc_size_ = 1024;
+        handle->coef.old_alloc_size_ = 1024;
+        posix_memalign((void**)&handle->pol.data, 32, sizeof(double) * 1024);
+        handle->pol_alloc_size = 1024;
+        handle->pol.alloc_size_ = 1024;
+        handle->pol.old_alloc_size_ = 1024;
+        posix_memalign((void**)&handle->cube.data, 32, sizeof(double) * 32768);
+        handle->cube_alloc_size = 32768;
+        handle->cube.alloc_size_ = 32768;
+        handle->cube.old_alloc_size_ = 32768;
+        handle->T_alloc_size = 8192;
+        handle->W_alloc_size = 2048;
+        posix_memalign((void**)&handle->scratch, 32, sizeof(double) * 10240);
+        handle->scratch_alloc_size = 10240;
+    }
+
     return (void*)handle;
 }
 
@@ -323,7 +333,6 @@ void collocate_synchronize(void *gaussian_handler)
     if (handler->sequential_mode)
         return;
 
-    abort();
     thpool_wait(handler->thpool);
 
     if ((handler->list[0]->number_of_elements_ > 0) && (!handler->list[0]->done)) {
@@ -532,7 +541,7 @@ void initialize_W_and_T(collocation_integration *const handler, const tensor *cu
                                                     cube->size[1] /* j */,
                                                     cube->size[2] /* i */));
 
-    if (((tmp1 + tmp2) > (handler->T_alloc_size + handler->W_alloc_size)) ||
+    if (((tmp1 + tmp2) > (handler->scratch_alloc_size)) ||
         (handler->scratch == NULL)) {
         handler->T_alloc_size = tmp1;
         handler->W_alloc_size = tmp2;

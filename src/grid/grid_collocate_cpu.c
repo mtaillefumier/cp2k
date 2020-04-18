@@ -13,6 +13,8 @@
 #if defined(__MKL) || defined(HAVE_MKL)
 #include <mkl.h>
 #include <mkl_cblas.h>
+#else
+#include "openblas.h"
 #endif
 
 #ifdef __LIBXSMM
@@ -218,9 +220,9 @@ void grid_fill_pol(const bool transpose,
     }
 }
 
-/* compute the following operation (variant)
+/* compute the following operation (variant) it is a tensor contraction
 
-   V_{kji} = \sum_{\alpha\beta\gamma} C_{\alpha\gamma\beta} T_{0,\alpha,i} T_{1,\beta,j} T_{2,\gamma,k}
+   V_{kji} = \sum_{\alpha\beta\gamma} C_{\alpha\gamma\beta} T_{2,\alpha,i} T_{1,\beta,j} T_{0,\gamma,k}
 
 */
 void collocate_core_rectangular(double *scratch,
@@ -229,21 +231,17 @@ void collocate_core_rectangular(double *scratch,
                                 const struct tensor_ *p_alpha_beta_reduced_,
                                 struct tensor_ *cube)
 {
-    /* it is very specific to integrate because we might end up with a single
-     * element after the tensor product. In that case, I call the specific case
-     * with l = 0 and then do a scalar product between the two. We can not get
-     * one of the dimensions at 1 and all the other above. It is physics non
-     * sense */
 
     if (cube->size[0] == 1) {
-        double coe = 0.0;
-
+        /* it is very specific to integrate because we might end up with a single
+         * element after the tensor product. In that case, I call the specific case
+         * with l = 0 and then do a scalar product between the two. We can not get
+         * one of the dimensions at 1 and all the other above. It is physics non
+         * sense */
         tensor cube_tmp;
-
         initialize_tensor_3(&cube_tmp, co->size[0], co->size[1], co->size[2]);
         posix_memalign((void **)&cube_tmp.data, 32, sizeof(double) * cube_tmp.alloc_size_);
-        memset(cube_tmp.data, 0, sizeof(double) * cube_tmp.alloc_size_);
-        collocate_l0(1.0,
+        collocate_l0(prefactor,
                      p_alpha_beta_reduced_,
                      &cube_tmp);
         cube->data[0] = cblas_ddot(cube_tmp.alloc_size_, cube_tmp.data, 1, co->data, 1);
@@ -252,17 +250,7 @@ void collocate_core_rectangular(double *scratch,
     }
 
     if (co->size[0] > 1) {
-        struct {
-#if defined(__LIBXSMM)
-            libxsmm_dmmfunction kernel;
-            int prefetch;
-            int flags;
-#endif
-            double alpha;
-            double beta;
-            double *a, *b, *c;
-            int m, n, k, lda, ldb, ldc;
-        } m1, m2, m3;
+        dgemm_params m1, m2, m3;
 
         tensor T;
         tensor W;
@@ -276,7 +264,6 @@ void collocate_core_rectangular(double *scratch,
 
         T.data = scratch;
         W.data = scratch + T.alloc_size_;
-
         /* WARNING we are in row major layout. cblas allows it and it is more
          * natural to read left to right than top to bottom
          *
@@ -287,6 +274,8 @@ void collocate_core_rectangular(double *scratch,
          * fastest one. it can be done with one dgemm.
          */
 
+        m1.op1 = 'N';
+        m1.op2 = 'N';
         m1.alpha = prefactor;
         m1.beta = 0.0;
         m1.m = co->size[0] * co->size[1]; /* alpha gamma */
@@ -311,13 +300,15 @@ void collocate_core_rectangular(double *scratch,
          * matrix - matrix multiplication
          */
 
+        m2.op1='T';
+        m2.op2='N';
         m2.alpha = 1.0;
         m2.beta = 0.0;
-        m2.m = cube->size[1] * co->size[0]; // \gamma j direction
+        m2.m = cube->size[1] * co->size[1]; // (\gamma j) direction
         m2.n = cube->size[2]; // i
-        m2.k = co->size[2]; // alpha
+        m2.k = co->size[0]; // alpha
         m2.a = T.data; // T_{\alpha, \gamma, j}
-        m2.lda = T.ld_ * co->size[0];
+        m2.lda = T.ld_ * co->size[1];
         m2.b = px; // X_{alpha, i}  = p_alpha_beta_reduced(0, alpha, i)
         m2.ldb = p_alpha_beta_reduced_->ld_;
         m2.c = W.data; // W_{\gamma, j, i}
@@ -333,17 +324,23 @@ void collocate_core_rectangular(double *scratch,
          * as a composite index.
          */
 
+        m3.op1 = 'T';
+        m3.op2 = 'N';
         m3.alpha = 1.0;
         m3.beta = 0.0;
         m3.m = cube->size[0]; // Z_{k \gamma}
         m3.n = cube->size[1] * cube->size[2]; // (ji) direction
-        m3.k = co->size[0]; // \gamma
+        m3.k = co->size[1]; // \gamma
         m3.a = pz; // p_alpha_beta_reduced(0, gamma, i)
         m3.lda = p_alpha_beta_reduced_->ld_;
         m3.b = &idx3(W, 0, 0, 0); // W_{\gamma, j, i}
         m3.ldb = W.size[1] * W.ld_;
         m3.c = &idx3(cube[0], 0, 0, 0); // cube_{kji}
         m3.ldc = cube->ld_ * cube->size[1];
+
+        /* dgemm_simplified(&m1, true); */
+        /* dgemm_simplified(&m2, true); */
+        /* dgemm_simplified(&m3, true); */
 
 #if defined(__LIBXSMM)
         m1.prefetch = LIBXSMM_PREFETCH_AUTO;
@@ -424,13 +421,13 @@ void collocate_core_rectangular(double *scratch,
                     m1.m,
                     m1.n,
                     m1.k,
-                    1.0,
+                    m1.alpha,
                     m1.a,
                     m1.lda,
                     m1.b,
                     m1.ldb,
-                    0.0,
-                    m1.c, // tmp_{alpha, gamma, j}
+                    m1.beta,
+                    m1.c, tmp_{alpha, gamma, j}
                     m1.ldc);
 
         cblas_dgemm(CblasRowMajor,
@@ -439,13 +436,13 @@ void collocate_core_rectangular(double *scratch,
                     m2.m,
                     m2.n,
                     m2.k,
-                    1.0,
-                    m2.a, // T_{\alpha, \gamma, j} -> transposed such that T_{\gamma, j, \alpha}
+                    m2.alpha,
+                    m2.a, T_{\alpha, \gamma, j} -> transposed such that T_{\gamma, j, \alpha}
                     m2.lda,
-                    m2.b, // X_{alpha, i}
+                    m2.b, X_{alpha, i}
                     m2.ldb,
-                    0.0,
-                    m2.c, // W_{\gamma, j, i}
+                    m2.beta,
+                    m2.c, W_{\gamma, j, i}
                     m2.ldc);
 
         cblas_dgemm(CblasRowMajor,
@@ -454,13 +451,13 @@ void collocate_core_rectangular(double *scratch,
                     m3.m,
                     m3.n,
                     m3.k,
-                    1.0,
-                    m3.a, // Z_{\gamma, k} -> Transposed Z_{k, \gamma}
+                    m3.alpha,
+                    m3.a, Z_{\gamma, k} -> Transposed Z_{k, \gamma}
                     m3.lda,
-                    m3.b, // W_{gamma, j, i}
+                    m3.b, W_{gamma, j, i}
                     m3.ldb,
-                    0.0,
-                    m3.c, // cube_{kji}
+                    m3.beta,
+                    m3.c, cube_{kji}
                     m3.ldc);
 
 #else
@@ -506,7 +503,7 @@ void collocate_core_rectangular(double *scratch,
                m3.c, // cube_{kji}
                &m3.ldc);
 #endif
-        return;
+         return;
     }
     collocate_l0(co->data[0],
                  p_alpha_beta_reduced_,
@@ -683,7 +680,7 @@ void grid_collocate(collocation_integration *const handler,
 
     /* initialize the multidimensional array containing the polynomials */
     initialize_tensor_3(&handler->pol, 3, handler->coef.size[0], 2 * cmax + 1);
-    handler->pol_alloc_size = realloc_tensor(handler->pol.data, handler->pol_alloc_size, handler->pol.alloc_size_,  (void **)&handler->pol.data);
+    handler->pol_alloc_size = realloc_tensor(&handler->pol);
 
     /* allocate memory for the polynomial and the cube */
 
@@ -693,10 +690,7 @@ void grid_collocate(collocation_integration *const handler,
                             cube_size[1],
                             cube_size[2]);
 
-        handler->cube_alloc_size = realloc_tensor(handler->cube.data,
-                                                  handler->cube_alloc_size,
-                                                  handler->cube.alloc_size_,
-                                                  (void **)&handler->cube.data);
+        handler->cube_alloc_size = realloc_tensor(&handler->cube);
 
         initialize_W_and_T(handler, &handler->cube, &handler->coef);
     }
@@ -713,7 +707,7 @@ void grid_collocate(collocation_integration *const handler,
         grid_fill_pol(false, dh[2][2], roffset[0], lb_cube[0], ub_cube[0], handler->coef.size[0] - 1, cmax, zetp, &idx3(handler->pol, 0, 0, 0)); /* k indice */
     } else {
         initialize_tensor_3(&handler->Exp, 3, max(cube_size[0], cube_size[1]), max(cube_size[1], cube_size[2]));
-        handler->Exp_alloc_size = realloc_tensor(handler->Exp.data, handler->Exp_alloc_size, handler->Exp.alloc_size_, (void **)&handler->Exp.data);
+        handler->Exp_alloc_size = realloc_tensor(&handler->Exp);
 
         double dx[3];
         dx[2] = dh[0][0] * dh[0][0] + dh[0][1] * dh[0][1] + dh[0][2] * dh[0][2];
@@ -732,7 +726,7 @@ void grid_collocate(collocation_integration *const handler,
                                                      &handler->Exp);
 
         /* Use a slightly modified version of Ole code */
-        grid_transform_coef_xyz_to_ijk(dh, dh_inv, &handler->coef);
+        grid_transform_coef_xyz_to_ijk(dh, &handler->coef);
     }
 
     if (handler->sequential_mode) {
@@ -789,11 +783,11 @@ void grid_collocate_pgf_product_cpu(void *const handle,
                                     double *grid_)
 {
 
-    if (!handle) {
-        abort();
-    }
 
     collocation_integration *handler = (collocation_integration *)handle;
+    if (handler == NULL) {
+        abort();
+    }
 // Uncomment this to dump all tasks to file.
 // #define __GRID_DUMP_TASKS
     tensor grid;
@@ -863,23 +857,13 @@ void grid_collocate_pgf_product_cpu(void *const handle,
      * initialize a new tensor. I want to keep the memory (I put a ridiculous
      * amount already) */
 
-    void *tmp = handler->alpha.data;
     initialize_tensor_4(&handler->alpha, 3, lmax_prep[1] + 1, lmax_prep[0] + 1, lmax_prep[0] + lmax_prep[1] + 1);
-
-    handler->alpha_alloc_size = realloc_tensor(tmp,
-                                                handler->alpha_alloc_size,
-                                                handler->alpha.alloc_size_,
-                                               (void **)&(handler->alpha.data));
+    handler->alpha_alloc_size = realloc_tensor(&handler->alpha);
 
     const int lp = lmax_prep[0] + lmax_prep[1];
 
-    tmp = handler->coef.data;
     initialize_tensor_3(&(handler->coef), lp + 1, lp + 1, lp + 1);
-
-    handler->coef_alloc_size = realloc_tensor(tmp,
-                                              handler->coef_alloc_size,
-                                              handler->coef.alloc_size_,
-                                              (void **)&(handler->coef.data));
+    handler->coef_alloc_size = realloc_tensor(&handler->coef);
 
     // initialy cp2k stores coef_xyz as coef[z][y][x]. this is fine but I
     // need them to be stored as

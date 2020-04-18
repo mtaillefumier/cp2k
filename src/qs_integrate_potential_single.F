@@ -43,7 +43,10 @@ MODULE qs_integrate_potential_single
                                               gth_potential_type
    USE gaussian_gridlevels,             ONLY: gaussian_gridlevel,&
                                               gridlevel_info_type
-   USE grid_api,                        ONLY: integrate_pgf_product
+   USE grid_api,                        ONLY: integrate_pgf_product, &
+        collocate_pgf_create_handle,&
+        collocate_pgf_finalize, &
+        collocate_pgf_synchronize
    USE kinds,                           ONLY: dp,&
                                               int_8
    USE lri_environment_types,           ONLY: lri_kind_type
@@ -69,6 +72,7 @@ MODULE qs_integrate_potential_single
                                               rs_pw_transfer
    USE rs_pw_interface,                 ONLY: potential_pw2rs
    USE virial_types,                    ONLY: virial_type
+   USE iso_c_binding,                  ONLY: C_PTR, C_NULL_PTR
 #include "./base/base_uses.f90"
 
    IMPLICIT NONE
@@ -122,10 +126,13 @@ CONTAINS
       TYPE(qs_kind_type), DIMENSION(:), POINTER          :: qs_kind_set
       TYPE(realspace_grid_type), POINTER                 :: rs_v
       TYPE(virial_type), POINTER                         :: virial
+      TYPE(C_PTR)                                        :: gaussian_handle
 
       CALL timeset(routineN, handle)
 
       NULLIFY (pw_env, cores)
+      gaussian_handle = C_NULL_PTR
+
 
       CALL get_qs_env(qs_env=qs_env, pw_env=pw_env)
       CALL pw_env_get(pw_env=pw_env, auxbas_rs_grid=rs_v)
@@ -145,6 +152,8 @@ CONTAINS
       use_virial = virial%pv_availability .AND. (.NOT. virial%pv_numer)
 
       eps_rho_rspace = dft_control%qs_control%eps_rho_rspace
+      ! sequential mode
+      gaussian_handle = collocate_pgf_create_handle(0, 128, .TRUE.)
 
       DO ikind = 1, SIZE(atomic_kind_set)
 
@@ -250,7 +259,7 @@ CONTAINS
                                               pab=pab, o1=0, o2=0, &  ! without map_consistent
                                               prefactor=1.0_dp, cutoff=1.0_dp)
 
-            CALL integrate_pgf_product(ni, alpha, 0, &
+            CALL integrate_pgf_product(gaussian_handle, ni, alpha, 0, &
                                        0, 0.0_dp, 0, ra, (/0.0_dp, 0.0_dp, 0.0_dp/), &
                                        rs_v, cell, pw_env%cube_info(1), hab, pab=pab, o1=0, o2=0, &
                                        radius=radius, &
@@ -267,7 +276,7 @@ CONTAINS
                CPABORT("Virial not debuged for CORE_PPL")
             END IF
          END DO
-
+         CALL collocate_pgf_synchronize(gaussian_handle)
          DEALLOCATE (hab, pab)
 
       END DO
@@ -275,7 +284,7 @@ CONTAINS
       CALL rs_grid_release(rs_v)
 
       DEALLOCATE (cores)
-
+      CALL collocate_pgf_finalize(gaussian_handle)
       CALL timestop(handle)
 
    END SUBROUTINE integrate_ppl_rspace
@@ -312,10 +321,11 @@ CONTAINS
       TYPE(qs_kind_type), DIMENSION(:), POINTER          :: qs_kind_set
       TYPE(realspace_grid_type), POINTER                 :: rs_v
       TYPE(virial_type), POINTER                         :: virial
-
+      TYPE(C_PTR)                                        :: gaussian_handle
       CALL timeset(routineN, handle)
 
       NULLIFY (pw_env, cores)
+      gaussian_handle = C_NULL_PTR
 
       CALL get_qs_env(qs_env=qs_env, pw_env=pw_env)
       CALL pw_env_get(pw_env=pw_env, auxbas_rs_grid=rs_v)
@@ -335,6 +345,8 @@ CONTAINS
       use_virial = virial%pv_availability .AND. (.NOT. virial%pv_numer)
 
       eps_rho_rspace = dft_control%qs_control%eps_rho_rspace
+      ! sequential mode
+      gaussian_handle = collocate_pgf_create_handle(0, 128, .TRUE.)
 
       DO ikind = 1, SIZE(atomic_kind_set)
 
@@ -451,7 +463,7 @@ CONTAINS
                                                  pab=pab, o1=0, o2=0, &  ! without map_consistent
                                                  prefactor=1.0_dp, cutoff=1.0_dp)
 
-               CALL integrate_pgf_product(ni, 1/(2*alpha**2), 0, &
+               CALL integrate_pgf_product(gaussian_handle, ni, 1/(2*alpha**2), 0, &
                                           0, 0.0_dp, 0, ra, (/0.0_dp, 0.0_dp, 0.0_dp/), &
                                           rs_v, cell, pw_env%cube_info(1), hab, pab=pab, o1=0, o2=0, &
                                           radius=radius, &
@@ -467,7 +479,7 @@ CONTAINS
                   virial%pv_exc = virial%pv_exc + my_virial_a*rho_rspace%pw%pw_grid%dvol
                END IF
             END DO
-
+            CALL collocate_pgf_synchronize(gaussian_handle)
             DEALLOCATE (hab, pab)
 
          END DO
@@ -477,7 +489,7 @@ CONTAINS
       CALL rs_grid_release(rs_v)
 
       DEALLOCATE (cores)
-
+      CALL collocate_pgf_finalize(gaussian_handle)
       CALL timestop(handle)
 
    END SUBROUTINE integrate_rho_nlcc
@@ -514,9 +526,11 @@ CONTAINS
       TYPE(qs_kind_type), DIMENSION(:), POINTER          :: qs_kind_set
       TYPE(realspace_grid_type), POINTER                 :: rs_v
       TYPE(virial_type), POINTER                         :: virial
+      TYPE(C_PTR)                                        :: gaussian_handle
 
       CALL timeset(routineN, handle)
       NULLIFY (virial, force, atprop, dft_control)
+      gaussian_handle = C_NULL_PTR
 
       CALL get_qs_env(qs_env=qs_env, dft_control=dft_control)
 
@@ -558,6 +572,8 @@ CONTAINS
          use_virial = virial%pv_availability .AND. (.NOT. virial%pv_numer)
 
          eps_rho_rspace = dft_control%qs_control%eps_rho_rspace
+         ! sequential mode
+         gaussian_handle = collocate_pgf_create_handle(0, 128, .TRUE.)
 
          DO ikind = 1, SIZE(atomic_kind_set)
 
@@ -609,7 +625,7 @@ CONTAINS
                                                  pab=pab, o1=0, o2=0, &  ! without map_consistent
                                                  prefactor=1.0_dp, cutoff=1.0_dp)
 
-               CALL integrate_pgf_product(0, alpha_core_charge, 0, &
+               CALL integrate_pgf_product(gaussian_handle, 0, alpha_core_charge, 0, &
                                           0, 0.0_dp, 0, ra, (/0.0_dp, 0.0_dp, 0.0_dp/), &
                                           rs_v, cell, pw_env%cube_info(1), hab, pab=pab, o1=0, o2=0, &
                                           radius=radius, &
@@ -633,6 +649,7 @@ CONTAINS
          END DO
 
          CALL rs_grid_release(rs_v)
+         CALL collocate_pgf_finalize(gaussian_handle)
 
          DEALLOCATE (hab, pab, cores)
 
@@ -690,7 +707,7 @@ CONTAINS
       TYPE(realspace_grid_p_type), DIMENSION(:), POINTER :: rs_v
       TYPE(realspace_grid_type), POINTER                 :: rs_grid
       TYPE(virial_type), POINTER                         :: virial
-
+      TYPE(C_PTR)                                        :: gaussian_handle
       CALL timeset(routineN, handle)
 
       NULLIFY (atomic_kind_set, qs_kind_set, atom_list, cell, dft_control, &
@@ -728,6 +745,8 @@ CONTAINS
       offset = 0
       my_pos = v_rspace%pw%pw_grid%para%my_pos
       group_size = v_rspace%pw%pw_grid%para%group_size
+      ! need to change this name
+      gaussian_handle = collocate_pgf_create_handle(0, 128, .TRUE.)
 
       DO ikind = 1, nkind
 
@@ -829,7 +848,7 @@ CONTAINS
 
                      IF (map_it(ipgf)) THEN
                         IF (.NOT. calculate_forces) THEN
-                           CALL integrate_pgf_product(la_max=la_max(iset), &
+                           CALL integrate_pgf_product(gaussian_handle, la_max=la_max(iset), &
                                                       zeta=zeta(ipgf, iset), la_min=la_min(iset), &
                                                       lb_max=0, zetb=0.0_dp, lb_min=0, &
                                                       ra=ra, rab=(/0.0_dp, 0.0_dp, 0.0_dp/), &
@@ -838,7 +857,7 @@ CONTAINS
                                                       hab=hab, o1=na1, o2=0, radius=radius, &
                                                       calculate_forces=calculate_forces)
                         ELSE
-                           CALL integrate_pgf_product(la_max=la_max(iset), &
+                           CALL integrate_pgf_product(gaussian_handle, la_max=la_max(iset), &
                                                       zeta=zeta(ipgf, iset), la_min=la_min(iset), &
                                                       lb_max=0, zetb=0.0_dp, lb_min=0, &
                                                       ra=ra, rab=(/0.0_dp, 0.0_dp, 0.0_dp/), &
@@ -875,7 +894,7 @@ CONTAINS
 
          DEALLOCATE (hab, pab)
       END DO
-
+      CALL collocate_pgf_finalize(gaussian_handle)
       DO i = 1, SIZE(rs_v)
          CALL rs_grid_release(rs_v(i)%rs_grid)
       END DO
@@ -933,7 +952,7 @@ CONTAINS
       TYPE(realspace_grid_p_type), DIMENSION(:), POINTER :: rs_v
       TYPE(realspace_grid_type), POINTER                 :: rs_grid
       TYPE(virial_type), POINTER                         :: virial
-
+      TYPE(C_PTR)                                        :: gaussian_handle
       CALL timeset(routineN, handle)
 
       CALL get_qs_env(qs_env=qs_env, pw_env=pw_env)
@@ -962,6 +981,8 @@ CONTAINS
       offset = 0
       my_pos = v_rspace%pw%pw_grid%para%my_pos
       group_size = v_rspace%pw%pw_grid%para%group_size
+      ! need to change this name
+      gaussian_handle = collocate_pgf_create_handle(0, 128, .TRUE.)
 
       DO ikind = 1, nkind
 
@@ -1069,7 +1090,7 @@ CONTAINS
 
                            IF (map_it2(ipgf, jpgf)) THEN
                               IF (calculate_forces) THEN
-                                 CALL integrate_pgf_product( &
+                                 CALL integrate_pgf_product(gaussian_handle,  &
                                     la_max(iset), zeta(ipgf, iset), la_min(iset), &
                                     la_max(jset), zeta(jpgf, jset), la_min(jset), &
                                     ra=ra, rab=(/0.0_dp, 0.0_dp, 0.0_dp/), &
@@ -1081,7 +1102,7 @@ CONTAINS
                                     force_a=force_a, force_b=force_b, &
                                     use_virial=use_virial, my_virial_a=my_virial_a, my_virial_b=my_virial_b)
                               ELSE
-                                 CALL integrate_pgf_product( &
+                                 CALL integrate_pgf_product(gaussian_handle,  &
                                     la_max(iset), zeta(ipgf, iset), la_min(iset), &
                                     la_max(jset), zeta(jpgf, jset), la_min(jset), &
                                     ra=ra, rab=(/0.0_dp, 0.0_dp, 0.0_dp/), &
@@ -1125,6 +1146,7 @@ CONTAINS
          DEALLOCATE (hab, work, hmat)
          IF (calculate_forces) DEALLOCATE (pab, pblk)
       END DO
+      CALL collocate_pgf_finalize(gaussian_handle)
 
       DO i = 1, SIZE(rs_v)
          CALL rs_grid_release(rs_v(i)%rs_grid)

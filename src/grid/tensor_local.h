@@ -8,6 +8,7 @@ typedef struct tensor_ {
     int dim_;
     int size[4];
     size_t alloc_size_;
+    size_t old_alloc_size_;
     size_t offsets[4];
     double *data;
     unsigned int ld_;
@@ -95,6 +96,15 @@ inline tensor *create_tensor(const int dim, const int *sizes)
     initialize_tensor(a, dim, sizes);
     if(posix_memalign((void **)&a->data, 16, sizeof(double) * a->alloc_size_) != 0)
         abort();
+    a->old_alloc_size_ = a->alloc_size_;
+}
+
+/* destroy a tensor created with the function above */
+inline void destroy_tensor(tensor *a)
+{
+    if (a->data)
+        free(a->data);
+    free(a);
 }
 
 inline size_t tensor_return_memory_size(const struct tensor_ *const a)
@@ -158,24 +168,7 @@ inline size_t compute_memory_space_tensor_3(const int n1, const int n2, const in
 }
 
 
-inline size_t realloc_tensor(void *const old_mem_ptr, const size_t old_mem_size, const size_t mem_size, void **data)
-{
-    if ((old_mem_size != 0) && (old_mem_ptr == NULL))
-        abort();
-
-    if (old_mem_size > mem_size) {
-        *data = old_mem_ptr;
-        return old_mem_size;
-    }
-
-    if ((old_mem_size != 0) && (old_mem_ptr != NULL))
-        free(old_mem_ptr);
-
-    if (posix_memalign(data, 32, sizeof(double) * mem_size) != 0)
-        abort();
-
-    return mem_size;
-}
+extern size_t realloc_tensor(tensor *t);
 
 #define idx4(a, i, j, k, l) a.data[ (i) * a.offsets[0] + (j) * a.offsets[1] + (k) * a.offsets[2] + (l)]
 #define idx3(a, i, j, k) a.data[(i) * a.offsets[0] + (j) * a.offsets[1] + (k)]

@@ -93,6 +93,7 @@ typedef struct collocation_integration_ {
     size_t pol_alloc_size;
     size_t T_alloc_size;
     size_t W_alloc_size;
+    size_t scratch_alloc_size;
 
     void *scratch;
 } collocation_integration;

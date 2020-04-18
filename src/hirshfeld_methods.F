@@ -21,11 +21,12 @@ MODULE hirshfeld_methods
    USE cp_units,                        ONLY: cp_unit_to_cp2k
    USE cube_utils,                      ONLY: cube_info_type
    USE grid_api,                        ONLY: GRID_FUNC_AB,&
-        collocate_pgf_product,&
         integrate_pgf_product,&
+        collocate_pgf_product,&
         collocate_pgf_create_handle,&
         collocate_pgf_finalize, &
         collocate_pgf_synchronize
+   USE qs_integrate_potential,          ONLY: integrate_pgf_product
    USE hirshfeld_types,                 ONLY: get_hirshfeld_info,&
                                               hirshfeld_type,&
                                               set_hirshfeld_info
@@ -565,6 +566,7 @@ CONTAINS
       TYPE(pw_env_type), POINTER                         :: pw_env
       TYPE(realspace_grid_desc_type), POINTER            :: auxbas_rs_desc
       TYPE(realspace_grid_type), POINTER                 :: rs_v
+      TYPE(C_PTR)                                        :: gaussian_handle
 
       CALL timeset(routineN, handle)
 
@@ -586,6 +588,9 @@ CONTAINS
       nthread = 1
       ithread = 0
       ALLOCATE (hab(1, 1), pab(1, 1))
+
+      ! need to change this name
+      gaussian_handle = collocate_pgf_create_handle(0, 128, .TRUE.)
 
       DO ikind = 1, SIZE(atomic_kind_set)
          numexp = hirshfeld_env%kind_shape_fn(ikind)%numexp
@@ -628,7 +633,7 @@ CONTAINS
                                                  pab=pab, o1=0, o2=0, &  ! without map_consistent
                                                  prefactor=1.0_dp, cutoff=1.0_dp)
 
-               CALL integrate_pgf_product(0, alpha, 0, &
+               CALL integrate_pgf_product(gaussian_handle, 0, alpha, 0, &
                                           0, 0.0_dp, 0, ra, (/0.0_dp, 0.0_dp, 0.0_dp/), &
                                           rs_v, cell, pw_env%cube_info(1), hab, pab=pab, o1=0, o2=0, &
                                           radius=radius, calculate_forces=do_force, &
@@ -650,6 +655,8 @@ CONTAINS
 
       CALL get_qs_env(qs_env=qs_env, para_env=para_env)
       CALL mp_sum(fval, para_env%group)
+      ! same here. The name is confusing
+      CALL collocate_pgf_finalize(gaussian_handle)
 
       CALL timestop(handle)
 

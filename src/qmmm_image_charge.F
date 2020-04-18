@@ -63,8 +63,11 @@ MODULE qmmm_image_charge
                                               calculate_rho_single_gaussian
    USE qs_energy_types,                 ONLY: qs_energy_type
    USE qs_environment_types,            ONLY: get_qs_env,&
-                                              qs_environment_type
-   USE qs_integrate_potential,          ONLY: integrate_pgf_product
+      qs_environment_type
+      USE grid_api,                        ONLY: integrate_pgf_product,&
+      collocate_pgf_create_handle,&
+      collocate_pgf_finalize, &
+      collocate_pgf_synchronize
    USE realspace_grid_types,            ONLY: pw2rs,&
                                               realspace_grid_desc_type,&
                                               realspace_grid_type,&
@@ -73,6 +76,7 @@ MODULE qmmm_image_charge
                                               rs_pw_transfer
    USE util,                            ONLY: get_limit
    USE virial_types,                    ONLY: virial_type
+   USE ISO_C_BINDING,                   ONLY: C_PTR, C_NULL_PTR
 #include "./base/base_uses.f90"
 
    IMPLICIT NONE
@@ -364,9 +368,9 @@ CONTAINS
       TYPE(pw_env_type), POINTER                         :: pw_env
       TYPE(realspace_grid_desc_type), POINTER            :: auxbas_rs_desc
       TYPE(realspace_grid_type), POINTER                 :: rs_v
-
+      TYPE(C_PTR)                                        :: gaussian_handle
       CALL timeset(routineN, handle)
-
+      gaussian_handle = C_NULL_PTR
       NULLIFY (cores, hab, cell, auxbas_rs_desc, pw_env, para_env, &
                dft_control, rs_v)
       ALLOCATE (hab(1, 1))
@@ -406,6 +410,9 @@ CONTAINS
          ENDIF
       END DO
 
+      ! sequential mode
+      gaussian_handle = collocate_pgf_create_handle(0, 128, .TRUE.)
+
       DO j = 1, npme
 
          iatom = cores(j)
@@ -430,7 +437,7 @@ CONTAINS
                                            zetp=qmmm_env%image_charge_pot%eta, eps=eps_rho_rspace, &
                                            prefactor=1.0_dp, cutoff=1.0_dp)
 
-         CALL integrate_pgf_product(0, qmmm_env%image_charge_pot%eta, 0, &
+         CALL integrate_pgf_product(gaussian_handle, 0, qmmm_env%image_charge_pot%eta, 0, &
                                     0, 0.0_dp, 0, ra, (/0.0_dp, 0.0_dp, 0.0_dp/), &
                                     rs_v, cell, pw_env%cube_info(1), hab, o1=0, o2=0, &
                                     radius=radius, calculate_forces=.FALSE., &
@@ -440,6 +447,7 @@ CONTAINS
 
       END DO
 
+      CALL collocate_pgf_finalize(gaussian_handle)
       CALL mp_sum(int_res, para_env%group)
 
       DEALLOCATE (hab, cores)
@@ -485,13 +493,15 @@ CONTAINS
       TYPE(realspace_grid_desc_type), POINTER            :: auxbas_rs_desc
       TYPE(realspace_grid_type), POINTER                 :: rs_v
       TYPE(virial_type), POINTER                         :: virial
-
+      TYPE(C_PTR)                                        :: gaussian_handle
       CALL timeset(routineN, handle)
+      gaussian_handle = C_NULL_PTR
 
       NULLIFY (cores, hab, pab, cell, auxbas_rs_desc, pw_env, para_env, &
                dft_control, rs_v, virial)
       use_virial = .FALSE.
-
+      ! sequential mode
+      gaussian_handle = collocate_pgf_create_handle(0, 128, .TRUE.)
       ALLOCATE (hab(1, 1))
       ALLOCATE (pab(1, 1))
 
@@ -556,7 +566,7 @@ CONTAINS
                                            pab=pab, o1=0, o2=0, &  ! without map_consistent
                                            prefactor=1.0_dp, cutoff=1.0_dp)
 
-         CALL integrate_pgf_product(0, qmmm_env%image_charge_pot%eta, 0, &
+         CALL integrate_pgf_product(gaussian_handle, 0, qmmm_env%image_charge_pot%eta, 0, &
                                     0, 0.0_dp, 0, ra, (/0.0_dp, 0.0_dp, 0.0_dp/), &
                                     rs_v, cell, pw_env%cube_info(1), hab, pab, o1=0, o2=0, &
                                     radius=radius, calculate_forces=.TRUE., &
@@ -567,7 +577,7 @@ CONTAINS
          forces(:, iatom) = force_a(:)
 
       END DO
-
+      CALL collocate_pgf_finalize(gaussian_handle)
       CALL mp_sum(forces, para_env%group)
 
       DEALLOCATE (hab, pab, cores)

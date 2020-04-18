@@ -18,7 +18,8 @@ MODULE qs_rho0_ggrid
       collocate_pgf_product,&
       collocate_pgf_finalize,&
       collocate_pgf_create_handle, &
-      collocate_pgf_synchronize
+      collocate_pgf_synchronize,&
+      integrate_pgf_product
    USE kinds,                           ONLY: dp,&
                                               int_8
    USE mathconstants,                   ONLY: dfac,&
@@ -396,7 +397,7 @@ CONTAINS
       TYPE(rho_atom_type), DIMENSION(:), POINTER         :: rho_atom_set
       TYPE(rho_atom_type), POINTER                       :: rho_atom
       TYPE(virial_type), POINTER                         :: virial
-
+      TYPE(C_PTR)                                        :: gaussian_handle
       c4pi = fourpi
 
       CALL timeset(routineN, handle)
@@ -525,6 +526,8 @@ CONTAINS
       ncurr = -1
 
       grid_distributed = rs_v%desc%distributed
+      ! sequential mode
+      gaussian_handle = collocate_pgf_create_handle(0, 128, .TRUE.)
 
       DO ikind = 1, SIZE(atomic_kind_set, 1)
          NULLIFY (orb_basis_set, atom_list, harmonics)
@@ -580,7 +583,7 @@ CONTAINS
                   a_hdab = 0.0_dp
                END IF
 
-               CALL integrate_pgf_product( &
+               CALL integrate_pgf_product(gaussian_handle, &
                   l0_ikind, zet0, 0, 0, 0.0_dp, 0, &
                   ra, (/0.0_dp, 0.0_dp, 0.0_dp/), rs_v, cell, &
                   cube_info(igrid), hab, pab, o1=0, o2=0, &
@@ -707,6 +710,7 @@ CONTAINS
       END DO ! ikind
 
       CALL rs_grid_release(rs_v)
+      CALL collocate_pgf_finalize(gaussian_handle)
 
       DEALLOCATE (hab, hdab, hadb, hab_sph, hdab_sph, pab, a_hdab, a_hdab_sph)
 

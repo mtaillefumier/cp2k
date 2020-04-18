@@ -361,7 +361,6 @@ inline double return_multimonial_prefactor(const int l, const int m, int *const 
  * space to the grid space. It is inplane */
 
 void grid_transform_coef_xyz_to_ijk(const double dh[3][3],
-                                    const double dh_inv[3][3],
                                     const tensor *coef_xyz)
 {
     const int lp = coef_xyz->size[0] - 1;
@@ -384,17 +383,6 @@ void grid_transform_coef_xyz_to_ijk(const double dh[3][3],
 
     posix_memalign((void **)&hmatgridp.data, 32, sizeof(double) * hmatgridp.alloc_size_);
 
-    /* int coef_map[coef_xyz.size[0]][coef_xyz.size[1]][coef_xyz.size[2]]; */
-
-    /* int lxyz = 0; */
-    /* for (int lzp=0; lzp<=lp; lzp++) { */
-    /*     for (int lyp=0; lyp<=lp-lzp; lyp++) { */
-    /*         for (int lxp=0; lxp<=lp-lzp-lyp; lxp++) { */
-    /*             coef_map[lzp][lyp][lxp] = ++lxyz; */
-    /*         } */
-    /*     } */
-    /* } */
-
     // transform using multinomials
     for (int i = 0; i < 3; i++) {
         for (int j = 0; j < 3; j++) {
@@ -404,13 +392,6 @@ void grid_transform_coef_xyz_to_ijk(const double dh[3][3],
             }
         }
     }
-
-    /* // zero coef_ijk */
-    /* const int ncoef_ijk = ((lp+1)*(lp+2)*(lp+3))/6; */
-    /* double coef_ijk[ncoef_ijk]; */
-    /* for (int i=0; i<ncoef_ijk; i++) { */
-    /*     coef_ijk[i] = 0.0; */
-    /* } */
 
     const int lpx = lp;
     for (int klx = 0; klx <= lpx; klx++) {
@@ -459,13 +440,80 @@ void grid_transform_coef_xyz_to_ijk(const double dh[3][3],
 /* this function computes the coefficients initially expressed in the cartesian
  * space to the grid space. It is inplane */
 
-void grid_transform_coef_ijk_to_xyz(const double dh[3][3],
-                                    const double dh_inv[3][3],
+void grid_transform_coef_jik_to_yxz(const double dh[3][3],
                                     const tensor *coef_xyz)
 {
-    grid_transform_coef_xyz_to_ijk(dh_inv,
-                                   dh,
-                                   coef_xyz);
+        const int lp = coef_xyz->size[0] - 1;
+    tensor coef_ijk;
+
+    /* this tensor corresponds to the term
+     * $v_{11}^{k_{11}}v_{12}^{k_{12}}v_{13}^{k_{13}}
+     * v_{21}^{k_{21}}v_{22}^{k_{22}}v_{23}^{k_{23}}
+     * v_{31}^{k_{31}}v_{32}^{k_{32}} v_{33}^{k_{33}}$ in Eq.26 found section
+     * III.A of the notes */
+    tensor hmatgridp;
+
+    initialize_tensor_3(&coef_ijk, coef_xyz->size[0], coef_xyz->size[1], coef_xyz->size[2]);
+
+    if(posix_memalign((void **)&coef_ijk.data, 32, sizeof(double) * coef_ijk.alloc_size_) != 0)
+        abort();
+
+    memset(coef_ijk.data, 0, sizeof(double) * coef_ijk.alloc_size_);
+    initialize_tensor_3(&hmatgridp, coef_xyz->size[0], 3, 3);
+
+    posix_memalign((void **)&hmatgridp.data, 32, sizeof(double) * hmatgridp.alloc_size_);
+
+    // transform using multinomials
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            idx3(hmatgridp, 0, j, i) = 1.0;
+            for (int k = 1; k <= lp; k++) {
+                idx3(hmatgridp, k, j, i) = idx3(hmatgridp, k - 1, j, i) * dh[j][i];
+            }
+        }
+    }
+
+    const int lpx = lp;
+    for (int klx = 0; klx <= lpx; klx++) {
+        for (int jlx = 0; jlx <= lpx - klx; jlx++) {
+            for (int ilx = 0; ilx <= lpx - klx - jlx; ilx++) {
+                const int lx = ilx + jlx + klx;
+                const int lpy = lp - lx;
+                for (int kly = 0; kly <= lpy; kly++) {
+                    for (int jly = 0; jly <= lpy - kly; jly++) {
+                        for (int ily = 0; ily <= lpy - kly - jly; ily++) {
+                            const int ly = ily + jly + kly;
+                            const int lpz = lp - lx - ly;
+                            for (int klz = 0; klz <= lpz; klz++) {
+                                for (int jlz = 0; jlz <= lpz - klz; jlz++) {
+                                    for (int ilz = 0; ilz <= lpz - klz - jlz; ilz++) {
+                                        const int lz = ilz + jlz + klz;
+                                        const int il = ilx + ily + ilz;
+                                        const int jl = jlx + jly + jlz;
+                                        const int kl = klx + kly + klz;
+                                        //const int lijk= coef_map[kl][jl][il];
+                                        /* the fac table is the factorial. It
+                                         * would be better to use the
+                                         * multinomials. */
+                                        idx3(coef_ijk, ly, lx, lz) += idx3(coef_xyz[0], jl, il, kl) *
+                                            idx3(hmatgridp, ilx, 0, 0) * idx3(hmatgridp, jlx, 1, 0) * idx3(hmatgridp, klx, 2, 0) *
+                                            idx3(hmatgridp, ily, 0, 1) * idx3(hmatgridp, jly, 1, 1) * idx3(hmatgridp, kly, 2, 1) *
+                                            idx3(hmatgridp, ilz, 0, 2) * idx3(hmatgridp, jlz, 1, 2) * idx3(hmatgridp, klz, 2, 2) *
+                                            fac[lx] * fac[ly] * fac[lz] /
+                                            (fac[ilx] * fac[ily] * fac[ilz] * fac[jlx] * fac[jly] * fac[jlz] * fac[klx] * fac[kly] * fac[klz]);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    memcpy(coef_xyz->data, coef_ijk.data, sizeof(double) * coef_ijk.alloc_size_);
+    free(coef_ijk.data);
+    free(hmatgridp.data);
 }
 
 /* // ***************************************************************************** */
