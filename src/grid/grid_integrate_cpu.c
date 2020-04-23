@@ -262,7 +262,17 @@ void grid_integrate(collocation_integration *const handler,
         perm[2] = 2;
     }
 
-    if (use_ortho) {
+    bool orthogonal[3];
+
+    // zx
+    orthogonal[0] = (fabs(dh[0][0] * dh[2][0] + dh[0][1] * dh[2][1] + dh[0][2] * dh[2][2]) < 1.0e-12);
+    // zy
+    orthogonal[1] = (fabs(dh[1][0] * dh[2][0] + dh[1][1] * dh[2][1] + dh[1][2] * dh[2][2]) < 1.0e-12);
+    // xy
+    orthogonal[2] = (fabs(dh[0][0] * dh[1][0] + dh[0][1] * dh[1][1] + dh[0][2] * dh[1][2]) < 1.0e-12);
+
+    bool use_ortho_forced = orthogonal[0] && orthogonal[1] && orthogonal[2];
+    if (use_ortho && use_ortho_forced) {
         grid_fill_pol((lp != 0), dh[0][0], roffset[2], lb_cube[2], ub_cube[2], lp, cmax, zetp, &idx3(handler->pol, perm[2], 0, 0)); /* i indice */
         grid_fill_pol((lp != 0), dh[1][1], roffset[1], lb_cube[1], ub_cube[1], lp, cmax, zetp, &idx3(handler->pol, perm[1], 0, 0)); /* j indice */
         grid_fill_pol((lp != 0), dh[2][2], roffset[0], lb_cube[0], ub_cube[0], lp, cmax, zetp, &idx3(handler->pol, perm[0], 0, 0)); /* k indice */
@@ -296,7 +306,7 @@ void grid_integrate(collocation_integration *const handler,
                      lb_grid,
                      &handler->cube);
 
-        if (!use_ortho)
+        if (!use_ortho && !use_ortho_forced)
             apply_non_orthorombic_corrections(handler->plane, &handler->Exp, &handler->cube);
 
         tensor_reduction_for_collocate_integrate(handler->scratch,
@@ -307,7 +317,7 @@ void grid_integrate(collocation_integration *const handler,
                                                  &handler->coef);
 
 /* go from ijk -> xyz */
-        if (!use_ortho)
+        if (!use_ortho && !use_ortho_forced)
             grid_transform_coef_jik_to_yxz(dh, &handler->coef);
 
     } else {

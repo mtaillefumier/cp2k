@@ -503,9 +503,13 @@ void calculate_non_orthorombic_corrections_tensor(const double mu_mean,
 
 
     /* Check if some vectors are orthogonal */
-    plane[0] = (fabs(c[0]) < 1e-8);
-    plane[1] = (fabs(c[1]) < 1e-8);
-    plane[2] = (fabs(c[2]) < 1e-8);
+    // xz
+    plane[0] = (fabs(c[0]) < 1e-12);
+    // yz
+    plane[1] = (fabs(c[1]) < 1e-12);
+    // xy
+    plane[2] = (fabs(c[2]) < 1e-12);
+
     /* a naive implementation of the computation of exp(-2 (v_i . v_j) (i
      * - r_i) (j _ r_j)) requires n m exponentials but we can do much much
      * better with only 7 exponentials
@@ -518,6 +522,11 @@ void calculate_non_orthorombic_corrections_tensor(const double mu_mean,
      * this means that exp (a i) with i integer can be computed recursively with
      * one exponential only
      */
+
+    /* we have a orthorombic case */
+    if (plane[0] && plane[1] && plane[2])
+        return;
+
     tensor exp_tmp;
     double *x1, *x2;
 
@@ -530,10 +539,9 @@ void calculate_non_orthorombic_corrections_tensor(const double mu_mean,
         int d1 = n[dir][0];
         int d2 = n[dir][1];
 
-        if (fabs(c[dir]) > 1e-8) {
-            const double c_exp_const = exp(c[dir] * r_ab[d1] * r_ab[d2]);
+        if (fabs(c[dir]) > 1e-12) {
             memset(&idx3(Exp[0], dir, 0, 0), 0, sizeof(double) * Exp->ld_ * (xmax[d1] - xmin[d1] + 1));
-
+            const double c_exp_const = exp(c[dir] * r_ab[d1] * r_ab[d2]);
 
             exp_i(-r_ab[d2] * c[dir], xmin[d1], xmax[d1] + 1, x1);
             exp_i(-r_ab[d1] * c[dir], xmin[d2], xmax[d2] + 1, x2);
@@ -547,14 +555,14 @@ void calculate_non_orthorombic_corrections_tensor(const double mu_mean,
                        x2, 1,
                        exp_tmp.data, exp_tmp.ld_);
             exp_ij(c[dir], xmin[d1], xmax[d1] + 1, xmin[d2], xmax[d2] + 1, &exp_tmp);
-        } else {
-            // it means that the two directions are orthogonal to each other. The exponential is equal to one
-            for(int x = 0; x < (xmax[d1] - xmin[d1] + 1); x++) {
-                for(int y = 0; y < (xmax[d2] - xmin[d2] + 1); y++) {
-                    idx3(Exp[0], dir, x, y) = 1.0;
-                }
-            }
-        }
+        }// else {
+        /*     // it means that the two directions are orthogonal to each other. The exponential is equal to one */
+        /*     for(int x = 0; x < (xmax[d1] - xmin[d1] + 1); x++) { */
+        /*         for(int y = 0; y < (xmax[d2] - xmin[d2] + 1); y++) { */
+        /*             idx3(Exp[0], dir, x, y) = 1.0; */
+        /*         } */
+        /*     } */
+        /* } */
     }
     free(x1);
     free(x2);
@@ -562,7 +570,11 @@ void calculate_non_orthorombic_corrections_tensor(const double mu_mean,
 
 void apply_non_orthorombic_corrections(const bool *__restrict plane, const tensor *const Exp, tensor *const cube)
 {
-    /*k and i are orthogonal, k and j as well */
+    // Well we should never call non orthorombic corrections if everything is orthorombic
+    if (plane[0] && plane[1] && plane[2])
+        return;
+
+/*k and i are orthogonal, k and j as well */
     if (plane[0] && plane[1]) {
         for (int z = 0; z < cube->size[0]; z++) {
             for (int y = 0; y < cube->size[1]; y++) {
@@ -604,7 +616,53 @@ void apply_non_orthorombic_corrections(const bool *__restrict plane, const tenso
         return;
     }
 
-    /* generic  case */
+    if (plane[0]) {
+        // z perpendicular to x. but y non perpendicular to any
+        for (int z = 0; z < cube->size[0]; z++) {
+            for (int y = 0; y < cube->size[1]; y++) {
+                const double zy = idx3(Exp[0], 1, z, y);
+                const double *__restrict__ yx = &idx3(Exp[0], 2, y, 0);
+                LIBXSMM_PRAGMA_SIMD
+                    for (int x = 0; x < cube->size[2]; x++) {
+                        idx3(cube[0], z, y, x) *= zy * yx[x];
+                    }
+            }
+        }
+        return;
+    }
+
+    if (plane[1]) {
+        // z perpendicular to y, but x and z are not and y and x neither
+        for (int z = 0; z < cube->size[0]; z++) {
+            double *__restrict__ zx = &idx3(Exp[0], 0, z, 0);
+            for (int y = 0; y < cube->size[1]; y++) {
+                const double *__restrict__ yx = &idx3(Exp[0], 2, y, 0);
+                LIBXSMM_PRAGMA_SIMD
+                    for (int x = 0; x < cube->size[2]; x++) {
+                        idx3(cube[0], z, y, x) *= zx[x] * yx[x];
+                    }
+            }
+        }
+        return;
+    }
+
+
+    if (plane[2]) {
+// x perpendicular to y, but x and z are not and y and z neither
+        for (int z = 0; z < cube->size[0]; z++) {
+            double *__restrict__ zx = &idx3(Exp[0], 0, z, 0);
+            for (int y = 0; y < cube->size[1]; y++) {
+                const double zy = idx3(Exp[0], 1, z, y);
+                LIBXSMM_PRAGMA_SIMD
+                    for (int x = 0; x < cube->size[2]; x++) {
+                        idx3(cube[0], z, y, x) *= zx[x] * zy;
+                    }
+            }
+        }
+        return;
+    }
+
+/* generic  case */
 
     for (int z = 0; z < cube->size[0]; z++) {
         double *__restrict__ zx = &idx3(Exp[0], 0, z, 0);
