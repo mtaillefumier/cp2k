@@ -50,7 +50,6 @@ inline void initialize_tensor(struct tensor_ *a, const int dim, const int *const
 
     a->alloc_size_ = a->offsets[0] * a->size[0];
     return;
-    a->data = NULL;
 }
 
 /* initialize a tensor structure for a tensor of dimension dim = 2 */
@@ -136,7 +135,7 @@ inline int tensor_set_leading_dimension(struct tensor_ *a, const int ld)
     a->ld_ = ld;
 }
 
-inline void recompute_tensor_offsets(tensor *a)
+inline void recompute_tensor_offsets(struct tensor_ *a)
 {
     if (a == NULL)
         abort();

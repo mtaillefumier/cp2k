@@ -8,6 +8,8 @@
 #include "thpool.h"
 
 typedef struct collocation_block_ {
+    /* */
+    bool plane[3];
     tensor pol;
     tensor coefs;
     tensor Exp;
@@ -50,7 +52,7 @@ typedef struct collocation_list_ {
 } collocation_list;
 
 typedef struct collocation_integration_ {
-    /* GPU device id. should replace this with GPU UID */
+/* GPU device id. should replace this with GPU UID */
     int gpu_id;
 
     /*
@@ -85,15 +87,15 @@ typedef struct collocation_integration_ {
     /* Only allocated in sequential mode */
     tensor cube;
     tensor Exp;
-
+    bool plane[3];
     size_t Exp_alloc_size;
     size_t cube_alloc_size;
     size_t coef_alloc_size;
     size_t alpha_alloc_size;
     size_t pol_alloc_size;
+    size_t scratch_alloc_size;
     size_t T_alloc_size;
     size_t W_alloc_size;
-    size_t scratch_alloc_size;
 
     void *scratch;
 } collocation_integration;

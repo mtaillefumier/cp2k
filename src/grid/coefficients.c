@@ -11,11 +11,11 @@
 #include "tensor_local.h"
 #include "coefficients.h"
 
-extern void collocate_core_rectangular(double *scratch,
-                                       const double prefactor,
-                                       const struct tensor_ *co,
-                                       const struct tensor_ *p_alpha_beta_reduced_,
-                                       struct tensor_ *cube);
+extern void tensor_reduction_for_collocate_integrate(double *scratch,
+                                                     const double prefactor,
+                                                     const struct tensor_ *co,
+                                                     const struct tensor_ *p_alpha_beta_reduced_,
+                                                     struct tensor_ *cube);
 
 void transform_xyz_to_triangular(const tensor *const coef, double  *const  coef_xyz)
 {
@@ -342,7 +342,7 @@ void compute_compact_polynomial_coefficients(const tensor *coef,
 
 // it is a collocate now....
 
-    collocate_core_rectangular(NULL, prefactor, &coef_tmp, &px, co);
+    /* (NULL, prefactor, &coef_tmp, &px, co); */
 }
 
 inline double return_multimonial_prefactor(const int l, const int m, int *const alpha, int *const gamma, int *const beta, const tensor *const power, const int dir)
@@ -360,7 +360,7 @@ inline double return_multimonial_prefactor(const int l, const int m, int *const 
 /* this function computes the coefficients initially expressed in the cartesian
  * space to the grid space. It is inplane */
 
-void grid_transform_coef_xyz_to_ijk(const double dh[3][3],
+void grid_transform_coef_xzy_to_ikj(const double dh[3][3],
                                     const tensor *coef_xyz)
 {
     const int lp = coef_xyz->size[0] - 1;
@@ -436,14 +436,13 @@ void grid_transform_coef_xyz_to_ijk(const double dh[3][3],
     free(hmatgridp.data);
 }
 
-
-/* this function computes the coefficients initially expressed in the cartesian
- * space to the grid space. It is inplane */
-
+/* Rotate the coefficients computed in the local grid coordinates to the
+ * cartesians coorinates. The order of the indices indicates how the
+ * coefficients are stored */
 void grid_transform_coef_jik_to_yxz(const double dh[3][3],
                                     const tensor *coef_xyz)
 {
-        const int lp = coef_xyz->size[0] - 1;
+    const int lp = coef_xyz->size[0] - 1;
     tensor coef_ijk;
 
     /* this tensor corresponds to the term
@@ -510,7 +509,6 @@ void grid_transform_coef_jik_to_yxz(const double dh[3][3],
             }
         }
     }
-
     memcpy(coef_xyz->data, coef_ijk.data, sizeof(double) * coef_ijk.alloc_size_);
     free(coef_ijk.data);
     free(hmatgridp.data);

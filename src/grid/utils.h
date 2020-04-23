@@ -2,6 +2,28 @@
 #define UTILS_H_
 
 #include <stdbool.h>
+#include "tensor_local.h"
+
+static const int ncoset[] = {1,  // l=0
+                             4,  // l=1
+                             10, // l=2 ...
+                             20, 35, 56, 84, 120, 165, 220, 286, 364,
+                             455, 560, 680, 816, 969, 1140, 1330};
+
+/* Table giving the factorial up to 31! */
+static const double fac[] = {
+        0.10000000000000000000E+01, 0.10000000000000000000E+01, 0.20000000000000000000E+01,
+        0.60000000000000000000E+01, 0.24000000000000000000E+02, 0.12000000000000000000E+03,
+        0.72000000000000000000E+03, 0.50400000000000000000E+04, 0.40320000000000000000E+05,
+        0.36288000000000000000E+06, 0.36288000000000000000E+07, 0.39916800000000000000E+08,
+        0.47900160000000000000E+09, 0.62270208000000000000E+10, 0.87178291200000000000E+11,
+        0.13076743680000000000E+13, 0.20922789888000000000E+14, 0.35568742809600000000E+15,
+        0.64023737057280000000E+16, 0.12164510040883200000E+18, 0.24329020081766400000E+19,
+        0.51090942171709440000E+20, 0.11240007277776076800E+22, 0.25852016738884976640E+23,
+        0.62044840173323943936E+24, 0.15511210043330985984E+26, 0.40329146112660563558E+27,
+        0.10888869450418352161E+29, 0.30488834461171386050E+30, 0.88417619937397019545E+31,
+        0.26525285981219105864E+33 };
+
 // *****************************************************************************
 #define min(x, y) ( ((x) < (y)) ? x : y )
 
@@ -12,7 +34,17 @@
 #define mod(a, m)  ( ((a)%(m) + (m)) % (m) )
 
 
-#include "tensor_local.h"
+// *****************************************************************************
+// Returns zero based indices.
+inline static int coset(int lx, int ly, int lz) {
+    const int l = lx + ly + lz;
+    if (l==0) {
+        return 0;
+    } else {
+        return ncoset[l-1] + ((l-lx) * (l-lx+1)) /2 + lz;
+    }
+}
+
 
 #if defined(__MKL) || defined(HAVE_MKL)
 #include <mkl.h>
@@ -47,7 +79,8 @@ extern int multinomial3(const int a, const int b, const int c);
 
 extern int return_exponents(const int index);
 
-extern void apply_non_orthorombic_corrections(const tensor *const Exp,
+extern void apply_non_orthorombic_corrections(const bool *__restrict plane,
+                                              const tensor *const Exp,
                                               tensor *const cube);
 
 extern void calculate_non_orthorombic_corrections_tensor(const double mu_mean,
@@ -55,6 +88,7 @@ extern void calculate_non_orthorombic_corrections_tensor(const double mu_mean,
                                                          const double basis[3][3],
                                                          const int *const xmin,
                                                          const int *const xmax,
+                                                         bool *plane,
                                                          tensor *const Exp);
 
 inline int return_length_l(const int l) {
@@ -128,5 +162,9 @@ extern void add_sub_grid_with_pcb(const int *period,
                                   const int *position,
                                   const tensor *subgrid,
                                   tensor *grid);
+extern void grid_transform_coef_jik_to_yxz(const double dh[3][3],
+                                           const tensor *coef_xyz);
+extern void grid_transform_coef_xzy_to_ikj(const double dh[3][3],
+                                           const tensor *coef_xyz);
 
 #endif

@@ -55,303 +55,11 @@ extern void compute_blocks(collocation_integration *const handler,
                            const int *lb_grid,
                            tensor *grid);
 
-extern void collocate_core_rectangular(double *scratch,
-                                       const double prefactor,
-                                       const struct tensor_ *co,
-                                       const struct tensor_ *p_alpha_beta_reduced_,
-                                       struct tensor_ *cube);
-
-/* compute the following operation (variant) it is a tensor contraction
-
-   V_{kji} = \sum_{\alpha\beta\gamma} C_{\alpha\gamma\beta} T_{2,\alpha,i} T_{1,\beta,j} T_{0,\gamma,k}
-
-*/
-void integrate_core_rectangular(double *scratch,
-                                const double prefactor,
-                                const struct tensor_ *cube,
-                                const struct tensor_ *p_alpha_beta_reduced_,
-                                struct tensor_ *co)
-{
-
-    if (co->size[0] == 1) {
-        /* it is very specific to integrate because we might end up with a single
-         * element after the tensor product. In that case, I call the specific case
-         * with l = 0 and then do a scalar product between the two. We can not get
-         * one of the dimensions at 1 and all the other above. It is physics non
-         * sense */
-        tensor cube_tmp;
-        initialize_tensor_3(&cube_tmp, cube->size[0], cube->size[1], cube->size[2]);
-        posix_memalign((void **)&cube_tmp.data, 32, sizeof(double) * cube_tmp.alloc_size_);
-        collocate_l0(prefactor,
-                     p_alpha_beta_reduced_,
-                     &cube_tmp);
-        co->data[0] = cblas_ddot(cube_tmp.alloc_size_, cube_tmp.data, 1, cube->data, 1);
-        free(cube_tmp.data);
-        return;
-    }
-
-    if (co->size[0] > 1) {
-        struct {
-#if defined(__LIBXSMM)
-            libxsmm_dmmfunction kernel;
-            int prefetch;
-            int flags;
-#endif
-            double alpha;
-            double beta;
-            double *a, *b, *c;
-            int m, n, k, lda, ldb, ldc;
-        } m1, m2, m3;
-
-        tensor T;
-        tensor W;
-
-        double *__restrict const pz = &idx3(p_alpha_beta_reduced_[0], 0, 0, 0); /* k indice */
-        double *__restrict const py = &idx3(p_alpha_beta_reduced_[0], 1, 0, 0); /* j indice */
-        double *__restrict const px = &idx3(p_alpha_beta_reduced_[0], 2, 0, 0); /* i indice */
-
-        initialize_tensor_3(&T, cube->size[0] /* k */, cube->size[1] /* j */, co->size[1] /* alpha */);
-        initialize_tensor_3(&W, cube->size[1] /* j */ , co->size[1] /* alpha */, co->size[2] /* gamma */);
-
-        T.data = scratch;
-        W.data = scratch + T.alloc_size_;
-        /* WARNING we are in row major layout. cblas allows it and it is more
-         * natural to read left to right than top to bottom
-         *
-         * we do first T_{\alpha,\gamma,j} = \sum_beta C_{alpha\gamma\beta} Y_{\beta, j}
-         *
-         * keep in mind that Y_{\beta, j} = p_alpha_beta_reduced(1, \beta, j)
-         * and the order of indices is also important. the last indice is the
-         * fastest one. it can be done with one dgemm.
-         */
-
-        m1.alpha = prefactor;
-        m1.beta = 0.0;
-        m1.m = cube->size[0] * cube->size[1]; /* z y */
-        m1.n = co->size[1]; /* alpha */
-        m1.k = cube->size[2]; /* i */
-        m1.a = cube->data; // V_{kji}
-        m1.lda = cube->ld_;
-        m1.b = px; // X_{i, alpha} = p_alpha_beta_reduced(2, i, alpha)
-        m1.ldb = p_alpha_beta_reduced_->ld_;
-        m1.c = T.data; // T_{k, j, alpha} = T(k, j, alpha)
-        m1.ldc = T.ld_;
-
-        /*
-         * the next step is a reduction along the alpha index.
-         *
-         * We compute then
-         *
-         * W_{j, alpha, gamma} = sum_{k} T_{j, alpha, k} Z_{k, \gamma}
-         *
-         * which means we need to transpose T_{\alpha, \gamma, j} to get
-         * T_{\gamma, j, \alpha}. Fortunately we can do it while doing the
-         * matrix - matrix multiplication
-         */
-
-        m2.alpha = 1.0;
-        m2.beta = 0.0;
-        m2.m = cube->size[1] * co->size[1]; // j \alpha direction
-        m2.n = co->size[2]; // z
-        m2.k = cube->size[0]; // z
-        m2.a = T.data; // T_{j, alpha, gamma}
-        m2.lda = T.ld_ * cube->size[1];
-        m2.b = pz; // Z_{k, gamma}  = p_alpha_beta_reduced(0, k, gamma)
-        m2.ldb = p_alpha_beta_reduced_->ld_;
-        m2.c = W.data; // W_{j, \alpha, \gamma}
-        m2.ldc = W.ld_;
-
-        /* the final step is again a reduction along the alpha indice. It can
-         * again be done with one dgemm. The operation is simply
-         *
-         * Cube_{k, j, i} = \sum_{alpha} Z_{k, \gamma} W_{\gamma, j, i}
-         *
-         * which means we need to permute W_{\alpha, k, j} in to W_{k, j,
-         * \alpha} which can be done with one transposition if we consider (k,j)
-         * as a composite index.
-         */
-
-        m3.alpha = 1.0;
-        m3.beta = 0.0;
-        m3.m = co->size[0]; // Y_{j, beta}
-        m3.n = co->size[1] * co->size[2]; // (alpha,gamma) direction
-        m3.k = cube->size[1]; // y
-        m3.a = py; // p_alpha_beta_reduced(1, j, beta)
-        m3.lda = p_alpha_beta_reduced_->ld_;
-        m3.b = &idx3(W, 0, 0, 0); // W_{j, alpha, gamma}
-        m3.ldb = W.size[1] * W.ld_;
-        m3.c = &idx3(co[0], 0, 0, 0); // co_{beta,alpha,gamma}
-        m3.ldc = co->ld_ * co->size[1];
-
-#if defined(__LIBXSMM)
-        m1.prefetch = LIBXSMM_PREFETCH_AUTO;
-        m1.flags = LIBXSMM_GEMM_FLAG_NONE;
-        m1.kernel = libxsmm_dmmdispatch(m1.n,
-                                        m1.m,
-                                        m1.k,
-                                        &m1.ldb,
-                                        &m1.lda,
-                                        &m1.ldc,
-                                        &m1.alpha,
-                                        &m1.beta,
-                                        &m1.flags,
-                                        &m1.prefetch);
-        if (!m1.kernel)
-            abort();
-
-        m1.kernel(m1.b, m1.a, m1.c);
-
-        m2.prefetch = LIBXSMM_PREFETCH_AUTO;
-        m2.flags = LIBXSMM_GEMM_FLAG_TRANS_B;
-        m2.kernel = libxsmm_dmmdispatch(m2.n,
-                                        m2.m,
-                                        m2.k,
-                                        &m2.ldb,
-                                        &m2.lda,
-                                        &m2.ldc,
-                                        &m2.alpha,
-                                        &m2.beta,
-                                        &m2.flags,
-                                        &m2.prefetch);
-        if (!m2.kernel)
-        {
-            printf("matrix size m = %d, n = %d, k = %d\n", m2.m, m2.n, m2.k);
-            printf("leading dimensions lda = %d, ldb = %d, ldc = %d\n", m2.lda, m2.ldb, m2.ldc);
-
-            // fall back to mkl
-            cblas_dgemm(CblasRowMajor,
-                        CblasTrans,
-                        CblasNoTrans,
-                        m2.m,
-                        m2.n,
-                        m2.k,
-                        1.0,
-                        m2.a, // T_{\alpha, \gamma, j} -> transposed such that T_{\gamma, j, \alpha}
-                        m2.lda,
-                        m2.b, // X_{alpha, i}
-                        m2.ldb,
-                        0.0,
-                        m2.c, // W_{\gamma, j, i}
-                        m2.ldc);
-        } else {
-            m2.kernel(m2.b, m2.a, m2.c);
-        }
-
-        m3.prefetch = LIBXSMM_PREFETCH_AUTO;
-        m3.flags = LIBXSMM_GEMM_FLAG_TRANS_B;
-        m3.kernel = libxsmm_dmmdispatch(m3.n,
-                                        m3.m,
-                                        m3.k,
-                                        &m3.ldb,
-                                        &m3.lda,
-                                        &m3.ldc,
-                                        &m3.alpha,
-                                        &m3.beta,
-                                        &m3.flags,
-                                        &m3.prefetch);
-
-        if (!m3.kernel)
-            abort();
-
-        m3.kernel(m3.b, m3.a, m3.c);
-
-#elif defined(__MKL)
-        cblas_dgemm(CblasRowMajor,
-                    CblasNoTrans,
-                    CblasNoTrans,
-                    m1.m,
-                    m1.n,
-                    m1.k,
-                    m1.alpha,
-                    m1.a,
-                    m1.lda,
-                    m1.b,
-                    m1.ldb,
-                    m1.beta,
-                    m1.c, tmp_{alpha, gamma, j}
-                    m1.ldc);
-
-        cblas_dgemm(CblasRowMajor,
-                    CblasTrans,
-                    CblasNoTrans,
-                    m2.m,
-                    m2.n,
-                    m2.k,
-                    m2.alpha,
-                    m2.a, T_{\alpha, \gamma, j} -> transposed such that T_{\gamma, j, \alpha}
-                    m2.lda,
-                    m2.b, X_{alpha, i}
-                    m2.ldb,
-                    m2.beta,
-                    m2.c, W_{\gamma, j, i}
-                    m2.ldc);
-
-        cblas_dgemm(CblasRowMajor,
-                    CblasTrans,
-                    CblasNoTrans,
-                    m3.m,
-                    m3.n,
-                    m3.k,
-                    m3.alpha,
-                    m3.a, Z_{\gamma, k} -> Transposed Z_{k, \gamma}
-                    m3.lda,
-                    m3.b, W_{gamma, j, i}
-                    m3.ldb,
-                    m3.beta,
-                    m3.c, cube_{kji}
-                    m3.ldc);
-
-#else
-        dgemm_("N",
-               "N",
-               &m1.n,
-               &m1.m,
-               &m1.k,
-               &m1.alpha,
-               m1.b,
-               &m1.ldb,
-               m1.a,
-               &m1.lda,
-               &m1.beta,
-               m1.c, // tmp_{alpha, gamma, j}
-               &m1.ldc);
-
-        dgemm_("N",
-               "T",
-               &m2.n,
-               &m2.m,
-               &m2.k,
-               &m2.alpha,
-               m2.b, // X_{alpha, i}
-               &m2.ldb,
-               m2.a, // T_{\alpha, \gamma, j} -> transposed such that T_{\gamma, j, \alpha}
-               &m2.lda,
-               &m2.beta,
-               m2.c, // W_{\gamma, j, i}
-               &m2.ldc);
-
-        dgemm_("N",
-               "T",
-               &m3.n,
-               &m3.m,
-               &m3.k,
-               &m3.alpha,
-               m3.b, // W_{gamma, j, i}
-               &m3.ldb,
-               m3.a, // Z_{\gamma, k} -> Transposed Z_{k, \gamma}
-               &m3.lda,
-               &m3.beta,
-               m3.c, // cube_{kji}
-               &m3.ldc);
-#endif
-        return;
-    }
-    collocate_l0(co->data[0],
-                 p_alpha_beta_reduced_,
-                 cube);
-    return;
-}
-
+extern void tensor_reduction_for_collocate_integrate(double *scratch,
+                                                     const double prefactor,
+                                                     const struct tensor_ *co,
+                                                     const struct tensor_ *p_alpha_beta_reduced_,
+                                                     struct tensor_ *cube);
 
 void extract_cube(const int *lower_boundaries_cube,
                   const int *cube_center,
@@ -481,7 +189,6 @@ void grid_integrate(collocation_integration *const handler,
     double roffset[3];
     double disr_radius;
 
-
     /* cube : grid comtaining pointlike product between polynomials
      *
      * pol : grid  containing the polynomials in all three directions
@@ -577,6 +284,7 @@ void grid_integrate(collocation_integration *const handler,
                                                      dh,
                                                      lb_cube,
                                                      ub_cube,
+                                                     handler->plane,
                                                      &handler->Exp);
     }
 
@@ -589,22 +297,19 @@ void grid_integrate(collocation_integration *const handler,
                      &handler->cube);
 
         if (!use_ortho)
-            apply_non_orthorombic_corrections(&handler->Exp, &handler->cube);
+            apply_non_orthorombic_corrections(handler->plane, &handler->Exp, &handler->cube);
 
-        collocate_core_rectangular(handler->scratch,
-                                   // pointer to scratch memory
-                                   1.0,
-                                   &handler->cube,
-                                   &handler->pol,
-                                   &handler->coef);
+        tensor_reduction_for_collocate_integrate(handler->scratch,
+                                                 // pointer to scratch memory
+                                                 1.0,
+                                                 &handler->cube,
+                                                 &handler->pol,
+                                                 &handler->coef);
 
-        if (!use_ortho) {
-            /* It is actually the same multinomial transformation than
-             * grid_transform_coef_xyz_to_ijk with dh and dh_inv permuted. For
-             * clarity I created a function to indicate the which transformation
-             * is done. */
+/* go from ijk -> xyz */
+        if (!use_ortho)
             grid_transform_coef_jik_to_yxz(dh, &handler->coef);
-        }
+
     } else {
         compute_blocks(handler,
                        lb_cube,
@@ -644,8 +349,8 @@ void grid_integrate_pgf_product_cpu(void *const handle,
     collocation_integration *handler = (collocation_integration *)handle;
     const double zetp = zeta + zetb;
     const double f = zetb / zetp;
-    const double rab2 = rab[0] * rab[0] + rab[1] * rab[1] + rab[2] * rab[2];
-    const double prefactor = exp(-zeta * f * rab2);
+    /* const double rab2 = rab[0] * rab[0] + rab[1] * rab[1] + rab[2] * rab[2]; */
+    /* const double prefactor = exp(-zeta * f * rab2); */
     const int period[3] = {npts[2], npts[1], npts[0]};
     const int lb_grid_bis[3] = {lb_grid[2], lb_grid[1], lb_grid[0]};
     const bool periodic_bis[3] = {periodic[2], periodic[1], periodic[0]};
@@ -654,10 +359,10 @@ void grid_integrate_pgf_product_cpu(void *const handle,
     initialize_tensor_3(&grid, ngrid[2], ngrid[1], ngrid[0]);
     grid.ld_ = ngrid[0];
     grid.data = grid_;
-    double rp[3], rb[3];
+    double rp[3]/* , rb[3] */;
     for (int i=0; i<3; i++) {
         rp[i] = ra[i] + f * rab[i];
-        rb[i] = ra[i] + rab[i];
+        /* rb[i] = ra[i] + rab[i]; */
     }
 
     grid_integrate(handler,
@@ -679,5 +384,6 @@ void grid_integrate_pgf_product_cpu(void *const handle,
      * do it separately. */
 
     transform_yxz_to_triangular(&handler->coef, coef);
+
     /* Return the result to cp2k for now */
 }

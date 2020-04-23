@@ -21,6 +21,7 @@
 #include <libxsmm.h>
 #endif
 
+#include "tensor_local.h"
 #include "grid_collocate_replay.h"
 #include "grid_collocate_cpu.h"
 #include "grid_prepare_pab.h"
@@ -33,11 +34,11 @@ void collocate_l0(double co,
                   const struct tensor_ *p_alpha_beta_reduced_,
                   struct tensor_ *cube);
 
-void collocate_core_rectangular(double *scratch,
-                                const double prefactor,
-                                const struct tensor_ *co,
-                                const struct tensor_ *p_alpha_beta_reduced_,
-                                struct tensor_ *cube);
+void tensor_reduction_for_collocate_integrate(double *scratch,
+                                              const double prefactor,
+                                              const struct tensor_ *co,
+                                              const struct tensor_ *p_alpha_beta_reduced_,
+                                              struct tensor_ *cube);
 
 
 void *print_collocation_list(void *const handler);
@@ -225,11 +226,11 @@ void grid_fill_pol(const bool transpose,
    V_{kji} = \sum_{\alpha\beta\gamma} C_{\alpha\gamma\beta} T_{2,\alpha,i} T_{1,\beta,j} T_{0,\gamma,k}
 
 */
-void collocate_core_rectangular(double *scratch,
-                                const double prefactor,
-                                const struct tensor_ *co,
-                                const struct tensor_ *p_alpha_beta_reduced_,
-                                struct tensor_ *cube)
+void tensor_reduction_for_collocate_integrate(double *scratch,
+                                              const double prefactor,
+                                              const struct tensor_ *co,
+                                              const struct tensor_ *p_alpha_beta_reduced_,
+                                              struct tensor_ *cube)
 {
 
     if (cube->size[0] == 1) {
@@ -314,14 +315,12 @@ void collocate_core_rectangular(double *scratch,
         m2.c = W.data; // W_{\gamma, j, i}
         m2.ldc = W.ld_;
 
-        /* the final step is again a reduction along the alpha indice. It can
+        /* the final step is again a reduction along the gamma indice. It can
          * again be done with one dgemm. The operation is simply
          *
          * Cube_{k, j, i} = \sum_{alpha} Z_{k, \gamma} W_{\gamma, j, i}
          *
-         * which means we need to permute W_{\alpha, k, j} in to W_{k, j,
-         * \alpha} which can be done with one transposition if we consider (k,j)
-         * as a composite index.
+         * which means we need to transpose Z_{\gamma, k}.
          */
 
         m3.op1 = 'T';
@@ -338,171 +337,10 @@ void collocate_core_rectangular(double *scratch,
         m3.c = &idx3(cube[0], 0, 0, 0); // cube_{kji}
         m3.ldc = cube->ld_ * cube->size[1];
 
-        /* dgemm_simplified(&m1, true); */
-        /* dgemm_simplified(&m2, true); */
-        /* dgemm_simplified(&m3, true); */
+        dgemm_simplified(&m1, true);
+        dgemm_simplified(&m2, true);
+        dgemm_simplified(&m3, true);
 
-#if defined(__LIBXSMM)
-        m1.prefetch = LIBXSMM_PREFETCH_AUTO;
-        m1.flags = LIBXSMM_GEMM_FLAG_NONE;
-        m1.kernel = libxsmm_dmmdispatch(m1.n,
-                                        m1.m,
-                                        m1.k,
-                                        &m1.ldb,
-                                        &m1.lda,
-                                        &m1.ldc,
-                                        &m1.alpha,
-                                        &m1.beta,
-                                        &m1.flags,
-                                        &m1.prefetch);
-        if (!m1.kernel)
-            abort();
-
-        m1.kernel(m1.b, m1.a, m1.c);
-
-        m2.prefetch = LIBXSMM_PREFETCH_AUTO;
-        m2.flags = LIBXSMM_GEMM_FLAG_TRANS_B;
-        m2.kernel = libxsmm_dmmdispatch(m2.n,
-                                        m2.m,
-                                        m2.k,
-                                        &m2.ldb,
-                                        &m2.lda,
-                                        &m2.ldc,
-                                        &m2.alpha,
-                                        &m2.beta,
-                                        &m2.flags,
-                                        &m2.prefetch);
-        if (!m2.kernel)
-        {
-            printf("matrix size m = %d, n = %d, k = %d\n", m2.m, m2.n, m2.k);
-            printf("leading dimensions lda = %d, ldb = %d, ldc = %d\n", m2.lda, m2.ldb, m2.ldc);
-
-            // fall back to mkl
-            cblas_dgemm(CblasRowMajor,
-                        CblasTrans,
-                        CblasNoTrans,
-                        m2.m,
-                        m2.n,
-                        m2.k,
-                        1.0,
-                        m2.a, // T_{\alpha, \gamma, j} -> transposed such that T_{\gamma, j, \alpha}
-                        m2.lda,
-                        m2.b, // X_{alpha, i}
-                        m2.ldb,
-                        0.0,
-                        m2.c, // W_{\gamma, j, i}
-                        m2.ldc);
-        } else {
-            m2.kernel(m2.b, m2.a, m2.c);
-        }
-
-        m3.prefetch = LIBXSMM_PREFETCH_AUTO;
-        m3.flags = LIBXSMM_GEMM_FLAG_TRANS_B;
-        m3.kernel = libxsmm_dmmdispatch(m3.n,
-                                        m3.m,
-                                        m3.k,
-                                        &m3.ldb,
-                                        &m3.lda,
-                                        &m3.ldc,
-                                        &m3.alpha,
-                                        &m3.beta,
-                                        &m3.flags,
-                                        &m3.prefetch);
-
-        if (!m3.kernel)
-            abort();
-
-        m3.kernel(m3.b, m3.a, m3.c);
-
-#elif defined(__MKL)
-        cblas_dgemm(CblasRowMajor,
-                    CblasNoTrans,
-                    CblasNoTrans,
-                    m1.m,
-                    m1.n,
-                    m1.k,
-                    m1.alpha,
-                    m1.a,
-                    m1.lda,
-                    m1.b,
-                    m1.ldb,
-                    m1.beta,
-                    m1.c, tmp_{alpha, gamma, j}
-                    m1.ldc);
-
-        cblas_dgemm(CblasRowMajor,
-                    CblasTrans,
-                    CblasNoTrans,
-                    m2.m,
-                    m2.n,
-                    m2.k,
-                    m2.alpha,
-                    m2.a, T_{\alpha, \gamma, j} -> transposed such that T_{\gamma, j, \alpha}
-                    m2.lda,
-                    m2.b, X_{alpha, i}
-                    m2.ldb,
-                    m2.beta,
-                    m2.c, W_{\gamma, j, i}
-                    m2.ldc);
-
-        cblas_dgemm(CblasRowMajor,
-                    CblasTrans,
-                    CblasNoTrans,
-                    m3.m,
-                    m3.n,
-                    m3.k,
-                    m3.alpha,
-                    m3.a, Z_{\gamma, k} -> Transposed Z_{k, \gamma}
-                    m3.lda,
-                    m3.b, W_{gamma, j, i}
-                    m3.ldb,
-                    m3.beta,
-                    m3.c, cube_{kji}
-                    m3.ldc);
-
-#else
-        dgemm_("N",
-               "N",
-               &m1.n,
-               &m1.m,
-               &m1.k,
-               &m1.alpha,
-               m1.b,
-               &m1.ldb,
-               m1.a,
-               &m1.lda,
-               &m1.beta,
-               m1.c, // tmp_{alpha, gamma, j}
-               &m1.ldc);
-
-        dgemm_("N",
-               "T",
-               &m2.n,
-               &m2.m,
-               &m2.k,
-               &m2.alpha,
-               m2.b, // X_{alpha, i}
-               &m2.ldb,
-               m2.a, // T_{\alpha, \gamma, j} -> transposed such that T_{\gamma, j, \alpha}
-               &m2.lda,
-               &m2.beta,
-               m2.c, // W_{\gamma, j, i}
-               &m2.ldc);
-
-        dgemm_("N",
-               "T",
-               &m3.n,
-               &m3.m,
-               &m3.k,
-               &m3.alpha,
-               m3.b, // W_{gamma, j, i}
-               &m3.ldb,
-               m3.a, // Z_{\gamma, k} -> Transposed Z_{k, \gamma}
-               &m3.lda,
-               &m3.beta,
-               m3.c, // cube_{kji}
-               &m3.ldc);
-#endif
          return;
     }
     collocate_l0(co->data[0],
@@ -723,22 +561,25 @@ void grid_collocate(collocation_integration *const handler,
                                                      dh,
                                                      lb_cube,
                                                      ub_cube,
+                                                     handler->plane,
                                                      &handler->Exp);
 
         /* Use a slightly modified version of Ole code */
-        grid_transform_coef_xyz_to_ijk(dh, &handler->coef);
+        grid_transform_coef_xzy_to_ikj(dh, &handler->coef);
     }
 
     if (handler->sequential_mode) {
-        collocate_core_rectangular(handler->scratch,
-                                   // pointer to scratch memory
-                                   1.0,
-                                   &handler->coef,
-                                   &handler->pol,
-                                   &handler->cube);
+        tensor_reduction_for_collocate_integrate(handler->scratch,
+                                                 // pointer to scratch memory
+                                                 1.0,
+                                                 &handler->coef,
+                                                 &handler->pol,
+                                                 &handler->cube);
 
         if (!use_ortho)
-            apply_non_orthorombic_corrections(&handler->Exp, &handler->cube);
+            apply_non_orthorombic_corrections(handler->plane,
+                                              &handler->Exp,
+                                              &handler->cube);
 
         apply_mapping_cubic(lb_cube, cubecenter, npts, &handler->cube, lb_grid, grid);
     } else {

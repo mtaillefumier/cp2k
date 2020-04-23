@@ -3,8 +3,8 @@ CC=gcc
 
 all: grid_collocate_miniapp.x
 
-grid_collocate_cpu.o: grid_prepare_pab.o mapping.o
-grid_collocate_replay.o: grid_collocate_cpu.o
+grid_collocate_cpu.o: grid_prepare_pab.o coefficients.o utils.o
+grid_collocate_replay.o: grid_collocate_cpu.o  coefficients.o utils.o
 
 %.o: %.c
 	$(CC) -c $(CFLAGS) $<
@@ -12,7 +12,10 @@ grid_collocate_replay.o: grid_collocate_cpu.o
 grid_collocate_miniapp.x: grid_collocate_miniapp.o grid_collocate_replay.o grid_collocate_cpu.o grid_prepare_pab.o utils.o thpool.o coefficients.o grid_integrate_cpu.o collocation_integration.o
 	$(CC) $(CFLAGS) -o $@ $^ -lxsmmnoblas -lxsmm -lmkl_rt -lm
 
+integrate_test: integrate_test.o grid_collocate_replay.o grid_collocate_cpu.o grid_prepare_pab.o utils.o thpool.o coefficients.o grid_integrate_cpu.o collocation_integration.o
+	$(CC) $(CFLAGS) -o $@ $^ -lxsmmnoblas -lxsmm -lmkl_rt -lm
+
 clean:
-	rm -fv grid_*.o grid_*.x utils.o tmp.o thpool.o
+	rm -fv grid_*.o grid_*.x utils.o tmp.o thpool.o coefficients.o *.o
 
 #EOF

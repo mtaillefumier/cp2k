@@ -167,64 +167,66 @@ CONTAINS
 !     do not invert these two lines
          name1 = TRIM(ADJUSTL(name))
 
-!     we need to null char since SIRIUS interface is basically C
+
+         !     we need to null char since SIRIUS interface is basically C
          name = TRIM(ADJUSTL(name))//CHAR(0)
-         description = CHAR(0)
-         usage = CHAR(0)
-         CALL sirius_option_get_description_usage(section_name, name, description, usage)
-         SELECT CASE (ctype)
-         CASE (1)
-            CALL sirius_option_get_int(section_name, name, dummy_i, vec_length)
-            CALL keyword_create(keyword, __LOCATION__, &
-                                name=TRIM(name1), &
-                                description=TRIM(ADJUSTL(description)), &
-                                usage=TRIM(ADJUSTL(usage)), &
-                                repeats=.FALSE., &
-                                default_i_val=dummy_i)
-         CASE (11)
-            CALL sirius_option_get_int(section_name, name, ivec(1), vec_length)
-            CALL keyword_create(keyword, __LOCATION__, &
-                                name=name1, &
-                                description=TRIM(ADJUSTL(description)), &
-                                usage=TRIM(ADJUSTL(usage)), &
-                                repeats=.FALSE., &
-                                n_var=vec_length, &
-                                default_i_vals=ivec(1:vec_length))
-         CASE (2)
-            CALL sirius_option_get_double(section_name, name, dummy_r, vec_length)
-            CALL keyword_create(keyword, __LOCATION__, &
-                                name=name1, &
-                                description=TRIM(ADJUSTL(description)), &
-                                usage=TRIM(ADJUSTL(usage)), &
-                                repeats=.FALSE., &
-                                default_r_val=dummy_r)
+         if ((name1 /= 'xc_functionals') .AND. (name1 /= 'memory_usage')) then
+            description = CHAR(0)
+            usage = CHAR(0)
+            CALL sirius_option_get_description_usage(section_name, name, description, usage)
+            SELECT CASE (ctype)
+            CASE (1)
+               CALL sirius_option_get_int(section_name, name, dummy_i, vec_length)
+               CALL keyword_create(keyword, __LOCATION__, &
+                    name=TRIM(name1), &
+                    description=TRIM(ADJUSTL(description)), &
+                    usage=TRIM(ADJUSTL(usage)), &
+                    repeats=.FALSE., &
+                    default_i_val=dummy_i)
+            CASE (11)
+               CALL sirius_option_get_int(section_name, name, ivec(1), vec_length)
+               CALL keyword_create(keyword, __LOCATION__, &
+                    name=name1, &
+                    description=TRIM(ADJUSTL(description)), &
+                    usage=TRIM(ADJUSTL(usage)), &
+                    repeats=.FALSE., &
+                    n_var=vec_length, &
+                    default_i_vals=ivec(1:vec_length))
+            CASE (2)
+               CALL sirius_option_get_double(section_name, name, dummy_r, vec_length)
+               CALL keyword_create(keyword, __LOCATION__, &
+                    name=name1, &
+                    description=TRIM(ADJUSTL(description)), &
+                    usage=TRIM(ADJUSTL(usage)), &
+                    repeats=.FALSE., &
+                    default_r_val=dummy_r)
          CASE (12)
             CALL sirius_option_get_double(section_name, name, rvec(1), vec_length)
             CALL keyword_create(keyword, __LOCATION__, &
-                                name=name1, &
-                                description=TRIM(ADJUSTL(description)), &
-                                usage=TRIM(ADJUSTL(usage)), &
-                                repeats=.FALSE., &
-                                n_var=vec_length, &
-                                default_r_vals=rvec(1:vec_length))
+                 name=name1, &
+                 description=TRIM(ADJUSTL(description)), &
+                 usage=TRIM(ADJUSTL(usage)), &
+                 repeats=.FALSE., &
+                 n_var=vec_length, &
+                 default_r_vals=rvec(1:vec_length))
          CASE (3)
             CALL sirius_option_get_logical(section_name, name, dummy_l, vec_length)
             IF (dummy_l) THEN
                CALL keyword_create(keyword, __LOCATION__, &
-                                   name=name1, &
-                                   description=TRIM(ADJUSTL(description)), &
-                                   usage=TRIM(ADJUSTL(usage)), &
-                                   repeats=.FALSE., &
-                                   default_l_val=.TRUE., &
-                                   lone_keyword_l_val=.TRUE.)
+                    name=name1, &
+                    description=TRIM(ADJUSTL(description)), &
+                    usage=TRIM(ADJUSTL(usage)), &
+                    repeats=.FALSE., &
+                    default_l_val=.TRUE., &
+                    lone_keyword_l_val=.TRUE.)
             ELSE
                CALL keyword_create(keyword, __LOCATION__, &
-                                   name=name1, &
-                                   description=TRIM(ADJUSTL(description)), &
-                                   usage=TRIM(ADJUSTL(usage)), &
-                                   repeats=.FALSE., &
-                                   default_l_val=.FALSE., &
-                                   lone_keyword_l_val=.TRUE.)
+                    name=name1, &
+                    description=TRIM(ADJUSTL(description)), &
+                    usage=TRIM(ADJUSTL(usage)), &
+                    repeats=.FALSE., &
+                    default_l_val=.FALSE., &
+                    lone_keyword_l_val=.TRUE.)
             ENDIF
          CASE (13)
             CALL sirius_option_get_logical(section_name, name, lvec(1), vec_length)
@@ -232,45 +234,48 @@ CONTAINS
                lvecl(j) = lvec(j)
             ENDDO
             CALL keyword_create(keyword, __LOCATION__, &
-                                name=name1, &
-                                description=TRIM(ADJUSTL(description)), &
-                                usage=TRIM(ADJUSTL(usage)), &
-                                repeats=.FALSE., &
-                                n_var=vec_length, &
-                                default_l_vals=lvecl(1:vec_length))
+                 name=name1, &
+                 description=TRIM(ADJUSTL(description)), &
+                 usage=TRIM(ADJUSTL(usage)), &
+                 repeats=.FALSE., &
+                 n_var=vec_length, &
+                 default_l_vals=lvecl(1:vec_length))
          CASE (4)
             !     string need a special treatment because the parameters can only have dedicated values
             default_string_val = CHAR(0)
             CALL sirius_option_get_string(section_name, name, default_string_val)
             default_string_val = TRIM(ADJUSTL(default_string_val))
             CALL sirius_option_get_number_of_possible_values(section_name, name, num_possible_values)
-            IF (num_possible_values > 0) THEN
-               DO j = 0, num_possible_values - 1
-                  possible_values(j + 1) = CHAR(0)
-                  CALL sirius_option_string_get_value(section_name, name, j, possible_values(j + 1))
-                  enum_i_val(j + 1) = j
-               END DO
-               CALL keyword_create(keyword, __LOCATION__, &
-                                   name=name1, &
-                                   description=TRIM(ADJUSTL(description)), &
-                                   usage=TRIM(ADJUSTL(usage)), &
-                                   repeats=.FALSE., &
-                                   enum_i_vals=enum_i_val(1:num_possible_values), &
-                                   enum_c_vals=possible_values(1:num_possible_values), &
-                                   default_i_val=0)
-            ELSE
-               CALL keyword_create(keyword, __LOCATION__, &
-                                   name=name1, &
-                                   description=TRIM(ADJUSTL(description)), &
-                                   usage=TRIM(ADJUSTL(usage)), &
-                                   repeats=.FALSE.)
-            END IF
-         CASE default
-         END SELECT
-         CALL section_add_keyword(section, keyword)
-         CALL keyword_release(keyword)
+               IF (num_possible_values > 0) THEN
+                  DO j = 0, num_possible_values - 1
+                     possible_values(j + 1) = CHAR(0)
+                     CALL sirius_option_string_get_value(section_name, name, j, possible_values(j + 1))
+                     enum_i_val(j + 1) = j
+                  END DO
+
+
+                  CALL keyword_create(keyword, __LOCATION__, &
+                       name=name1, &
+                       description=TRIM(ADJUSTL(description)), &
+                       usage=TRIM(ADJUSTL(usage)), &
+                       repeats=.TRUE., &
+                       enum_i_vals=enum_i_val(1:num_possible_values), &
+                       enum_c_vals=possible_values(1:num_possible_values), &
+                       default_i_val=0)
+               ELSE
+                  CALL keyword_create(keyword, __LOCATION__, &
+                       name=name1, &
+                       description=TRIM(ADJUSTL(description)), &
+                       usage=TRIM(ADJUSTL(usage)), &
+                       repeats=.FALSE.)
+               END IF
+            CASE default
+            END SELECT
+            CALL section_add_keyword(section, keyword)
+            CALL keyword_release(keyword)
+         END if
       END DO
-   END SUBROUTINE fill_in_section
+    END SUBROUTINE fill_in_section
 
 ! **************************************************************************************************
 !> \brief Create the print section for sirius

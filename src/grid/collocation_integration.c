@@ -17,25 +17,17 @@ extern void collocate_core_rectangular(double *scratch,
 collocation_list *create_collocation_list(const int num_elem, const int integration)
 {
     struct collocation_list_ *list = (struct collocation_list_ *) malloc(sizeof(struct collocation_list_));
+    memset(list, 0, sizeof(struct collocation_list_));
+
     list->total_number_of_elements_ = num_elem;
 
     list->list = (struct collocation_block_ *) malloc(sizeof(struct collocation_block_) * list->total_number_of_elements_);
-
     memset(list->list, 0, sizeof(struct collocation_block_) * list->total_number_of_elements_);
 
     if (!list->list)
         abort();
 
-    list->number_of_elements_ = 0;
     list->first_round = true;
-    list->done = 0;
-    list->cube_alloc_size = 0;
-    list->alpha_alloc_size = 0;
-    list->coef_alloc_size = 0;
-    list->pol_alloc_size = 0;
-    list->T_alloc_size = 0;
-    list->W_alloc_size = 0;
-    list->scratch_size = 0;
     list->scratch = NULL;
     list->integration = integration;
     return list;
@@ -279,8 +271,8 @@ void *collocate_create_handle(const int device_id, const int number_of_gaussian,
     }
 
     memset(handle, 0, sizeof(struct collocation_integration_));
-    handle->gpu_id = device_id;
 
+    handle->gpu_id = device_id;
     handle->sequential_mode = sequential_mode;
 
     if (!handle->sequential_mode)
@@ -297,26 +289,21 @@ void *collocate_create_handle(const int device_id, const int number_of_gaussian,
     handle->list[1]->number_of_elements_ = 0;
 
     if (sequential_mode) {
-        posix_memalign((void**)&handle->alpha.data, 32, sizeof(double) * 16384);
-        handle->alpha_alloc_size = 16384;
-        handle->alpha.alloc_size_ = 16384;
-        handle->alpha.old_alloc_size_ = 16384;
-        posix_memalign((void**)&handle->coef.data, 32, sizeof(double) * 1024);
-        handle->coef_alloc_size = 1024;
+        handle->alpha.alloc_size_ = 8192;
         handle->coef.alloc_size_ = 1024;
-        handle->coef.old_alloc_size_ = 1024;
-        posix_memalign((void**)&handle->pol.data, 32, sizeof(double) * 1024);
-        handle->pol_alloc_size = 1024;
         handle->pol.alloc_size_ = 1024;
-        handle->pol.old_alloc_size_ = 1024;
-        posix_memalign((void**)&handle->cube.data, 32, sizeof(double) * 32768);
-        handle->cube_alloc_size = 32768;
+        /* it is a cube of size 32 x 32 x 32 */
         handle->cube.alloc_size_ = 32768;
-        handle->cube.old_alloc_size_ = 32768;
-        handle->T_alloc_size = 8192;
-        handle->W_alloc_size = 2048;
+
+        handle->cube_alloc_size = realloc_tensor(&handle->cube);
+        handle->alpha_alloc_size = realloc_tensor(&handle->alpha);
+        handle->coef_alloc_size = realloc_tensor(&handle->coef);
+        handle->pol_alloc_size = realloc_tensor(&handle->pol);
+
         posix_memalign((void**)&handle->scratch, 32, sizeof(double) * 10240);
         handle->scratch_alloc_size = 10240;
+        handle->T_alloc_size = 8192;
+        handle->W_alloc_size = 2048;
     }
 
     return (void*)handle;
@@ -359,6 +346,9 @@ void collocate_finalize(void *gaussian_handle)
     if (!handle->sequential_mode)
         thpool_destroy(handle->thpool);
 
+    if (handle->Exp.data)
+        free(handle->Exp.data);
+
     free(handle->scratch);
     free(handle->pol.data);
     free(handle->cube.data);
@@ -393,19 +383,19 @@ void calculate_collocation(void *const in)
         list_->list[i].cube.data = list_->scratch;
 
         if (list_->list[i].new_gaussian_pair_) {
-            collocate_core_rectangular(list_->scratch + list_->list[i].cube.alloc_size_,
-                                       1.0,
-                                       &list_->list[i].coefs,
-                                       &list_->list[i].pol,
-                                       &list_->list[i].cube);
-
+            tensor_reduction_for_collocate_integrate(list_->scratch + list_->list[i].cube.alloc_size_,
+                                                     1.0,
+                                                     &list_->list[i].coefs,
+                                                     &list_->list[i].pol,
+                                                     &list_->list[i].cube);
 
             free(list_->list[i].pol.data);
             free(list_->list[i].coefs.data);
             if (list_->list[i].Exp.data) {
 
                 // Well self explanatory
-                apply_non_orthorombic_corrections(&list_->list[i].Exp,
+                apply_non_orthorombic_corrections(list_->list[i].plane,
+                                                  &list_->list[i].Exp,
                                                   &list_->list[i].cube);
 
                 free(list_->list[i].Exp.data);
@@ -531,20 +521,18 @@ void compute_blocks(collocation_integration *const handler,
 
 void initialize_W_and_T(collocation_integration *const handler, const tensor *cube, const tensor *coef)
 {
-    size_t tmp1 = max(handler->T_alloc_size,
-                      compute_memory_space_tensor_3(coef->size[0] /* alpha */,
-                                                    coef->size[1] /* gamma */,
-                                                    cube->size[1] /* j */));
+    size_t tmp1 = compute_memory_space_tensor_3(coef->size[0] /* alpha */,
+                                                coef->size[1] /* gamma */,
+                                                cube->size[1] /* j */);
 
-    size_t tmp2 = max(handler->W_alloc_size,
-                      compute_memory_space_tensor_3(coef->size[1] /* gamma */ ,
-                                                    cube->size[1] /* j */,
-                                                    cube->size[2] /* i */));
+    size_t tmp2 = compute_memory_space_tensor_3(coef->size[0] /* gamma */ ,
+                                                cube->size[1] /* j */,
+                                                cube->size[2] /* i */);
 
-    if (((tmp1 + tmp2) > (handler->scratch_alloc_size)) ||
-        (handler->scratch == NULL)) {
+    if (((tmp1 + tmp2) > (handler->scratch_alloc_size)) || (handler->scratch == NULL)) {
         handler->T_alloc_size = tmp1;
         handler->W_alloc_size = tmp2;
+        handler->scratch_alloc_size = tmp1 + tmp2;
         if (handler->scratch)
             free(handler->scratch);
         if (posix_memalign(&handler->scratch, 64, sizeof(double) * (tmp1 + tmp2)) != 0)

@@ -265,11 +265,11 @@ CONTAINS
       use_ortho = rsgrid%desc%orthorhombic
       IF (.NOT. subpatch_integrate) THEN
 
-         ! IF (rsgrid%desc%orthorhombic) THEN
-         !    CALL integrate_ortho()
-         ! ELSE
-         !    CALL integrate_general_wings()
-         ! END IF
+!         IF (rsgrid%desc%orthorhombic) THEN
+!            CALL integrate_ortho()
+!         ELSE
+!            CALL integrate_general_opt()
+!         END IF
 
          lp = la_max_local + lb_max_local
          ALLOCATE (coef_xyz(((lp + 1)*(lp + 2)*(lp + 3))/6))
@@ -285,28 +285,23 @@ CONTAINS
          periodic = (rsgrid%desc%perd == 1)
 
          CALL grid_integrate_pgf_product_cpu(gaussian_handle, &
-              use_ortho=LOGICAL(use_ortho, KIND=C_BOOL), &
-              lp=lp, &
-              zeta=zeta, &
-              zetb=zetb, &
-              dh=C_LOC(rsgrid%desc%dh(1, 1)), &
-              dh_inv=C_LOC(rsgrid%desc%dh_inv(1, 1)), &
-              ra=C_LOC(ra(1)), &
-              rab=C_LOC(rab(1)), &
-              npts=C_LOC(rsgrid%desc%npts(1)), &
-              ngrid=C_LOC(ngrid(1)), &
-              lb_grid=C_LOC(lb_grid(1)), &
-              periodic=C_LOC(periodic(1)), &
-              radius=radius, &
-              grid=C_LOC(grid(1, 1, 1)),&
-              coef_xyz=C_LOC(coef_xyz(1)))
+         use_ortho=LOGICAL(use_ortho, KIND=C_BOOL), &
+         lp=lp, &
+         zeta=zeta, &
+         zetb=zetb, &
+         dh=C_LOC(rsgrid%desc%dh(1, 1)), &
+         dh_inv=C_LOC(rsgrid%desc%dh_inv(1, 1)), &
+         ra=C_LOC(ra(1)), &
+         rab=C_LOC(rab(1)), &
+         npts=C_LOC(rsgrid%desc%npts(1)), &
+         ngrid=C_LOC(ngrid(1)), &
+         lb_grid=C_LOC(lb_grid(1)), &
+         periodic=C_LOC(periodic(1)), &
+         radius=radius, &
+         grid=C_LOC(grid(1, 1, 1)),&
+         coef_xyz=C_LOC(coef_xyz(1)))
 
-         CALL call_to_xyz_to_vab(prefactor, coef_xyz, lp, la_max_local, lb_max_local, &
-              rp, ra, rab, vab, coset, la_min_local, &
-              lb_min_local, current_maxl, ncoset(la_max_local), ncoset(lb_max_local))
-
-         ! coef_xyz1(:) = coef_xyz1(:) * prefactor
-         ! if ((dabs(coef_xyz1(1) - coef_xyz(1)) .GT. 0.000001)) then
+         ! if ((dabs(coef_xyz1(1) - coef_xyz(1)) .GT. 0.01)) then
          !    write(*, *) coef_xyz1(:)
          !    write(*, *) coef_xyz(:)
          !    write(*, *) coef_xyz(:) / coef_xyz1(:)
@@ -321,9 +316,14 @@ CONTAINS
          !    write(*, *) lp, ra(:), rab(:), zeta, zetb, radius
          !    write(*, *) rsgrid%desc%npts(:), lb_grid(:), ngrid(:)
          !    write(*, *) rsgrid%desc%dh(:,:)
+         !    write(*, *) rsgrid%desc%dh_inv(:,:)
          !    CPABORT("Test case")
          ! end if
-         ! DEALLOCATE (coef_xyz1)
+
+         CALL call_to_xyz_to_vab(prefactor, coef_xyz, lp, la_max_local, lb_max_local, &
+         rp, ra, rab, vab, coset, la_min_local, &
+         lb_min_local, current_maxl, ncoset(la_max_local), ncoset(lb_max_local))
+
          DEALLOCATE (coef_xyz)
       ELSE
          CALL integrate_general_subpatch()
@@ -599,7 +599,6 @@ CONTAINS
          !t1=nanotime_ia32()
 
          CALL return_cube_nonortho(cube_info, radius, index_min, index_max, rp)
-
          offset(:) = MODULO(index_min(:) + rsgrid%desc%lb(:) - rsgrid%lb_local(:), ng(:)) + 1
 
          ALLOCATE (grid_map(index_min(1):index_max(1)))
@@ -717,6 +716,9 @@ CONTAINS
             hmatgridp(:, :, k) = hmatgridp(:, :, k - 1)*hmatgrid(:, :)
          ENDDO
 
+         write(*, *) "Before transformation"
+         write(*, *) coef_ijk(:)
+
          coef_xyz = 0.0_dp
          lpx = lp
          DO klx = 0, lpx
@@ -754,10 +756,10 @@ CONTAINS
          ENDDO
          ENDDO
 
-         CALL call_to_xyz_to_vab(prefactor, coef_xyz, lp, la_max_local, lb_max_local, &
-                                 rp, ra, rab, vab, coset, la_min_local, &
-                                 lb_min_local, current_maxl, ncoset(la_max_local), &
-                                 ncoset(lb_max_local))
+         !CALL call_to_xyz_to_vab(prefactor, coef_xyz, lp, la_max_local, lb_max_local, &
+         !                        rp, ra, rab, vab, coset, la_min_local, &
+         !                        lb_min_local, current_maxl, ncoset(la_max_local), &
+         !                        ncoset(lb_max_local))
 
          ! deallocation needed to pass around a pgi bug..
          DEALLOCATE (hmatgridp)
@@ -766,7 +768,7 @@ CONTAINS
          DEALLOCATE (coef_xtt)
          DEALLOCATE (coef_xyt)
          DEALLOCATE (coef_ijk)
-         DEALLOCATE (coef_xyz)
+         !DEALLOCATE (coef_xyz)
       END SUBROUTINE integrate_general_opt
 
 ! **************************************************************************************************
@@ -842,10 +844,6 @@ CONTAINS
          ! defaults: local_shift=(/0,0,0/),poly_shift=(/0.0_dp,0.0_dp,0.0_dp/),scale=1.0_dp,
          ALLOCATE (coef_xyz(((lp + 1)*(lp + 2)*(lp + 3))/6))
          CALL poly_d32cp2k(coef_xyz, lp, poly_d3)
-         CALL call_to_xyz_to_vab(prefactor, coef_xyz, lp, la_max_local, lb_max_local, &
-                                 rp, ra, rab, vab, coset, la_min_local, lb_min_local, &
-                                 current_maxl, ncoset(la_max_local), ncoset(lb_max_local))
-         DEALLOCATE (coef_xyz)
       END SUBROUTINE
 
 ! **************************************************************************************************
