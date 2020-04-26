@@ -100,6 +100,7 @@ typedef struct collocation_integration_ {
     void *scratch;
 } collocation_integration;
 
+
 extern collocation_list *create_collocation_list(const int num_elem, const int integration);
 extern void destroy_collocation_list(struct collocation_list_ *list_collocation);
 extern void print_collocation_block(const struct collocation_block_ *const list);

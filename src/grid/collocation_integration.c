@@ -529,13 +529,16 @@ void initialize_W_and_T(collocation_integration *const handler, const tensor *cu
                                                 cube->size[1] /* j */,
                                                 cube->size[2] /* i */);
 
-    if (((tmp1 + tmp2) > (handler->scratch_alloc_size)) || (handler->scratch == NULL)) {
+    const size_t mem_alloc_size_ = max(max(tmp1 + tmp2, cube->alloc_size_), coef->alloc_size_);
+    if ((mem_alloc_size_ > handler->scratch_alloc_size) || (handler->scratch == NULL)) {
         handler->T_alloc_size = tmp1;
         handler->W_alloc_size = tmp2;
-        handler->scratch_alloc_size = tmp1 + tmp2;
+
+        handler->scratch_alloc_size = mem_alloc_size_;
+
         if (handler->scratch)
             free(handler->scratch);
-        if (posix_memalign(&handler->scratch, 64, sizeof(double) * (tmp1 + tmp2)) != 0)
+        if (posix_memalign(&handler->scratch, 64, sizeof(double) * handler->scratch_alloc_size) != 0)
             abort();
     }
 }

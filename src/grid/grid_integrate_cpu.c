@@ -56,7 +56,8 @@ extern void compute_blocks(collocation_integration *const handler,
                            tensor *grid);
 
 extern void tensor_reduction_for_collocate_integrate(double *scratch,
-                                                     const double prefactor,
+                                                     const double alpha,
+                                                     const double beta,
                                                      const struct tensor_ *co,
                                                      const struct tensor_ *p_alpha_beta_reduced_,
                                                      struct tensor_ *cube);
@@ -312,6 +313,7 @@ void grid_integrate(collocation_integration *const handler,
         tensor_reduction_for_collocate_integrate(handler->scratch,
                                                  // pointer to scratch memory
                                                  1.0,
+                                                 0.0,
                                                  &handler->cube,
                                                  &handler->pol,
                                                  &handler->coef);
