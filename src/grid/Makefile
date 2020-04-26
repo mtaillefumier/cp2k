@@ -15,6 +15,9 @@ grid_collocate_miniapp.x: grid_collocate_miniapp.o grid_collocate_replay.o grid_
 integrate_test: integrate_test.o grid_collocate_replay.o grid_collocate_cpu.o grid_prepare_pab.o utils.o thpool.o coefficients.o grid_integrate_cpu.o collocation_integration.o
 	$(CC) $(CFLAGS) -o $@ $^ -lxsmmnoblas -lxsmm -lmkl_rt -lm
 
+grid_test: utils.o grid.o grid_test.o
+	$(CC) $(CFLAGS) -o $@ $^ -lxsmmnoblas -lxsmm -lmkl_rt -lm
+
 clean:
 	rm -fv grid_*.o grid_*.x utils.o tmp.o thpool.o coefficients.o *.o
 
