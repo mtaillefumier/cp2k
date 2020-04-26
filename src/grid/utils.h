@@ -70,7 +70,7 @@ typedef struct dgemm_params_ {
     int m, n, k, lda, ldb, ldc;
 } dgemm_params;
 
-
+extern bool fold_polynomial(double *scratch, tensor *pol, const int axis, const int center, const int cube_size, const int lb_cube, const int lb_grid, const int grid_size, const int period,  int *const pivot);
 extern void dgemm_simplified(dgemm_params *const m, const bool use_libxsmm);
 
 extern void find_interval(const int start, const int end, const int *non_zero_elements_, int *zmin, int *zmax);

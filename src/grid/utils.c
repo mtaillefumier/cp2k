@@ -6,14 +6,70 @@
 #include <string.h>
 #include <math.h>
 
-
-
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
 
 #include "utils.h"
 #include "tensor_local.h"
+
+bool fold_polynomial(double *scratch,
+                     tensor *pol,
+                     const int axis,
+                     const int center,
+                     const int cube_size,
+                     const int lb_cube,
+                     const int lb_grid,
+                     const int grid_size,
+                     const int period,
+                     int *const pivot)
+{
+    const int position = (lb_grid + center + lb_cube + 32 * period) % period;
+    const int offset_x = min(grid_size - position, cube_size);
+    const int loop_number_x = (cube_size - offset_x) / period;
+    const int reminder_x = min(grid_size, cube_size - offset_x - loop_number_x * period);
+    *pivot = 0;
+    if (grid_size < cube_size) {
+        for (int l = 0; l < pol->size[1]; l++) {
+            memset(scratch, 0, sizeof(double) * grid_size);
+            const double *__restrict src = &idx3(pol[0], axis, l, 0);
+            // the tail of the queue.
+            LIBXSMM_PRAGMA_SIMD
+                for (int x = 0; x < offset_x; x++)
+                    scratch[x + position] = src[x];
+
+            int shift = offset_x;
+
+            if (loop_number_x) {
+                for (int li = 0; li < loop_number_x; li++) {
+                    LIBXSMM_PRAGMA_SIMD
+                        for (int x = 0; x < grid_size; x++)
+                        scratch[x] += src[shift + x];
+
+                    shift = offset_x + (li + 1)  * period;
+                }
+            }
+            LIBXSMM_PRAGMA_SIMD
+                for (int x = 0; x < reminder_x; x++)
+                    scratch[x] += src[shift + x];
+            memcpy(&idx3(pol[0], axis, l, 0), scratch, sizeof(double) * grid_size);
+        }
+        return true;
+    }
+    /*  else { */
+    /*     if (cube_size + position > grid_size) { */
+    /*         *pivot = grid_size - position; */
+    /*         for (int l = 0; l < pol[0].size[1]; l++) { */
+    /*             memcpy(scratch, &idx3(pol[0], axis, l, *pivot), sizeof(double) * (cube_size - *pivot)); */
+    /*             memcpy(scratch + cube_size - *pivot, &idx3(pol[0], axis, l, 0), sizeof(double) * (*pivot)); */
+    /*             memcpy(&idx3(pol[0], axis, l, 0), scratch, sizeof(double) * cube_size); */
+    /*         } */
+    /*     } */
+
+    /*     return false; */
+    /* } */
+    return false;
+}
 
 size_t realloc_tensor(tensor *t)
 {
@@ -341,7 +397,6 @@ inline int compute_cube_properties(const bool ortho,
         cubecenter[2 - i] = floor(dh_inv_rp);
     }
 
-
     if (ortho) {
         /* seting up the cube parameters */
         const double dx[3] = {dh[2][2], dh[1][1], dh[0][0]};
@@ -414,7 +469,8 @@ void  return_cube_position(const int *grid_size,
                            const int *lb_grid,
                            const int *cube_center,
                            const int *lower_boundaries_cube,
-                           const int *period, int *const position)
+                           const int *period,
+                           int *const position)
 {
     position[0] = (lb_grid[0] + cube_center[0] + lower_boundaries_cube[0] + 32 * period[0]) % period[0];
     position[1] = (lb_grid[1] + cube_center[1] + lower_boundaries_cube[1] + 32 * period[1]) % period[1];
@@ -426,6 +482,41 @@ void  return_cube_position(const int *grid_size,
     }
 }
 
+bool adjust_cube_dimensions(const int *blockDim,
+                            const int *grid_size,
+                            const int *lb_grid,
+                            const int *cube_center,
+                            const int *period,
+                            int *lower_boundaries_cube,
+                            int *upper_boundaries_cube,
+                            int *cube_size)
+{
+    int position[3];
+    return_cube_position(grid_size,
+                         lb_grid,
+                         cube_center,
+                         lower_boundaries_cube,
+                         period,
+                         position);
+
+    if ((position[0] + cube_size[0] < grid_size[0]) &&
+        (position[1] + cube_size[1] < grid_size[1]) &&
+        (position[2] + cube_size[2] < grid_size[2]))
+        return false;
+
+    int blockIdx[3];
+
+
+    for (int axis = 0; axis < 3; axis++) {
+        const int tmp = cube_center[axis] - lower_boundaries_cube[axis];
+        const int blockidx = tmp * blockDim[axis];
+        lower_boundaries_cube[axis] = tmp / blockDim[axis] - (tmp < blockidx);
+        upper_boundaries_cube[axis] = - lower_boundaries_cube[axis];
+        cube_size[axis] = upper_boundaries_cube[axis] - lower_boundaries_cube[axis] + 1;
+    }
+
+    return true;
+}
 
 double exp_recursive(const double c_exp, const double c_exp_minus_1, const int index)
 {
@@ -459,8 +550,9 @@ void exp_i(const double alpha, const int imin, const int imax, double *__restric
 {
     const double c_exp_co = exp(alpha);
     /* const double c_exp_minus_1 = 1/ c_exp; */
-    for (int i = 0; i < (imax - imin); i++) {
-        res[i] = exp_recursive(c_exp_co, 1.0 / c_exp_co, i + imin);
+    res[0] = exp(imin * alpha);
+    for (int i = 1; i < (imax - imin); i++) {
+        res[i] = res[i - 1] * c_exp_co;//exp_recursive(c_exp_co, 1.0 / c_exp_co, i + imin);
     }
 }
 
@@ -471,9 +563,12 @@ void exp_ij(const double alpha, const int imin, const int imax, const int jmin, 
 
     for (int i = 0; i < (imax - imin); i++) {
         double *__restrict dst = &idx2(exp_ij_[0], i, 0);
+        double ctmp = exp_recursive(c_exp, 1.0 / c_exp, jmin);
+
 #pragma GCC ivdep
         for (int j = 0; j < (jmax - jmin); j++) {
-            dst[j] *= exp_recursive(c_exp, 1.0 / c_exp, j + jmin);
+            dst[j] *= ctmp;
+            ctmp *= c_exp;
         }
         c_exp *= c_exp_co;
     }
