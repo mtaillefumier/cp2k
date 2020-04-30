@@ -304,6 +304,9 @@ void *collocate_create_handle(const int device_id, const int number_of_gaussian,
         handle->scratch_alloc_size = 10240;
         handle->T_alloc_size = 8192;
         handle->W_alloc_size = 2048;
+        handle->blockDim[0] = 8;
+        handle->blockDim[1] = 8;
+        handle->blockDim[2] = 8;
     }
 
     return (void*)handle;
@@ -316,19 +319,28 @@ void collocate_synchronize(void *gaussian_handler)
     }
 
     struct collocation_integration_ *handler = (struct collocation_integration_ *)gaussian_handler;
-
-    if (handler->sequential_mode)
+    if ((handler->sequential_mode) && (!handler->grid_restored)) {
+        if (handler->blocked_grid.blocked_decomposition) {
+            add_blocked_tensor_to_tensor(&handler->blocked_grid,
+                                         &handler->grid);
+            handler->grid_restored = true;
+        } else {
         return;
+        }
+    }
+    if (!handler->sequential_mode)
+    {
+        thpool_wait(handler->thpool);
 
-    thpool_wait(handler->thpool);
+        if ((handler->list[0]->number_of_elements_ > 0) && (!handler->list[0]->done)) {
+            calculate_collocation(handler->list[0]);
+        }
 
-    if ((handler->list[0]->number_of_elements_ > 0) && (!handler->list[0]->done)) {
-        calculate_collocation(handler->list[0]);
+        if ((handler->list[1]->number_of_elements_ > 0) && (!handler->list[1]->done)) {
+            calculate_collocation(handler->list[1]);
+        }
     }
 
-    if ((handler->list[1]->number_of_elements_ > 0) && (!handler->list[1]->done)) {
-        calculate_collocation(handler->list[1]);
-    }
 }
 
 void collocate_finalize(void *gaussian_handle)

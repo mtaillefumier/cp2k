@@ -15,6 +15,7 @@ typedef struct tensor_ {
     int blockDim[3];
     double *data;
     unsigned int ld_;
+    size_t unblocked_size[4];
     bool blocked_decomposition;
 } tensor;
 

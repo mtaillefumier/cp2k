@@ -32,6 +32,7 @@
 extern void grid_fill_pol(const bool transpose,
                           const double dr,
                           const double roffset,
+                          const int pol_offset,
                           const int xmin,
                           const int xmax,
                           const int lp,
@@ -188,6 +189,7 @@ void grid_integrate(collocation_integration *const handler,
     int cube_size[3];
     int lb_cube[3], ub_cube[3];
     double roffset[3];
+    int pol_offset[3];
     double disr_radius;
 
     /* cube : grid comtaining pointlike product between polynomials
@@ -223,9 +225,9 @@ void grid_integrate(collocation_integration *const handler,
 
     /* initialize the multidimensional array containing the polynomials */
     if (lp != 0) {
-        initialize_tensor_3(&handler->pol, 3, 2 * cmax + 1, handler->coef.size[0]);
+        initialize_tensor_3(&handler->pol, 3, cmax, handler->coef.size[0]);
     } else {
-        initialize_tensor_3(&handler->pol, 3, handler->coef.size[0], 2 * cmax + 1);
+        initialize_tensor_3(&handler->pol, 3, handler->coef.size[0], cmax);
     }
     handler->pol_alloc_size = realloc_tensor(&handler->pol);
 
@@ -274,9 +276,9 @@ void grid_integrate(collocation_integration *const handler,
 
     bool use_ortho_forced = orthogonal[0] && orthogonal[1] && orthogonal[2];
     if (use_ortho && use_ortho_forced) {
-        grid_fill_pol((lp != 0), dh[0][0], roffset[2], lb_cube[2], ub_cube[2], lp, cmax, zetp, &idx3(handler->pol, perm[2], 0, 0)); /* i indice */
-        grid_fill_pol((lp != 0), dh[1][1], roffset[1], lb_cube[1], ub_cube[1], lp, cmax, zetp, &idx3(handler->pol, perm[1], 0, 0)); /* j indice */
-        grid_fill_pol((lp != 0), dh[2][2], roffset[0], lb_cube[0], ub_cube[0], lp, cmax, zetp, &idx3(handler->pol, perm[0], 0, 0)); /* k indice */
+        grid_fill_pol((lp != 0), dh[0][0], roffset[2], pol_offset[2], lb_cube[2], ub_cube[2], lp, cmax, zetp, &idx3(handler->pol, perm[2], 0, 0)); /* i indice */
+        grid_fill_pol((lp != 0), dh[1][1], roffset[1], pol_offset[1], lb_cube[1], ub_cube[1], lp, cmax, zetp, &idx3(handler->pol, perm[1], 0, 0)); /* j indice */
+        grid_fill_pol((lp != 0), dh[2][2], roffset[0], pol_offset[0], lb_cube[0], ub_cube[0], lp, cmax, zetp, &idx3(handler->pol, perm[0], 0, 0)); /* k indice */
     } else {
         initialize_tensor_3(&handler->Exp, 3, max(cube_size[0], cube_size[1]), max(cube_size[1], cube_size[2]));
         handler->Exp_alloc_size = realloc_tensor(&handler->Exp);
@@ -286,9 +288,9 @@ void grid_integrate(collocation_integration *const handler,
         dx[1] = dh[1][0] * dh[1][0] + dh[1][1] * dh[1][1] + dh[1][2] * dh[1][2];
         dx[0] = dh[2][0] * dh[2][0] + dh[2][1] * dh[2][1] + dh[2][2] * dh[2][2];
 
-        grid_fill_pol((lp != 0), 1.0, roffset[2], lb_cube[2], ub_cube[2], lp, cmax, zetp * dx[2], &idx3(handler->pol, perm[2], 0, 0)); /* i indice */
-        grid_fill_pol((lp != 0), 1.0, roffset[1], lb_cube[1], ub_cube[1], lp, cmax, zetp * dx[1], &idx3(handler->pol, perm[1], 0, 0)); /* j indice */
-        grid_fill_pol((lp != 0), 1.0, roffset[0], lb_cube[0], ub_cube[0], lp, cmax, zetp * dx[0], &idx3(handler->pol, perm[0], 0, 0)); /* k indice */
+        grid_fill_pol((lp != 0), 1.0, roffset[2], pol_offset[2], lb_cube[2], ub_cube[2], lp, cmax, zetp * dx[2], &idx3(handler->pol, perm[2], 0, 0)); /* i indice */
+        grid_fill_pol((lp != 0), 1.0, roffset[1], pol_offset[1], lb_cube[1], ub_cube[1], lp, cmax, zetp * dx[1], &idx3(handler->pol, perm[1], 0, 0)); /* j indice */
+        grid_fill_pol((lp != 0), 1.0, roffset[0], pol_offset[0], lb_cube[0], ub_cube[0], lp, cmax, zetp * dx[0], &idx3(handler->pol, perm[0], 0, 0)); /* k indice */
 
         calculate_non_orthorombic_corrections_tensor(zetp,
                                                      roffset,

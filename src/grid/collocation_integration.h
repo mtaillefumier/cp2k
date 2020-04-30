@@ -84,7 +84,19 @@ typedef struct collocation_integration_ {
     tensor pol;
     tensor coef;
 
-    /* Only allocated in sequential mode */
+    /* tensors for the grid to collocate or integrate */
+    /* original grid */
+    tensor grid;
+    /* original grid decomposed in block */
+    tensor blocked_grid;
+
+    /* do we need to update the grid */
+    bool grid_restored;
+
+    /* block dimensions */
+    int blockDim[4];
+
+/* Only allocated in sequential mode */
     tensor cube;
     tensor Exp;
     bool plane[3];

@@ -183,4 +183,15 @@ void compute_block_boundaries(const int *blockDim,
                               int *pol_offsets,
                               bool *fold);
 
+extern void grid_fill_pol(const bool transpose,
+                          const double dr,
+                          const double roffset,
+                          const int pol_offset,
+                          const int xmin,
+                          const int xmax,
+                          const int lp,
+                          const int cmax,
+                          const double zetp,
+                          double *pol_);
+
 #endif

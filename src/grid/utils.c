@@ -13,6 +13,131 @@
 #include "utils.h"
 #include "tensor_local.h"
 
+/* compute the functions (x - x_i)^l exp (-eta (x - x_i)^2) for l = 0..lp using
+ * a recursive relation to avoid computing the exponential on each grid point. I
+ * think it is not really necessary anymore since it is *not* the dominating
+ * contribution to computation of collocate and integrate */
+
+
+void grid_fill_pol(const bool transpose,
+                   const double dr,
+                   const double roffset,
+                   const int pol_offset,
+                   const int xmin,
+                   const int xmax,
+                   const int lp,
+                   const int cmax,
+                   const double zetp,
+                   double *pol_)
+{
+    tensor pol;
+    const double t_exp_1 = exp(-zetp * dr * dr);
+    const double t_exp_2 = t_exp_1 * t_exp_1;
+
+    double t_exp_min_1 = exp(-zetp * (dr - roffset) * (dr - roffset));
+    double t_exp_min_2 = exp(2.0 * zetp * (dr - roffset) * dr);
+
+    double t_exp_plus_1 = exp(-zetp * roffset * roffset);
+    double t_exp_plus_2 = exp(2.0 * zetp * roffset * dr);
+
+    if (transpose) {
+        initialize_tensor_2(&pol, cmax, lp + 1);
+        pol.data = pol_;
+        memset(pol.data, 0, sizeof(double) * pol.alloc_size_);
+        /* It is original Ole code. I need to transpose the polynomials for the
+         * integration routine and Ole code already does it. */
+        for (int ig = 0; ig >= xmin; ig--) {
+            const double rpg = ig * dr - roffset;
+            t_exp_min_1 *= t_exp_min_2 * t_exp_1;
+            t_exp_min_2 *= t_exp_2;
+            double pg = t_exp_min_1;
+            for (int icoef = 0; icoef <= lp; icoef++) {
+                idx2(pol, pol_offset + ig - xmin, icoef) = pg;
+                pg *= rpg;
+            }
+        }
+
+        double t_exp_plus_1 = exp(-zetp * roffset * roffset);
+        double t_exp_plus_2 = exp(2 * zetp * roffset * dr);
+        for (int ig = 1; ig <= xmax; ig++) {
+            const double rpg = ig * dr - roffset;
+            t_exp_plus_1 *= t_exp_plus_2 * t_exp_1;
+            t_exp_plus_2 *= t_exp_2;
+            double pg = t_exp_plus_1;
+            for (int icoef = 0; icoef <= lp; icoef++) {
+                idx2(pol, pol_offset + ig - xmin, icoef) = pg;
+                pg *= rpg;
+            }
+        }
+
+    } else {
+        initialize_tensor_2(&pol, lp + 1, cmax);
+        pol.data = pol_;
+        /*
+         *   compute the values of all (x-xp)**lp*exp(..)
+         *
+         *  still requires the old trick:
+         *  new trick to avoid to many exps (reuse the result from the previous gridpoint):
+         *  exp( -a*(x+d)**2)=exp(-a*x**2)*exp(-2*a*x*d)*exp(-a*d**2)
+         *  exp(-2*a*(x+d)*d)=exp(-2*a*x*d)*exp(-2*a*d**2)
+         */
+
+        /* compute the exponential recursively and store the polynomial prefactors as well */
+        for (int ig = 0; ig >= xmin; ig--) {
+            const double rpg = ig * dr - roffset;
+            t_exp_min_1 *= t_exp_min_2 * t_exp_1;
+            t_exp_min_2 *= t_exp_2;
+            double pg = t_exp_min_1;
+            idx2(pol, 0, pol_offset + ig - xmin) = pg;
+            if (lp > 0)
+                idx2(pol, 1, pol_offset + ig - xmin) = rpg;
+        }
+
+        for (int ig = 1; ig <= xmax; ig++) {
+            const double rpg = ig * dr - roffset;
+            t_exp_plus_1 *= t_exp_plus_2 * t_exp_1;
+            t_exp_plus_2 *= t_exp_2;
+            double pg = t_exp_plus_1;
+            idx2(pol, 0, pol_offset + ig - xmin) = pg;
+            if (lp > 0)
+                idx2(pol, 1, pol_offset + ig - xmin) = rpg;
+        }
+
+        /* compute the remaining powers using previously computed stuff */
+        if (lp >= 2) {
+            double *__restrict__ poly = &idx2(pol, 1, 0);
+            double *__restrict__ src1 = &idx2(pol, 0, 0);
+            double *__restrict__ dst = &idx2(pol, 2, 0);
+//#pragma omp simd
+#pragma GCC ivdep
+            for (int ig = 0; ig < (xmax - xmin + 1 + pol_offset); ig++)
+                dst[ig] = src1[ig] * poly[ig] * poly[ig];
+        }
+
+        for (int icoef = 3; icoef <= lp; icoef++) {
+            const double *__restrict__ poly = &idx2(pol, 1, 0);
+            const double *__restrict__ src1 = &idx2(pol, icoef - 1, 0);
+            double *__restrict__ dst = &idx2(pol, icoef, 0);
+//#pragma omp simd
+#pragma GCC ivdep
+            for (int ig = 0; ig <  (xmax - xmin + 1 + pol_offset); ig++) {
+                dst[ig] = src1[ig] * poly[ig];
+            }
+        }
+
+        //
+        if (lp > 0) {
+            double *__restrict__ dst = &idx2(pol, 1, 0);
+            const double *__restrict__ src = &idx2(pol, 0, 0);
+#pragma GCC ivdep
+            for (int ig = 0; ig <  (xmax - xmin + 1 + pol_offset); ig++) {
+                dst[ig] *= src[ig];
+            }
+        }
+    }
+}
+
+
 bool fold_polynomial(double *scratch,
                      tensor *pol,
                      const int axis,
@@ -215,11 +340,12 @@ void initialize_tensor_blocked(struct tensor_ *a, const int dim, const int *cons
     for (int d = 0; d < dim; d++)
         a->blockDim[d] = blockDim[d];
 
-    for (int d = 0; d < a->dim_ - 1; d++)
+    for (int d = 0; d < a->dim_ - 1; d++) {
         a->size[d] = sizes[d] / a->blockDim[d] + (sizes[d] % a->blockDim[d] != 0);
+        a->unblocked_size[d] = sizes[d];
+    }
 
     a->size[dim] = a->block->alloc_size_;
-
     // we need proper alignment here. But can be done later
     /* a->ld_ = (sizes[a->dim_ - 1] / 32 + 1) * 32; */
     a->ld_ = a->block->alloc_size_;
@@ -810,8 +936,8 @@ void compute_block_boundaries(const int *blockDim,
     for (int axis = 0; axis < 3; axis++) {
         int tmp = position[axis];
         int blockidx = tmp / blockDim[axis];
-        lower_block_corner[axis] = blockidx - (tmp < (blockidx * blockDim[axis]));
-        pol_offsets[axis] = blockDim[axis] - tmp + blockidx * blockDim[axis];
+        lower_block_corner[axis] = blockidx;
+        pol_offsets[axis] = tmp - blockidx * blockDim[axis];
         tmp = position[axis] + cube_size[axis];
         if ((grid_size[axis] != period[axis]) && (tmp > grid_size[axis])) {
             upper_block_corner[axis] = blocked_grid_size[axis];
