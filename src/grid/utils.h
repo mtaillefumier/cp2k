@@ -166,5 +166,21 @@ extern void grid_transform_coef_jik_to_yxz(const double dh[3][3],
                                            const tensor *coef_xyz);
 extern void grid_transform_coef_xzy_to_ikj(const double dh[3][3],
                                            const tensor *coef_xyz);
+extern void batched_dgemm_simplified(dgemm_params *const m,
+                                     const int batch_size,
+                                     const bool use_libxsmm);
+
+void compute_block_boundaries(const int *blockDim,
+                              const int *lb_grid,
+                              const int *grid_size,
+                              const int *blocked_grid_size,
+                              const int *period,
+                              const int *cube_center,
+                              const int *cube_size,
+                              const int *lower_boundaries_cube,
+                              int *lower_block_corner,
+                              int *upper_block_corner,
+                              int *pol_offsets,
+                              bool *fold);
 
 #endif

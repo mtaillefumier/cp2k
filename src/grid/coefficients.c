@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
+#include <assert.h>
 #if defined(__LIBXSMM)
 #include <libxsmm.h>
 #endif
@@ -19,6 +19,9 @@ extern void tensor_reduction_for_collocate_integrate(double *scratch,
 
 void transform_xyz_to_triangular(const tensor *const coef, double  *const  coef_xyz)
 {
+    assert(coef != NULL);
+    assert(coef_xyz != NULL);
+
     int lxyz = 0;
     const int lp = (coef->size[0] - 1);
     for (int lzp = 0; lzp <= lp; lzp++) {
@@ -33,6 +36,8 @@ void transform_xyz_to_triangular(const tensor *const coef, double  *const  coef_
 
 void transform_yxz_to_triangular(const tensor *const coef, double  *const coef_xyz)
 {
+    assert(coef != NULL);
+    assert(coef_xyz != NULL);
     int lxyz = 0;
     const int lp = (coef->size[0] - 1);
     for (int lzp = 0; lzp <= lp; lzp++) {
@@ -47,6 +52,8 @@ void transform_yxz_to_triangular(const tensor *const coef, double  *const coef_x
 
 void transform_triangular_to_xyz(const double const *coef_xyz, tensor *const coef)
 {
+    assert(coef != NULL);
+    assert(coef_xyz != NULL);
     int lxyz = 0;
     const int lp = coef->size[0] - 1;
     for (int lzp = 0; lzp <= lp; lzp++) {
@@ -71,8 +78,9 @@ void grid_prepare_coef(const int *lmin,
                        const double pab[ncoset[lmax[1]]][ncoset[lmax[0]]],
                        tensor *coef_xyz) //[lp+1][lp+1][lp+1]
 {
-
-
+    assert(alpha != NULL);
+    assert(coef_xyz != NULL);
+    assert(coef_xyz->data != NULL);
     memset(coef_xyz->data, 0, coef_xyz->alloc_size_ * sizeof(double));
     // we need a proper fix for that. We can use the tensor structure for this
 
@@ -124,6 +132,7 @@ void grid_prepare_alpha(const double ra[3],
                         const int *lmax,
                         tensor *alpha)
 {
+    assert(alpha != NULL);
     // Initialize with zeros.
     memset(alpha->data, 0, alpha->alloc_size_ * sizeof(double));
 
@@ -170,6 +179,8 @@ void compute_compact_polynomial_coefficients(const tensor *coef,
                                              const double prefactor,
                                              tensor *co)
 {
+    assert(coef != NULL);
+    assert(co != NULL);
     // binomial coefficients n = 0 ... 20
     const int binomial[21][21] = {
         {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
@@ -345,7 +356,13 @@ void compute_compact_polynomial_coefficients(const tensor *coef,
     /* (NULL, prefactor, &coef_tmp, &px, co); */
 }
 
-inline double return_multimonial_prefactor(const int l, const int m, int *const alpha, int *const gamma, int *const beta, const tensor *const power, const int dir)
+inline double return_multimonial_prefactor(const int l,
+                                           const int m,
+                                           int *const alpha,
+                                           int *const gamma,
+                                           int *const beta,
+                                           const tensor *const power,
+                                           const int dir)
 {
     const int expo1 = return_exponents(return_offset_l(l) + m);
     *alpha = (expo1 & 0xff0000) >> 16;
@@ -363,6 +380,7 @@ inline double return_multimonial_prefactor(const int l, const int m, int *const 
 void grid_transform_coef_xzy_to_ikj(const double dh[3][3],
                                     const tensor *coef_xyz)
 {
+    assert(coef_xyz != NULL);
     const int lp = coef_xyz->size[0] - 1;
     tensor coef_ijk;
 
@@ -442,6 +460,7 @@ void grid_transform_coef_xzy_to_ikj(const double dh[3][3],
 void grid_transform_coef_jik_to_yxz(const double dh[3][3],
                                     const tensor *coef_xyz)
 {
+    assert(coef_xyz);
     const int lp = coef_xyz->size[0] - 1;
     tensor coef_ijk;
 
@@ -519,7 +538,7 @@ void grid_transform_coef_xyz_to_ijk_variant(const double dh[3][3],
                                             const double dh_inv[3][3],
                                             const tensor *coef_xyz)
 {
-
+    assert(coef_xyz);
     tensor power;
     tensor coef_ijk;
 

@@ -71,6 +71,191 @@ bool fold_polynomial(double *scratch,
     return false;
 }
 
+void decompose_grid_to_blocked_grid(const tensor *gr, struct tensor_ *block_grid)
+{
+    if ((gr == NULL) || (block_grid == NULL)) {
+        abort();
+    }
+
+    tensor tmp;
+    initialize_tensor_3(&tmp,
+                        block_grid->blockDim[0],
+                        block_grid->blockDim[1],
+                        block_grid->blockDim[2]);
+
+    int lower_corner[3], upper_corner[3];
+
+    for (int z = 0; z < block_grid->size[0]; z++) {
+        lower_corner[0] = z * block_grid->blockDim[0];
+        upper_corner[0] = lower_corner[0] + min(gr->size[0] - lower_corner[0], block_grid->blockDim[0]);
+        for (int y = 0; y < block_grid->size[1]; y++) {
+            lower_corner[1] = y * block_grid->blockDim[1];
+            upper_corner[1] = lower_corner[1] + min(gr->size[1] - lower_corner[1], block_grid->blockDim[1]);
+            for (int x = 0; x < block_grid->size[2]; x++) {
+                tmp.data = &idx4(block_grid[0], z, y, x, 0);
+                lower_corner[2] = x * block_grid->blockDim[2];
+                upper_corner[2] = lower_corner[2] + min(gr->size[2] - lower_corner[2], block_grid->blockDim[2]);
+
+                extract_sub_grid(lower_corner,
+                                 upper_corner,
+                                 NULL,
+                                 gr, // original grid
+                                 &tmp);
+            }
+        }
+    }
+}
+
+/* recompose the natural grid from the block decomposed grid. Result is copied to the grid gr */
+
+void recompose_grid_from_blocked_grid(const struct tensor_ *block_grid, tensor *gr)
+{
+    tensor tmp;
+    initialize_tensor_3(&tmp,
+                        block_grid->blockDim[0],
+                        block_grid->blockDim[1],
+                        block_grid->blockDim[2]);
+    int lower_corner[3], upper_corner[3];
+    for (int z = 0; z < block_grid->size[0]; z++) {
+        lower_corner[0] = z * block_grid->blockDim[0];
+        upper_corner[0] = lower_corner[0] + min(gr->size[0] - lower_corner[0], block_grid->blockDim[0]);
+        for (int y = 0; y < block_grid->size[1]; y++) {
+            lower_corner[1] = y * block_grid->blockDim[1];
+            upper_corner[1] = lower_corner[1] + min(gr->size[1] - lower_corner[1], block_grid->blockDim[1]);
+            for (int x = 0; x < block_grid->size[2]; x++) {
+                tmp.data = &idx4(block_grid[0], z, y, x, 0);
+                lower_corner[2] = x * block_grid->blockDim[2];
+                upper_corner[2] = lower_corner[2] + min(gr->size[2] - lower_corner[2], block_grid->blockDim[2]);
+
+                const int sizex = upper_corner[2] - lower_corner[2];
+                const int sizey = upper_corner[1] - lower_corner[1];
+                const int sizez = upper_corner[0] - lower_corner[0];
+
+                for (int z = 0; z < sizez; z++) {
+                    for (int y = 0; y < sizey; y++) {
+                        double *__restrict__ dst = &idx3(gr[0], lower_corner[0] + z, lower_corner[1] + y, lower_corner[2]);
+                        double *__restrict__ src = &idx3(tmp, z, y, 0);
+                        for (int x = 0; x < sizex; x++) {
+                            dst[x] = src[x];
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/* recompose the natural grid from the block decomposed grid and add the result
+ * to the grid gr */
+void add_blocked_tensor_to_tensor(const struct tensor_ *block_grid, tensor *gr)
+{
+    tensor tmp;
+    initialize_tensor_3(&tmp, block_grid->blockDim[0], block_grid->blockDim[1], block_grid->blockDim[2]);
+    int lower_corner[3], upper_corner[3];
+
+    for (int z = 0; z < block_grid->size[0]; z++) {
+        lower_corner[0] = z * block_grid->blockDim[0];
+        upper_corner[0] = lower_corner[0] + min(gr->size[0] - lower_corner[0], block_grid->blockDim[0]);
+        for (int y = 0; y < block_grid->size[1]; y++) {
+            lower_corner[1] = y * block_grid->blockDim[1];
+            upper_corner[1] = lower_corner[1] + min(gr->size[1] - lower_corner[1], block_grid->blockDim[1]);
+            for (int x = 0; x < block_grid->size[2]; x++) {
+                tmp.data = &idx4(block_grid[0], z, y, x, 0);
+                lower_corner[2] = x * block_grid->blockDim[2];
+                upper_corner[2] = lower_corner[2] + min(gr->size[2] - lower_corner[2], block_grid->blockDim[2]);
+
+                const int sizex = upper_corner[2] - lower_corner[2];
+                const int sizey = upper_corner[1] - lower_corner[1];
+                const int sizez = upper_corner[0] - lower_corner[0];
+
+                for (int z = 0; z < sizez; z++) {
+                    for (int y = 0; y < sizey; y++) {
+                        double *__restrict__ dst = &idx3(gr[0], lower_corner[0] + z, lower_corner[1] + y, lower_corner[2]);
+                        double *__restrict__ src = &idx3(tmp, z, y, 0);
+                        for (int x = 0; x < sizex; x++) {
+                            dst[x] += src[x];
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/* initialize a tensor structure for a tensor of dimension dim <= 4 */
+
+void initialize_tensor_blocked(struct tensor_ *a, const int dim, const int *const sizes, const int *const blockDim)
+{
+    printf("test1\n");
+    assert(a != NULL);
+
+    a->block =  (void *)malloc(sizeof(struct tensor_));
+    memset(a->block, 0, sizeof(struct tensor_));
+
+    switch(dim) {
+    case 4:
+        initialize_tensor_4((struct tensor_ *)a->block, blockDim[0], blockDim[1], blockDim[2], blockDim[3]);
+        break;
+    case 3:
+        initialize_tensor_3((struct tensor_ *)a->block, blockDim[0], blockDim[1], blockDim[2]);
+        break;
+    case 2:
+        initialize_tensor_2((struct tensor_ *)a->block, blockDim[0], blockDim[1]);
+        break;
+    default:
+        printf("We should not be here");
+        assert(0);
+        break;
+    }
+
+
+    assert(a->block->alloc_size_ != 0);
+    a->dim_ = dim + 1;
+
+    for (int d = 0; d < dim; d++)
+        a->blockDim[d] = blockDim[d];
+
+    for (int d = 0; d < a->dim_ - 1; d++)
+        a->size[d] = sizes[d] / a->blockDim[d] + (sizes[d] % a->blockDim[d] != 0);
+
+    a->size[dim] = a->block->alloc_size_;
+
+    // we need proper alignment here. But can be done later
+    /* a->ld_ = (sizes[a->dim_ - 1] / 32 + 1) * 32; */
+    a->ld_ = a->block->alloc_size_;
+    switch(a->dim_) {
+    case 5: {
+        a->offsets[0] = a->ld_ * a->size[1] * a->size[2] * a->size[3];
+        a->offsets[1] = a->ld_ * a->size[1] * a->size[2];
+        a->offsets[2] = a->ld_ * a->size[2];
+        a->offsets[3] = a->ld_;
+        break;
+    }
+    case 4: {
+        a->offsets[0] = a->ld_ * a->size[1] * a->size[2];
+        a->offsets[1] = a->ld_ * a->size[2];
+        a->offsets[2] = a->ld_;
+        break;
+    }
+    case 3: {
+        a->offsets[0] = a->ld_ * a->size[1];
+        a->offsets[1] = a->ld_;
+    }
+        break;
+    case 2: { // matrix case
+        a->offsets[0] = a->ld_;
+    }
+        break;
+    case 1:
+        break;
+    }
+
+    a->alloc_size_ = a->offsets[0] * a->size[0];
+    a->blocked_decomposition = true;
+    assert(a->alloc_size_ != 0);
+    return;
+}
+
 size_t realloc_tensor(tensor *t)
 {
     if (t == NULL) {
@@ -186,6 +371,103 @@ void dgemm_simplified(dgemm_params *const m, const bool use_libxsmm)
 #endif
 }
 
+void batched_dgemm_simplified(dgemm_params *const m, const int batch_size, const bool use_libxsmm)
+{
+    assert(m != NULL);
+    assert(batch_size > 0);
+
+#if defined(__LIBXSMM)
+
+    if (use_libxsmm) {
+        libxsmm_dmmfunction kernel;
+
+/* we are in row major but xsmm is in column major */
+        m->prefetch = LIBXSMM_PREFETCH_AUTO;
+        if ((m->op1 == 'N') && (m->op2 == 'N')) {
+            m->flags =  LIBXSMM_GEMM_FLAG_NONE;
+        }
+
+        if ((m->op1 == 'T') && (m->op2 == 'N')) {
+            m->flags =  LIBXSMM_GEMM_FLAG_TRANS_B;
+        }
+
+        if ((m->op1 == 'N') && (m->op2 == 'T')) {
+            m->flags =  LIBXSMM_GEMM_FLAG_TRANS_A;
+        }
+
+        if ((m->op1 == 'T') && (m->op2 == 'T')) {
+            m->flags =  LIBXSMM_GEMM_FLAG_TRANS_A | LIBXSMM_GEMM_FLAG_TRANS_B;
+        }
+
+        kernel = libxsmm_dmmdispatch(m->n,
+                                     m->m,
+                                     m->k,
+                                     &m->ldb,
+                                     &m->lda,
+                                     &m->ldc,
+                                     &m->alpha,
+                                     &m->beta,
+                                     &m->flags,
+                                     &m->prefetch);
+
+        if (kernel) {
+            //   printf("%d\n", batch_size);
+            for (int s = 0; s < batch_size - 1; s++) {
+                //  printf("%d\n", s);
+                kernel(m[s].b, m[s].a, m[s].c ,
+                       m[s + 1].b, m[s + 1].a, m[s + 1].c);
+            }
+            kernel(m[batch_size - 1].b, m[batch_size - 1].a, m[batch_size - 1].c,
+                   m[batch_size - 1].b, m[batch_size - 1].a, m[batch_size - 1].c);
+            return;
+        }
+    }
+#endif
+
+#if defined(__MKL)
+    // fall back to mkl
+    for (int s = 0; s < batch_size; s++) {
+        if ((m[s].op1 == 'N') && (m[s].op2 == 'N'))
+            cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
+                        m[s].m, m[s].n, m[s].k, m[s].alpha,
+                        m[s].a, m[s].lda, m[s].b, m[s].ldb,
+                        m[s].beta, m[s].c, m[s].ldc);
+
+        if ((m[s].op1 == 'T') && (m[s].op2 == 'N'))
+            cblas_dgemm(CblasRowMajor, CblasTrans, CblasNoTrans,
+                    m[s].m, m[s].n, m[s].k, m[s].alpha,
+                    m[s].a, m[s].lda, m[s].b, m[s].ldb,
+                    m[s].beta, m[s].c, m[s].ldc);
+
+        if ((m[s].op1 == 'N') && (m[s].op2 == 'T'))
+            cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
+                        m[s].m, m[s].n, m[s].k, m[s].alpha,
+                        m[s].a, m[s].lda, m[s].b, m[s].ldb,
+                        m[s].beta, m[s].c, m[s].ldc);
+
+        if ((m[s].op1 == 'T') && (m[s].op2 == 'T'))
+            cblas_dgemm(CblasRowMajor, CblasTrans, CblasTrans,
+                        m[s].m, m[s].n, m[s].k, m[s].alpha,
+                        m[s].a, m[s].lda, m[s].b, m[s].ldb,
+                        m[s].beta, m[s].c, m[s].ldc);
+    }
+#else
+    for (int s = 0; s < batch_size; s++) {
+        if ((m[s].op1 == 'N') && (m[s].op2 == 'N'))
+            dgemm_("N", "N", &m[s].n, &m[s].m, &m[s].k, &m[s].alpha, m[s].b, &m[s].ldb, m[s].a, &m[s].lda, &m[s].beta, m[s].c, &m[s].ldc);
+
+        if ((m[s].op1 == 'T') && (m[s].op2 == 'N'))
+            dgemm_("N", "T", &m[s].n, &m[s].m, &m[s].k, &m[s].alpha, m[s].b, &m[s].ldb, m[s].a, &m[s].lda, &m[s].beta, m[s].c, &m[s].ldc);
+
+        if ((m[s].op1 == 'T') && (m[s].op2 == 'T'))
+            dgemm_("T", "T", &m[s].n, &m[s].m, &m[s].k, &m[s].alpha, m[s].b, &m[s].ldb, m[s].a, &m[s].lda, &m[s].beta, m[s].c, &m[s].ldc);
+
+        if ((m[s].op1 == 'N') && (m[s].op2 == 'T'))
+            dgemm_("T", "N", &m[s].n, &m[s].m, &m[s].k, &m[s].alpha, m[s].b, &m[s].ldb, m[s].a, &m[s].lda, &m[s].beta, m[s].c, &m[s].ldc);
+    }
+#endif
+}
+
 void extract_sub_grid(const int *lower_corner,
                       const int *upper_corner,
                       const int *position,
@@ -228,6 +510,7 @@ void extract_sub_grid(const int *lower_corner,
         for (int y = 0; y < sizey; y++) {
             double *__restrict__ src = &idx3(grid[0], lower_corner[0] + z, lower_corner[1] + y, lower_corner[2]);
             double *__restrict__ dst = &idx3(subgrid[0], position1[0] + z, position1[1] + y, position1[2]);
+            LIBXSMM_PRAGMA_SIMD
             for (int x = 0; x < sizex; x++) {
                 dst[x] = src[x];
             }
@@ -281,8 +564,7 @@ void add_sub_grid(const int *lower_corner,
         double *__restrict__ dst = &idx3(grid[0], lower_corner[0] + z, lower_corner[1], lower_corner[2]);
         double *__restrict__ src = &idx3(subgrid[0], position1[0] + z, position1[1], position1[2]);
         for (int y = 0; y < sizey; y++) {
-#pragma GCC unroll 4
-#pragma GCC ivdep
+            LIBXSMM_PRAGMA_SIMD
             for (int x = 0; x < sizex; x++) {
                 dst[x] += src[x];
             }
@@ -447,6 +729,7 @@ inline int compute_cube_properties(const bool ortho,
         }
     }
 
+
     // Symetric interval
     for (int i = 0; i < 3; i++) {
         ub_cube[i] = - lb_cube[i];
@@ -482,14 +765,18 @@ void  return_cube_position(const int *grid_size,
     }
 }
 
-bool adjust_cube_dimensions(const int *blockDim,
-                            const int *grid_size,
-                            const int *lb_grid,
-                            const int *cube_center,
-                            const int *period,
-                            int *lower_boundaries_cube,
-                            int *upper_boundaries_cube,
-                            int *cube_size)
+void compute_block_boundaries(const int *blockDim,
+                              const int *lb_grid,
+                              const int *grid_size,
+                              const int *blocked_grid_size,
+                              const int *period,
+                              const int *cube_center,
+                              const int *cube_size,
+                              const int *lower_boundaries_cube,
+                              int *lower_block_corner,
+                              int *upper_block_corner,
+                              int *pol_offsets,
+                              bool *fold)
 {
     int position[3];
     return_cube_position(grid_size,
@@ -498,24 +785,42 @@ bool adjust_cube_dimensions(const int *blockDim,
                          lower_boundaries_cube,
                          period,
                          position);
+    pol_offsets[0] = 0;
+    pol_offsets[1] = 0;
+    pol_offsets[2] = 0;
+
+    for (int axis = 0; axis < 3; axis++)
+        fold[axis] = (cube_size[axis] >= period[axis]);
+
+    if (fold[0] && fold[1] && fold[2]) {
+        return;
+    }
 
     if ((position[0] + cube_size[0] < grid_size[0]) &&
         (position[1] + cube_size[1] < grid_size[1]) &&
-        (position[2] + cube_size[2] < grid_size[2]))
-        return false;
+        (position[2] + cube_size[2] < grid_size[2])) {
 
-    int blockIdx[3];
-
-
-    for (int axis = 0; axis < 3; axis++) {
-        const int tmp = cube_center[axis] - lower_boundaries_cube[axis];
-        const int blockidx = tmp * blockDim[axis];
-        lower_boundaries_cube[axis] = tmp / blockDim[axis] - (tmp < blockidx);
-        upper_boundaries_cube[axis] = - lower_boundaries_cube[axis];
-        cube_size[axis] = upper_boundaries_cube[axis] - lower_boundaries_cube[axis] + 1;
+        fold[0] = false;
+        fold[1] = false;
+        fold[2] = false;
     }
 
-    return true;
+
+    int blockIdx[3];
+    for (int axis = 0; axis < 3; axis++) {
+        int tmp = position[axis];
+        int blockidx = tmp / blockDim[axis];
+        lower_block_corner[axis] = blockidx - (tmp < (blockidx * blockDim[axis]));
+        pol_offsets[axis] = blockDim[axis] - tmp + blockidx * blockDim[axis];
+        tmp = position[axis] + cube_size[axis];
+        if ((grid_size[axis] != period[axis]) && (tmp > grid_size[axis])) {
+            upper_block_corner[axis] = blocked_grid_size[axis];
+        } else {
+            upper_block_corner[axis] = tmp / blockDim[axis] + ((tmp - blockidx * blockDim[axis]) != 0);
+        }
+    }
+
+    return;
 }
 
 double exp_recursive(const double c_exp, const double c_exp_minus_1, const int index)
@@ -804,7 +1109,6 @@ int return_exponents(const int index) {
         459264, 524289, 524544, 589824};
     return exponents[index];
 }
-
 
 int multinomial3(const int a, const int b, const int c)
 {
