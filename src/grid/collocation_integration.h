@@ -86,7 +86,7 @@ typedef struct collocation_integration_ {
 
     /* tensors for the grid to collocate or integrate */
     /* original grid */
-    tensor grid;
+    tensor grid, grid_test;
     /* original grid decomposed in block */
     tensor blocked_grid;
 

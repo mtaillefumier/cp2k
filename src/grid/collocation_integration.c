@@ -304,9 +304,9 @@ void *collocate_create_handle(const int device_id, const int number_of_gaussian,
         handle->scratch_alloc_size = 10240;
         handle->T_alloc_size = 8192;
         handle->W_alloc_size = 2048;
-        handle->blockDim[0] = 8;
-        handle->blockDim[1] = 8;
-        handle->blockDim[2] = 8;
+        handle->blockDim[0] = 5;
+        handle->blockDim[1] = 5;
+        handle->blockDim[2] = 5;
     }
 
     return (void*)handle;
@@ -321,11 +321,11 @@ void collocate_synchronize(void *gaussian_handler)
     struct collocation_integration_ *handler = (struct collocation_integration_ *)gaussian_handler;
     if ((handler->sequential_mode) && (!handler->grid_restored)) {
         if (handler->blocked_grid.blocked_decomposition) {
-            add_blocked_tensor_to_tensor(&handler->blocked_grid,
-                                         &handler->grid);
+            add_blocked_tensor_to_tensor(&handler->blocked_grid, &handler->grid);
+            memset(handler->blocked_grid.data, 0, sizeof(double) * handler->blocked_grid.alloc_size_);
             handler->grid_restored = true;
         } else {
-        return;
+            return;
         }
     }
     if (!handler->sequential_mode)
@@ -367,6 +367,10 @@ void collocate_finalize(void *gaussian_handle)
 
     handle->alpha.data = NULL;
     handle->coef.data = NULL;
+
+
+    /* free(handle->grid_test.data); */
+
     free(handle);
 
     handle = NULL;

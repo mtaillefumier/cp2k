@@ -194,4 +194,6 @@ extern void grid_fill_pol(const bool transpose,
                           const double zetp,
                           double *pol_);
 
+extern void compare_blocked_tensor_to_tensor(const struct tensor_ *block_grid, tensor *gr);
+extern void compute_block_dimensions(const int *const grid_size, int *const blockDim);
 #endif
