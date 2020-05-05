@@ -29,6 +29,7 @@
 #include "collocation_integration.h"
 #include "utils.h"
 #include "coefficients.h"
+#include "non_orthorombic_corrections.h"
 
 void collocate_l0(double *scratch,
                   const double alpha,
@@ -253,6 +254,10 @@ void tensor_reduction_for_collocate_integrate_blocked(double *scratch,
         m3 = (dgemm_params *)malloc(sizeof(dgemm_params) *
                                     (upper_block[0] - lower_block[0]));
 
+        memset(&m1, 0, sizeof(dgemm_params));
+        memset(&m2, 0, sizeof(dgemm_params));
+        memset(m3, 0, sizeof(dgemm_params) * (upper_block[0] - lower_block[0]));
+
         initialize_tensor_3(&T,
                             co->size[0] /* alpha */,
                             co->size[1] /* gamma */,
@@ -443,6 +448,9 @@ void tensor_reduction_for_collocate_integrate(double *scratch,
     if (co->size[0] > 1) {
         dgemm_params m1, m2, m3;
 
+        memset(&m1, 0, sizeof(dgemm_params));
+        memset(&m2, 0, sizeof(dgemm_params));
+        memset(&m3, 0, sizeof(dgemm_params));
         tensor T;
         tensor W;
 
@@ -668,8 +676,6 @@ void apply_mapping_cubic(const int *lower_boundaries_cube,
 void grid_collocate(collocation_integration *const handler,
                     const bool use_ortho,
                     const double zetp,
-                    const double dh[3][3],
-                    const double dh_inv[3][3],
                     const double rp[3],
                     const int npts[3],
                     const int lb_grid[3],
@@ -695,7 +701,6 @@ void grid_collocate(collocation_integration *const handler,
     bool fold[3] = {false, false, false};
     double roffset[3];
     double disr_radius;
-    static int ijkl = 0;
     /* cube : grid containing pointlike product between polynomials
      *
      * pol : grid  containing the polynomials in all three directions
@@ -707,8 +712,8 @@ void grid_collocate(collocation_integration *const handler,
     /* seting up the cube parameters */
     int cmax = compute_cube_properties(use_ortho,
                                        radius,
-                                       dh,
-                                       dh_inv,
+                                       handler->dh,
+                                       handler->dh_inv,
                                        rp,
                                        &disr_radius,
                                        roffset,
@@ -744,9 +749,9 @@ void grid_collocate(collocation_integration *const handler,
     // reverse the order in collocate_dgemm as well.
 
     if (use_ortho) {
-        grid_fill_pol(false, dh[0][0], roffset[2], pol_offset[2], lb_cube[2], ub_cube[2], handler->coef.size[2] - 1, cmax, zetp, &idx3(handler->pol, 2, 0, 0)); /* i indice */
-        grid_fill_pol(false, dh[1][1], roffset[1], pol_offset[1], lb_cube[1], ub_cube[1], handler->coef.size[1] - 1, cmax, zetp, &idx3(handler->pol, 1, 0, 0)); /* j indice */
-        grid_fill_pol(false, dh[2][2], roffset[0], pol_offset[0], lb_cube[0], ub_cube[0], handler->coef.size[0] - 1, cmax, zetp, &idx3(handler->pol, 0, 0, 0)); /* k indice */
+        grid_fill_pol(false, handler->dh[0][0], roffset[2], pol_offset[2], lb_cube[2], ub_cube[2], handler->coef.size[2] - 1, cmax, zetp, &idx3(handler->pol, 2, 0, 0)); /* i indice */
+        grid_fill_pol(false, handler->dh[1][1], roffset[1], pol_offset[1], lb_cube[1], ub_cube[1], handler->coef.size[1] - 1, cmax, zetp, &idx3(handler->pol, 1, 0, 0)); /* j indice */
+        grid_fill_pol(false, handler->dh[2][2], roffset[0], pol_offset[0], lb_cube[0], ub_cube[0], handler->coef.size[0] - 1, cmax, zetp, &idx3(handler->pol, 0, 0, 0)); /* k indice */
 
         /* for (int i = 0; i < 3; i++) { */
         /*     /\* I can fold the polynomials before doing the collocation. it saves both compute and bandwidth  *\/ */
@@ -780,9 +785,9 @@ void grid_collocate(collocation_integration *const handler,
         handler->Exp_alloc_size = realloc_tensor(&handler->Exp);
 
         double dx[3];
-        dx[2] = dh[0][0] * dh[0][0] + dh[0][1] * dh[0][1] + dh[0][2] * dh[0][2];
-        dx[1] = dh[1][0] * dh[1][0] + dh[1][1] * dh[1][1] + dh[1][2] * dh[1][2];
-        dx[0] = dh[2][0] * dh[2][0] + dh[2][1] * dh[2][1] + dh[2][2] * dh[2][2];
+        dx[2] = handler->dh[0][0] * handler->dh[0][0] + handler->dh[0][1] * handler->dh[0][1] + handler->dh[0][2] * handler->dh[0][2];
+        dx[1] = handler->dh[1][0] * handler->dh[1][0] + handler->dh[1][1] * handler->dh[1][1] + handler->dh[1][2] * handler->dh[1][2];
+        dx[0] = handler->dh[2][0] * handler->dh[2][0] + handler->dh[2][1] * handler->dh[2][1] + handler->dh[2][2] * handler->dh[2][2];
 
         grid_fill_pol(false, 1.0, roffset[0], pol_offset[0], lb_cube[0], ub_cube[0], handler->coef.size[0] - 1, cmax, zetp * dx[0], &idx3(handler->pol, 0, 0, 0)); /* k indice */
         grid_fill_pol(false, 1.0, roffset[1], pol_offset[1], lb_cube[1], ub_cube[1], handler->coef.size[1] - 1, cmax, zetp * dx[1], &idx3(handler->pol, 1, 0, 0)); /* j indice */
@@ -790,73 +795,57 @@ void grid_collocate(collocation_integration *const handler,
 
         calculate_non_orthorombic_corrections_tensor(zetp,
                                                      roffset,
-                                                     dh,
+                                                     handler->dh,
                                                      lb_cube,
                                                      ub_cube,
-                                                     handler->plane,
+                                                     handler->orthogonal,
                                                      &handler->Exp);
 
         /* Use a slightly modified version of Ole code */
-        grid_transform_coef_xzy_to_ikj(dh, &handler->coef);
+        grid_transform_coef_xzy_to_ikj(handler->dh, &handler->coef);
     }
 
-    if (handler->sequential_mode) {
 
-        /* allocate memory for the polynomial and the cube */
+    /* allocate memory for the polynomial and the cube */
 
-        initialize_tensor_3(&handler->cube,
-                            cube_size[0],
-                            cube_size[1],
-                            cube_size[2]);
+    initialize_tensor_3(&handler->cube,
+                        cube_size[0],
+                        cube_size[1],
+                        cube_size[2]);
 
-        handler->cube_alloc_size = realloc_tensor(&handler->cube);
+    handler->cube_alloc_size = realloc_tensor(&handler->cube);
 
-        initialize_W_and_T(handler, &handler->cube, &handler->coef);
+    initialize_W_and_T(handler, &handler->cube, &handler->coef);
 
 
-        if (use_ortho) {
-            tensor_reduction_for_collocate_integrate_blocked(handler->scratch,
-                                                             // pointer to scratch memory
-                                                             1.0,
-                                                             1.0,
-                                                             lower_block_corner,
-                                                             upper_block_corner,
-                                                             &handler->coef,
-                                                             &handler->pol,
-                                                             &handler->blocked_grid);
-        } else {
-            tensor_reduction_for_collocate_integrate(handler->scratch, // pointer to scratch memory
-                                                     1.0,
-                                                     0.0,
-                                                     &handler->coef,
-                                                     &handler->pol,
-                                                     &handler->cube);
-
-            apply_non_orthorombic_corrections(handler->plane,
-                                              &handler->Exp,
-                                              &handler->cube);
-
-            apply_mapping_cubic(lb_cube, cubecenter, npts, &handler->cube, lb_grid, &handler->grid);
-        }
-
-        /* I apply the mapping if I can not do a collocate directly in the grid */
-        //if (!fold[0] || !fold[1] || !fold[2])
-
+    if (use_ortho) {
+        tensor_reduction_for_collocate_integrate_blocked(handler->scratch,
+                                                         // pointer to scratch memory
+                                                         1.0,
+                                                         1.0,
+                                                         lower_block_corner,
+                                                         upper_block_corner,
+                                                         &handler->coef,
+                                                         &handler->pol,
+                                                         &handler->blocked_grid);
     } else {
-        compute_blocks(handler,
-                       lb_cube,
-                       cube_size,
-                       cubecenter,
-                       npts,
+        tensor_reduction_for_collocate_integrate(handler->scratch, // pointer to scratch memory
+                                                 1.0,
+                                                 0.0,
+                                                 &handler->coef,
+                                                 &handler->pol,
+                                                 &handler->cube);
 
-                       use_ortho ? NULL : &handler->Exp,
-                       lb_grid,
-                       &handler->grid);
+        apply_non_orthorombic_corrections(handler->orthogonal,
+                                          &handler->Exp,
+                                          &handler->cube);
+
+        apply_mapping_cubic(lb_cube, cubecenter, npts, &handler->cube, lb_grid, &handler->grid);
     }
-    ijkl++;
+
+    /* I apply the mapping if I can not do a collocate directly in the grid */
+    //if (!fold[0] || !fold[1] || !fold[2])
 }
-
-
 
 // *****************************************************************************
 void grid_collocate_pgf_product_cpu(void *const handle,
@@ -889,14 +878,6 @@ void grid_collocate_pgf_product_cpu(void *const handle,
     assert(handle != NULL);
     collocation_integration *handler = (collocation_integration *)handle;
 
-    /* the data are durty */
-    bool tmpt= handler->grid_restored;
-
-    if (handler->grid_restored)
-        memset(handler->blocked_grid.data, 0, sizeof(double) * handler->blocked_grid.alloc_size_);
-
-    handler->grid_restored = false;
-
 // Uncomment this to dump all tasks to file.
 // #define __GRID_DUMP_TASKS
     tensor grid;
@@ -906,49 +887,13 @@ void grid_collocate_pgf_product_cpu(void *const handle,
     int lmax[2] = {la_max, lb_max};
     int lmin[2] = {la_min, lb_min};
 
-
-    // we have a new grid. I need to synchronize
-    if ((handler->grid.size[0] != ngrid[2]) ||
-        (handler->grid.size[1] != ngrid[1])  ||
-        (handler->grid.size[2] != ngrid[0])) {
-        if ((handler->grid.data != NULL) && (!tmpt) && handler->blocked_grid.blocked_decomposition) {
-            printf("Warning : you forgot to restore the grid.\n");
-            printf("You should call collocate_synchronize before switching to a new grid\n");
-            abort();
-        }
-
-        initialize_tensor_3(&handler->grid, ngrid[2], ngrid[1], ngrid[0]);
-
-        /* initialize_tensor_3(&handler->grid_test, ngrid[2], ngrid[1], ngrid[0]); */
-
-        handler->grid.ld_ = ngrid[0];
-        handler->grid_test.ld_ = ngrid[0];
-
-        handler->grid.data = grid_;
-        /* realloc_tensor(&handler->grid_test); */
-        /* memset(handler->grid_test.data, 0, sizeof(double) * handler->grid_test.alloc_size_); */
-        if (use_ortho) {
-            int grid_reverse[3] = {ngrid[2], ngrid[1], ngrid[0]};
-            size_t old_alloc_size = handler->blocked_grid.alloc_size_;
-
-            compute_block_dimensions(grid_reverse, handler->blockDim);
-            initialize_tensor_blocked(&handler->blocked_grid, 3, grid_reverse, handler->blockDim);
-            assert(handler->grid.size[0] % handler->blockDim[0] == 0);
-            assert(handler->grid.size[1] % handler->blockDim[1] == 0);
-            assert(handler->grid.size[2] % handler->blockDim[2] == 0);
-
-            if (handler->blocked_grid.alloc_size_ > old_alloc_size) {
-                if (handler->blocked_grid.data) {
-                    free(handler->blocked_grid.data);
-                }
-                posix_memalign((void **)&handler->blocked_grid.data,
-                               32,
-                               sizeof(double) * handler->blocked_grid.alloc_size_);
-                assert(handler->blocked_grid.data != NULL);
-            }
-            memset(handler->blocked_grid.data, 0, sizeof(double) * handler->blocked_grid.alloc_size_);
-        }
-    }
+    initialize_grid(handler,
+                    use_ortho,
+                    false,
+                    dh,
+                    dh_inv,
+                    ngrid,
+                    grid_);
 
     const double zetp = zeta + zetb;
     const double f = zetb / zetp;
@@ -1042,8 +987,6 @@ void grid_collocate_pgf_product_cpu(void *const handle,
     grid_collocate(handler,
                    use_ortho,
                    zetp,
-                   dh,
-                   dh_inv,
                    rp,
                    period,
                    lb_grid_bis,

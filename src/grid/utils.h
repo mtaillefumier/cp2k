@@ -68,6 +68,8 @@ typedef struct dgemm_params_ {
     double beta;
     double *a, *b, *c;
     int m, n, k, lda, ldb, ldc;
+    int x, y, z;
+    int x1, y1, z1;
 } dgemm_params;
 
 extern bool fold_polynomial(double *scratch, tensor *pol, const int axis, const int center, const int cube_size, const int lb_cube, const int lb_grid, const int grid_size, const int period,  int *const pivot);
@@ -194,6 +196,9 @@ extern void grid_fill_pol(const bool transpose,
                           const double zetp,
                           double *pol_);
 
+extern void decompose_grid_to_blocked_grid(const tensor *gr, struct tensor_ *block_grid);
+extern void add_blocked_tensor_to_tensor(const struct tensor_ *block_grid, tensor *gr);
 extern void compare_blocked_tensor_to_tensor(const struct tensor_ *block_grid, tensor *gr);
 extern void compute_block_dimensions(const int *const grid_size, int *const blockDim);
+extern void verify_orthogonality(const double dh[3][3], bool *const orthogonal);
 #endif

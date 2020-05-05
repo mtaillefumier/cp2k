@@ -1,3 +1,4 @@
+#include <math.h>
 #include "utils.h"
 #include "non_orthorombic_corrections.h"
 
@@ -254,4 +255,50 @@ void apply_non_orthorombic_corrections(const bool *__restrict plane, const tenso
         }
     }
     return;
+}
+
+void apply_non_orthorombic_corrections_xy(const bool apply, const int x, const int y, const struct tensor_ *const Exp, struct tensor_ *const m)
+{
+    if (!apply)
+        return;
+
+    const double *__restrict src = &idx3(Exp[0], 2, y, x);
+    for (int gamma = 0; gamma < m->size[0]; gamma++) {
+        double *__restrict dst = &idx3(m[0], gamma, 0, 0);
+        for (int y1 = 0; y1 < m->size[1]; y1++) {
+            for (int x1 = 0; x1 < m->size[2]; x1++) {
+                dst[y1 * m->ld_ + x1] *= src[y1 * Exp->ld_ + x1];
+            }
+        }
+    }
+}
+
+void apply_non_orthorombic_corrections_xz(const bool apply, const int x, const int z, const struct tensor_ *const Exp, struct tensor_ *const m)
+{
+    if (!apply)
+        return;
+
+    const double *__restrict src = &idx3(Exp[0], 0, z, x);
+    for (int z1 = 0; z1 < m->size[0]; z1++) {
+        for (int y1 = 0; y1 < m->size[1]; y1++) {
+            for (int x1 = 0; x1 < m->size[2]; x1++) {
+                idx3(m[0], z1, y1, x1) *= src[z1 * Exp->ld_ + x1];
+            }
+        }
+    }
+}
+
+void apply_non_orthorombic_corrections_yz(const bool apply, const int y, const int z, const struct tensor_ *const Exp, struct tensor_ *const m)
+{
+    if (!apply)
+        return;
+
+    for (int z1 = 0; z1 < m->size[0]; z1++) {
+        for (int y1 = 0; y1 < m->size[1]; y1++) {
+            const double  src = idx3(Exp[0], 1, z, y);
+            for (int x1 = 0; x1 < m->size[2]; x1++) {
+                idx3(m[0], z1, y1, x1) *= src;
+            }
+        }
+    }
 }

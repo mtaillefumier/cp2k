@@ -1898,7 +1898,6 @@ CONTAINS
                   subpatch_pattern=tasks(itask)%subpatch_pattern)
             END IF
          END DO loop_tasks
-         CALL collocate_pgf_synchronize(gaussian_handle)
       END DO loop_pairs
 !$OMP END DO
 

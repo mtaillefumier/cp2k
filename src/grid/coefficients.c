@@ -356,23 +356,23 @@ void compute_compact_polynomial_coefficients(const tensor *coef,
     /* (NULL, prefactor, &coef_tmp, &px, co); */
 }
 
-inline double return_multimonial_prefactor(const int l,
-                                           const int m,
-                                           int *const alpha,
-                                           int *const gamma,
-                                           int *const beta,
-                                           const tensor *const power,
-                                           const int dir)
-{
-    const int expo1 = return_exponents(return_offset_l(l) + m);
-    *alpha = (expo1 & 0xff0000) >> 16;
-    *gamma = (expo1 & 0xff);
-    *beta = (expo1 & 0xff00) >> 8;
-    return multinomial3(*alpha, *gamma, *beta) *
-        idx3(power[0], *alpha, dir, 0) *
-        idx3(power[0], *gamma, dir, 1) *
-        idx3(power[0], *beta, dir, 2);
-}
+/* inline double return_multimonial_prefactor(const int l, */
+/*                                            const int m, */
+/*                                            int *const alpha, */
+/*                                            int *const gamma, */
+/*                                            int *const beta, */
+/*                                            const tensor *const power, */
+/*                                            const int dir) */
+/* { */
+/*     const int expo1 = return_exponents(return_offset_l(l) + m); */
+/*     *alpha = (expo1 & 0xff0000) >> 16; */
+/*     *gamma = (expo1 & 0xff); */
+/*     *beta = (expo1 & 0xff00) >> 8; */
+/*     return multinomial3(*alpha, *gamma, *beta) * */
+/*         idx3(power[0], *alpha, dir, 0) * */
+/*         idx3(power[0], *gamma, dir, 1) * */
+/*         idx3(power[0], *beta, dir, 2); */
+/* } */
 
 /* this function computes the coefficients initially expressed in the cartesian
  * space to the grid space. It is inplane */
@@ -533,85 +533,85 @@ void grid_transform_coef_jik_to_yxz(const double dh[3][3],
     free(hmatgridp.data);
 }
 
-/* // ***************************************************************************** */
-void grid_transform_coef_xyz_to_ijk_variant(const double dh[3][3],
-                                            const double dh_inv[3][3],
-                                            const tensor *coef_xyz)
-{
-    assert(coef_xyz);
-    tensor power;
-    tensor coef_ijk;
+/* /\* // ***************************************************************************** *\/ */
+/* void grid_transform_coef_xyz_to_ijk_variant(const double dh[3][3], */
+/*                                             const double dh_inv[3][3], */
+/*                                             const tensor *coef_xyz) */
+/* { */
+/*     assert(coef_xyz); */
+/*     tensor power; */
+/*     tensor coef_ijk; */
 
-    initialize_tensor_3(&coef_ijk, coef_xyz->size[0], coef_xyz->size[1], coef_xyz->size[2]);
-    posix_memalign((void **)&coef_ijk.data, 32, sizeof(double) * coef_xyz->alloc_size_);
-    memset(coef_ijk.data, 0, sizeof(double) * coef_xyz->alloc_size_);
+/*     initialize_tensor_3(&coef_ijk, coef_xyz->size[0], coef_xyz->size[1], coef_xyz->size[2]); */
+/*     posix_memalign((void **)&coef_ijk.data, 32, sizeof(double) * coef_xyz->alloc_size_); */
+/*     memset(coef_ijk.data, 0, sizeof(double) * coef_xyz->alloc_size_); */
 
-    initialize_tensor_3(&power, coef_xyz->size[0], 3, 3);
+/*     initialize_tensor_3(&power, coef_xyz->size[0], 3, 3); */
 
-    posix_memalign((void **)&power.data, 32, power.alloc_size_ * sizeof(double));
+/*     posix_memalign((void **)&power.data, 32, power.alloc_size_ * sizeof(double)); */
 
-    idx3(power, 0, 0, 0) = 1.0;
-    idx3(power, 0, 0, 1) = 1.0;
-    idx3(power, 0, 0, 2) = 1.0;
-    idx3(power, 0, 1, 0) = 1.0;
-    idx3(power, 0, 1, 1) = 1.0;
-    idx3(power, 0, 1, 2) = 1.0;
-    idx3(power, 0, 2, 0) = 1.0;
-    idx3(power, 0, 2, 1) = 1.0;
-    idx3(power, 0, 2, 2) = 1.0;
+/*     idx3(power, 0, 0, 0) = 1.0; */
+/*     idx3(power, 0, 0, 1) = 1.0; */
+/*     idx3(power, 0, 0, 2) = 1.0; */
+/*     idx3(power, 0, 1, 0) = 1.0; */
+/*     idx3(power, 0, 1, 1) = 1.0; */
+/*     idx3(power, 0, 1, 2) = 1.0; */
+/*     idx3(power, 0, 2, 0) = 1.0; */
+/*     idx3(power, 0, 2, 1) = 1.0; */
+/*     idx3(power, 0, 2, 2) = 1.0; */
 
-    idx3(power, 1, 0, 0) = dh[2][0];
-    idx3(power, 1, 0, 1) = dh[2][1];
-    idx3(power, 1, 0, 2) = dh[2][2];
-    idx3(power, 1, 1, 0) = dh[1][0];
-    idx3(power, 1, 1, 1) = dh[1][1];
-    idx3(power, 1, 1, 2) = dh[1][2];
-    idx3(power, 1, 2, 0) = dh[0][0];
-    idx3(power, 1, 2, 1) = dh[0][1];
-    idx3(power, 1, 2, 2) = dh[0][2];
+/*     idx3(power, 1, 0, 0) = dh[2][0]; */
+/*     idx3(power, 1, 0, 1) = dh[2][1]; */
+/*     idx3(power, 1, 0, 2) = dh[2][2]; */
+/*     idx3(power, 1, 1, 0) = dh[1][0]; */
+/*     idx3(power, 1, 1, 1) = dh[1][1]; */
+/*     idx3(power, 1, 1, 2) = dh[1][2]; */
+/*     idx3(power, 1, 2, 0) = dh[0][0]; */
+/*     idx3(power, 1, 2, 1) = dh[0][1]; */
+/*     idx3(power, 1, 2, 2) = dh[0][2]; */
 
-    for (int l = 2; l < coef_xyz->size[0]; l++) {
-        idx3(power, l, 0, 0) = dh[2][0] * idx3(power, l - 1, 0, 0);
-        idx3(power, l, 0, 1) = dh[2][1] * idx3(power, l - 1, 0, 1);
-        idx3(power, l, 0, 2) = dh[2][2] * idx3(power, l - 1, 0, 2);
-        idx3(power, l, 1, 0) = dh[1][0] * idx3(power, l - 1, 1, 0);
-        idx3(power, l, 1, 1) = dh[1][1] * idx3(power, l - 1, 1, 1);
-        idx3(power, l, 1, 2) = dh[1][2] * idx3(power, l - 1, 1, 2);
-        idx3(power, l, 2, 0) = dh[0][0] * idx3(power, l - 1, 2, 0);
-        idx3(power, l, 2, 1) = dh[0][1] * idx3(power, l - 1, 2, 1);
-        idx3(power, l, 2, 2) = dh[0][2] * idx3(power, l - 1, 2, 2);
-    }
+/*     for (int l = 2; l < coef_xyz->size[0]; l++) { */
+/*         idx3(power, l, 0, 0) = dh[2][0] * idx3(power, l - 1, 0, 0); */
+/*         idx3(power, l, 0, 1) = dh[2][1] * idx3(power, l - 1, 0, 1); */
+/*         idx3(power, l, 0, 2) = dh[2][2] * idx3(power, l - 1, 0, 2); */
+/*         idx3(power, l, 1, 0) = dh[1][0] * idx3(power, l - 1, 1, 0); */
+/*         idx3(power, l, 1, 1) = dh[1][1] * idx3(power, l - 1, 1, 1); */
+/*         idx3(power, l, 1, 2) = dh[1][2] * idx3(power, l - 1, 1, 2); */
+/*         idx3(power, l, 2, 0) = dh[0][0] * idx3(power, l - 1, 2, 0); */
+/*         idx3(power, l, 2, 1) = dh[0][1] * idx3(power, l - 1, 2, 1); */
+/*         idx3(power, l, 2, 2) = dh[0][2] * idx3(power, l - 1, 2, 2); */
+/*     } */
 
-    for (int a1 = 0; a1 < coef_xyz->size[0]; a1++) {
-        for (int l1 = 0; l1 < return_length_l(a1); l1++) {
-            int alpha_part1, gamma_part1, beta_part1;
-            const double multinomial1 = return_multimonial_prefactor(a1, l1, &alpha_part1, &gamma_part1, &beta_part1, &power, 0);
-            for (int g1 = 0; g1 < coef_xyz->size[1]; g1++) {
-                for (int l2 = 0; l2 < return_length_l(g1); l2++) {
-                    int alpha_part2, gamma_part2, beta_part2;
-                    const double multinomial2 = return_multimonial_prefactor(g1, l2, &alpha_part2, &gamma_part2, &beta_part2, &power, 2);
-                    for (int b1 = 0; b1 < coef_xyz->size[2]; b1++) {
-                        for (int l3 = 0; l3 < return_length_l(b1); l3++) {
-                            int alpha_part3, gamma_part3, beta_part3;
-                            const double multinomial3 = return_multimonial_prefactor(b1, l3, &alpha_part3, &gamma_part3, &beta_part3, &power, 1);
-                            idx3(coef_ijk, a1, g1, b1) += multinomial3 *
-                                multinomial2 *
-                                multinomial1 *
-                                idx3(coef_xyz[0],
-                                     alpha_part1 + alpha_part2 + alpha_part3,
-                                     gamma_part1 + gamma_part2 + gamma_part3,
-                                     beta_part1 + beta_part2 + beta_part3);
-                        }
-                    }
-                }
-            }
-        }
-    }
+/*     for (int a1 = 0; a1 < coef_xyz->size[0]; a1++) { */
+/*         for (int l1 = 0; l1 < return_length_l(a1); l1++) { */
+/*             int alpha_part1, gamma_part1, beta_part1; */
+/*             const double multinomial1 = return_multimonial_prefactor(a1, l1, &alpha_part1, &gamma_part1, &beta_part1, &power, 0); */
+/*             for (int g1 = 0; g1 < coef_xyz->size[1]; g1++) { */
+/*                 for (int l2 = 0; l2 < return_length_l(g1); l2++) { */
+/*                     int alpha_part2, gamma_part2, beta_part2; */
+/*                     const double multinomial2 = return_multimonial_prefactor(g1, l2, &alpha_part2, &gamma_part2, &beta_part2, &power, 2); */
+/*                     for (int b1 = 0; b1 < coef_xyz->size[2]; b1++) { */
+/*                         for (int l3 = 0; l3 < return_length_l(b1); l3++) { */
+/*                             int alpha_part3, gamma_part3, beta_part3; */
+/*                             const double multinomial3 = return_multimonial_prefactor(b1, l3, &alpha_part3, &gamma_part3, &beta_part3, &power, 1); */
+/*                             idx3(coef_ijk, a1, g1, b1) += multinomial3 * */
+/*                                 multinomial2 * */
+/*                                 multinomial1 * */
+/*                                 idx3(coef_xyz[0], */
+/*                                      alpha_part1 + alpha_part2 + alpha_part3, */
+/*                                      gamma_part1 + gamma_part2 + gamma_part3, */
+/*                                      beta_part1 + beta_part2 + beta_part3); */
+/*                         } */
+/*                     } */
+/*                 } */
+/*             } */
+/*         } */
+/*     } */
 
-    memcpy(coef_xyz->data, coef_ijk.data, sizeof(double) * coef_ijk.alloc_size_);
-    free(power.data);
-    free(coef_ijk.data);
-}
+/*     memcpy(coef_xyz->data, coef_ijk.data, sizeof(double) * coef_ijk.alloc_size_); */
+/*     free(power.data); */
+/*     free(coef_ijk.data); */
+/* } */
 
 
 /* void compute_two_gaussian_coefficients(const tensor *const coef, */

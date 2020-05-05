@@ -2,11 +2,13 @@
 #include "collocation_integration.h"
 #include "utils.h"
 
-extern void collocate_core_rectangular(double *scratch,
-                                       const double prefactor,
-                                       const struct tensor_ *co,
-                                       const struct tensor_ *p_alpha_beta_reduced_,
-                                       struct tensor_ *cube);
+void tensor_reduction_for_collocate_integrate(double *scratch,
+                                              /* const int *pos, */
+                                              const double alpha,
+                                              const double beta,
+                                              const struct tensor_ *co,
+                                              const struct tensor_ *p_alpha_beta_reduced_,
+                                              struct tensor_ *cube);
 
 /*
  * create a collocation list of a fixed number of elements
@@ -401,6 +403,7 @@ void calculate_collocation(void *const in)
         if (list_->list[i].new_gaussian_pair_) {
             tensor_reduction_for_collocate_integrate(list_->scratch + list_->list[i].cube.alloc_size_,
                                                      1.0,
+                                                     0.0,
                                                      &list_->list[i].coefs,
                                                      &list_->list[i].pol,
                                                      &list_->list[i].cube);
@@ -556,5 +559,107 @@ void initialize_W_and_T(collocation_integration *const handler, const tensor *cu
             free(handler->scratch);
         if (posix_memalign(&handler->scratch, 64, sizeof(double) * handler->scratch_alloc_size) != 0)
             abort();
+    }
+}
+
+void initialize_basis_vectors(collocation_integration *const handler, const double dh[3][3], const double dh_inv[3][3])
+{
+    handler->dh[0][0] = dh[0][0];
+    handler->dh[0][1] = dh[0][1];
+    handler->dh[0][2] = dh[0][2];
+    handler->dh[1][0] = dh[1][0];
+    handler->dh[1][1] = dh[1][1];
+    handler->dh[1][2] = dh[1][2];
+    handler->dh[2][0] = dh[2][0];
+    handler->dh[2][1] = dh[2][1];
+    handler->dh[2][2] = dh[2][2];
+
+    handler->dh_inv[0][0] = dh_inv[0][0];
+    handler->dh_inv[0][1] = dh_inv[0][1];
+    handler->dh_inv[0][2] = dh_inv[0][2];
+    handler->dh_inv[1][0] = dh_inv[1][0];
+    handler->dh_inv[1][1] = dh_inv[1][1];
+    handler->dh_inv[1][2] = dh_inv[1][2];
+    handler->dh_inv[2][0] = dh_inv[2][0];
+    handler->dh_inv[2][1] = dh_inv[2][1];
+    handler->dh_inv[2][2] = dh_inv[2][2];
+}
+
+
+void initialize_grid(collocation_integration *const handler,
+                     const bool use_ortho,
+                     const bool integrate,
+                     const double dh[3][3],
+                     const double dh_inv[3][3],
+                     const int *ngrid,
+                     double *const grid_)
+{
+    /* the data are durty */
+    bool tmpt = handler->grid_restored;
+
+    if (!integrate) {
+        tmpt = handler->grid_restored;
+        handler->grid_restored = false;
+        handler->integrate = false;
+    } else {
+        handler->integrate = true;
+        handler->grid_restored = true;
+    }
+
+     // we have a new grid. Note that checking if the results have been stored
+     // into the original grid is only valid when I do collocate
+
+    if ((handler->grid.size[0] != ngrid[2]) ||
+        (handler->grid.size[1] != ngrid[1])  ||
+        (handler->grid.size[2] != ngrid[0])) {
+
+        // Only test here if I do collocate
+        if ((handler->grid.data != NULL) &&
+            (!tmpt) &&
+            (handler->blocked_grid.blocked_decomposition) &&
+            (!integrate)) {
+            printf("Warning : you forgot to restore the grid.\n");
+            printf("You should call collocate_synchronize before switching to a new grid\n");
+            abort();
+        }
+
+        initialize_basis_vectors(handler,
+                                 dh,
+                                 dh_inv);
+        verify_orthogonality(dh,
+                             handler->orthogonal);
+
+        initialize_tensor_3(&handler->grid,
+                            ngrid[2],
+                            ngrid[1],
+                            ngrid[0]);
+
+        handler->grid.ld_ = ngrid[0];
+        handler->grid.data = grid_;
+
+        int grid_reverse[3] = {ngrid[2], ngrid[1], ngrid[0]};
+        size_t old_alloc_size = handler->blocked_grid.alloc_size_;
+
+        compute_block_dimensions(grid_reverse, handler->blockDim);
+        initialize_tensor_blocked(&handler->blocked_grid, 3, grid_reverse, handler->blockDim);
+        assert(handler->grid.size[0] % handler->blockDim[0] == 0);
+        assert(handler->grid.size[1] % handler->blockDim[1] == 0);
+        assert(handler->grid.size[2] % handler->blockDim[2] == 0);
+
+        if (handler->blocked_grid.alloc_size_ > old_alloc_size) {
+            if (handler->blocked_grid.data) {
+                free(handler->blocked_grid.data);
+            }
+            posix_memalign((void **)&handler->blocked_grid.data,
+                           32,
+                           sizeof(double) * handler->blocked_grid.alloc_size_);
+            assert(handler->blocked_grid.data != NULL);
+        }
+        if (integrate) {
+            decompose_grid_to_blocked_grid(&handler->grid,
+                                           &handler->blocked_grid);
+        } else {
+            memset(handler->blocked_grid.data, 0, sizeof(double) * handler->blocked_grid.alloc_size_);
+        }
     }
 }

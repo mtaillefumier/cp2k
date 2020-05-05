@@ -55,6 +55,7 @@ typedef struct collocation_integration_ {
 /* GPU device id. should replace this with GPU UID */
     int gpu_id;
 
+    bool integrate;
     /*
       Do we want the batched or the serial mode. The difference between the two
       modes is that in one case group of gaussians are treated collectively
@@ -93,13 +94,16 @@ typedef struct collocation_integration_ {
     /* do we need to update the grid */
     bool grid_restored;
 
+    double dh[3][3];
+    double dh_inv[3][3];
+
     /* block dimensions */
     int blockDim[4];
 
 /* Only allocated in sequential mode */
     tensor cube;
     tensor Exp;
-    bool plane[3];
+    bool orthogonal[3];
     size_t Exp_alloc_size;
     size_t cube_alloc_size;
     size_t coef_alloc_size;
@@ -139,4 +143,12 @@ extern void compute_blocks(collocation_integration *const handler,
                            const int *const lb_grid,
                            tensor *grid);
 extern void initialize_W_and_T(collocation_integration *const handler, const tensor *cube, const tensor *coef);
+extern void initialize_basis_vectors(collocation_integration *const handler, const double dh[3][3], const double dh_inv[3][3]);
+extern void initialize_grid(collocation_integration *const handler,
+                            const bool use_ortho,
+                            const bool integrate,
+                            const double dh[3][3],
+                            const double dh_inv[3][3],
+                            const int *ngrid,
+                            double *const grid_);
 #endif

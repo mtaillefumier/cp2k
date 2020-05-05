@@ -240,6 +240,7 @@ double grid_collocate_replay(const char* filename, const int cycles, const int n
     assert(strcmp(key, "n2") == 0);
 
     double pab[n2][n1];
+    double dmax = -10000000;
     for (int i=0; i<n2; i++) {
         for (int j=0; j<n1; j++) {
             int i2, j2;
@@ -248,9 +249,16 @@ double grid_collocate_replay(const char* filename, const int cycles, const int n
             assert(sscanf(line, "%99s %i %i %le", key, &i2, &j2, &value) == 4);
             assert(strcmp(key, "pab") == 0 && i == i2 && j==j2);
             pab[i][j] = value;
+            if(fabs(value) > dmax) dmax = fabs(value);
         }
     }
 
+    dmax = 1.0 / dmax;
+    for (int i=0; i<n2; i++) {
+        for (int j=0; j<n1; j++) {
+            pab[i][j] *= dmax;
+        }
+    }
     int ngrid_nonzero;
     assert(fgets(line, sizeof(line), fp) != NULL);
     assert(sscanf(line, "%99s %i", key, &ngrid_nonzero) == 2);
@@ -325,8 +333,8 @@ double grid_collocate_replay(const char* filename, const int cycles, const int n
     for (int i = 0; i < ngrid[2]; i++) {
         for (int j = 0; j < ngrid[1]; j++) {
             for (int k = 0; k < ngrid[0]; k++) {
-                printf("(%.6e %.6e) ", grid_test[i][j][k], ((double)cycles * grid_ref[i][j][k]));
-                const double diff = fabs((grid_test[i][j][k] - ((double)cycles * grid_ref[i][j][k])));
+                printf("(%.6e %.6e) ", grid_test[i][j][k], ((double)cycles * grid_ref[i][j][k] * dmax));
+                const double diff = fabs((grid_test[i][j][k] - ((double)cycles * grid_ref[i][j][k] * dmax)));
                 max_diff = fmax(max_diff, diff);
                 printf("%le\n", diff);
             }
