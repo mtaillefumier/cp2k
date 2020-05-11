@@ -321,6 +321,10 @@ void collocate_synchronize(void *gaussian_handler)
     }
 
     struct collocation_integration_ *handler = (struct collocation_integration_ *)gaussian_handler;
+
+    if (handler->integrate)
+        return;
+
     if ((handler->sequential_mode) && (!handler->grid_restored)) {
         if (handler->blocked_grid.blocked_decomposition) {
             add_blocked_tensor_to_tensor(&handler->blocked_grid, &handler->grid);
@@ -524,9 +528,7 @@ void compute_blocks(collocation_integration *const handler,
                                                   upper_corner,
                                                   Exp,
                                                   grid);
-
                         }
-
                         update_loop_index(lower_corner[2], upper_corner[2], grid->size[2], period[2], &x_offset, &x, &x1);
                     }
                     /* this dimension of the grid is divided over several ranks */
@@ -549,9 +551,11 @@ void initialize_W_and_T(collocation_integration *const handler, const tensor *cu
                                                 cube->size[2] /* i */);
 
     const size_t mem_alloc_size_ = max(max(tmp1 + tmp2, cube->alloc_size_), coef->alloc_size_);
+
+    handler->T_alloc_size = tmp1;
+    handler->W_alloc_size = tmp2;
+
     if ((mem_alloc_size_ > handler->scratch_alloc_size) || (handler->scratch == NULL)) {
-        handler->T_alloc_size = tmp1;
-        handler->W_alloc_size = tmp2;
 
         handler->scratch_alloc_size = mem_alloc_size_;
 
@@ -561,6 +565,38 @@ void initialize_W_and_T(collocation_integration *const handler, const tensor *cu
             abort();
     }
 }
+
+void initialize_W_and_T_integrate(collocation_integration *const handler, const int num_block, const tensor *coef, const tensor *block)
+{
+    /* T */
+    size_t tmp1 = compute_memory_space_tensor_4(num_block,
+                                                block->size[0] /* k */,
+                                                block->size[1] /* j */,
+                                                coef->size[1] /* alpha */);
+
+    /* W */
+    size_t tmp2 = compute_memory_space_tensor_4(num_block,
+                                                block->size[1] /* j */ ,
+                                                coef->size[1] /* alpha */,
+                                                coef->size[2] /* gamma */);
+
+    const size_t mem_alloc_size_ = tmp1 + tmp2;
+
+    handler->T_alloc_size = tmp1;
+    handler->W_alloc_size = tmp2;
+
+    if ((mem_alloc_size_ > handler->scratch_alloc_size) || (handler->scratch == NULL)) {
+
+        handler->scratch_alloc_size = mem_alloc_size_;
+
+        if (handler->scratch)
+            free(handler->scratch);
+        if (posix_memalign(&handler->scratch, 64, sizeof(double) * handler->scratch_alloc_size) != 0)
+            abort();
+    }
+}
+
+
 
 void initialize_basis_vectors(collocation_integration *const handler, const double dh[3][3], const double dh_inv[3][3])
 {

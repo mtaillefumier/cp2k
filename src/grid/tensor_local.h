@@ -221,6 +221,10 @@ inline size_t compute_memory_space_tensor_3(const int n1, const int n2, const in
     return (n1 * n2 * n3);
 }
 
+inline size_t compute_memory_space_tensor_4(const int n1, const int n2, const int n3, const int n4)
+{
+    return (n1 * n2 * n3 * n4);
+}
 
 extern size_t realloc_tensor(tensor *t);
 

@@ -149,8 +149,11 @@ void collocate_l0_blocked_z(double *scratch,
 
     for (int z1 = 0; z1 < cube->size[0]; z1++) {
         double *__restrict__ dst = &idx3(cube[0], z1, 0, 0);
+        const double pzz = pz[z1];
+#pragma GCC unroll 4
+#pragma GCC ivdep
         for (int s = 0; s < cube->size[1] * cube->ld_; s++)
-            dst[s] += pz[z1] * scratch[s];
+            dst[s] += pzz * scratch[s];
 
         /* cblas_daxpy(cube->size[1] * cube->ld_, */
         /*             pz[z1], */
@@ -216,6 +219,8 @@ void tensor_reduction_for_collocate_integrate_blocked(double *scratch,
                                                       const double beta,
                                                       const int *lower_block,
                                                       const int *upper_block,
+                                                      const bool *orthogonal,
+                                                      const struct tensor_ *Exp,
                                                       const struct tensor_ *co,
                                                       const struct tensor_ *p_alpha_beta_reduced_,
                                                       struct tensor_ *gr)
@@ -242,12 +247,18 @@ void tensor_reduction_for_collocate_integrate_blocked(double *scratch,
         abort();
     }
 
+    tensor W;
+    initialize_tensor_3(&W,
+                        co->size[1] /* gamma */ ,
+                        gr->blockDim[1] /* j */,
+                        gr->blockDim[2] /* i */);
+
 //    co->size[0] > 1
     if (co->size[0] > 1) {
 
 
 // build a list of matrix-matrix multiplications
-        tensor T, W;
+        tensor T;
         dgemm_params m1, m2, *m3;
 
         //m1 = (dgemm_params *)malloc(sizeof(dgemm_params) * (upper_block[1] - lower_block[1]));
@@ -262,11 +273,6 @@ void tensor_reduction_for_collocate_integrate_blocked(double *scratch,
                             co->size[0] /* alpha */,
                             co->size[1] /* gamma */,
                             gr->blockDim[1]/* j */);
-
-        initialize_tensor_3(&W,
-                            co->size[1] /* gamma */ ,
-                            gr->blockDim[1] /* j */,
-                            gr->blockDim[2] /* i */);
 
         T.data = scratch;
         W.data = scratch + T.alloc_size_;
@@ -334,6 +340,9 @@ void tensor_reduction_for_collocate_integrate_blocked(double *scratch,
 
                 dgemm_simplified(&m2, true);
 
+                if (Exp && orthogonal[2]) {
+                    apply_non_orthorombic_corrections_xy(x * gr->blockDim[2], y * gr->blockDim[1], Exp, &W);
+                }
                 /* the final step is again a reduction along the gamma indice. It can
                  * again be done with one dgemm. The operation is simply
                  *
@@ -344,10 +353,20 @@ void tensor_reduction_for_collocate_integrate_blocked(double *scratch,
                 int indz = 0;
                 for (int z = 0; z < (upper_block[0] - lower_block[0]); z++) {
                     int z1 = (z + lower_block[0]) % gr->size[0];
+                    if (Exp && (orthogonal[0] || orthogonal[1])) {
+                        gr->block->data = scratch + indz * gr->block->alloc_size_;
+                    } else {
+                        gr->block->data = &idx4(gr[0], z1, y1, x1, 0);
+                    }
+
                     m3[indz].op1 = 'T';
                     m3[indz].op2 = 'N';
                     m3[indz].alpha = alpha;
-                    m3[indz].beta = beta;
+                    if (Exp && (orthogonal[0] || orthogonal[1])) {
+                        m3[indz].beta = 0.0;
+                    } else {
+                        m3[indz].beta = beta;
+                    }
                     m3[indz].m = gr->blockDim[0]; // Z_{k \gamma}
                     m3[indz].n = gr->blockDim[1] * gr->blockDim[2]; // (ji) direction
                     m3[indz].k = co->size[1]; // \gamma
@@ -355,14 +374,37 @@ void tensor_reduction_for_collocate_integrate_blocked(double *scratch,
                     m3[indz].lda = p_alpha_beta_reduced_->ld_;
                     m3[indz].b = &idx3(W, 0, 0, 0); // W_{\gamma, j, i}
                     m3[indz].ldb = gr->blockDim[1] * W.ld_;
-                    m3[indz].c = &idx4(gr[0], z1, y1, x1, 0); // cube_{kji}
+                    m3[indz].c = gr->block->data; // cube_{kji}
                     m3[indz].ldc = gr->block->ld_ * gr->block->size[1];
+                    m3[indz].z1 = z1;
+                    m3[indz].z = z;
                     indz++;
                 }
 
                 batched_dgemm_simplified(m3,
                                          (upper_block[0] - lower_block[0]),
                                          true);
+
+                if (Exp && (orthogonal[0] || orthogonal[1])) {
+                    for (int z1 = 0; z1 < indz; z1++) {
+                        gr->block->data = m3[z1].c;
+                        if (orthogonal[0])
+                            apply_non_orthorombic_corrections_xz(x * gr->blockDim[2], m3[z1].z * gr->blockDim[0], Exp, gr->block);
+                        if (orthogonal[1])
+                            apply_non_orthorombic_corrections_yz(y * gr->blockDim[1], m3[z1].z * gr->blockDim[0], Exp, gr->block);
+                        for (int z = 0; z < gr->block->size[0]; z++) {
+                            for (int y = 0; y < gr->block->size[1]; y++) {
+                                gr->block->data = m3[z1].c;
+                                const double *__restrict const src = &idx3(gr->block[0], z, y, 0);
+                                gr->block->data = &idx4(gr[0], m3[z1].z1, y1, x1, 0);
+                                double *__restrict dst = &idx3(gr->block[0], z, y, 0);
+                                for (int x = 0; x < gr->block->size[2]; x++) {
+                                    dst[x] = beta * dst[x] + src[x];
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -386,11 +428,22 @@ void tensor_reduction_for_collocate_integrate_blocked(double *scratch,
                                     y * gr->blockDim[1],
                                     gr->block->ld_,
                                     p_alpha_beta_reduced_);
+
+            if (Exp && orthogonal[2]) {
+                W.data = scratch;
+                apply_non_orthorombic_corrections_xy(x * gr->blockDim[2], y * gr->blockDim[1], Exp, &W);
+            }
+
             for (int z = 0; z < (upper_block[0] - lower_block[0]); z++) {
                 int z1 = (z + lower_block[0]) % gr->size[0];
 
                 /* const int position[3] = {z * gr->blockDim[0], y * gr->blockDim[1], x * gr->blockDim[2]}; */
-                gr->block->data = &idx4(gr[0], z1, y1, x1, 0);
+                if (Exp && (orthogonal[0] || orthogonal[1])) {
+                    gr->block->data = scratch + gr->block->ld_ * gr->block->size[1];
+                } else {
+                    gr->block->data = &idx4(gr[0], z1, y1, x1, 0);
+                }
+
                 collocate_l0_blocked_z(scratch,
                                        co->data[0] * alpha,
                                        beta,
@@ -398,12 +451,24 @@ void tensor_reduction_for_collocate_integrate_blocked(double *scratch,
                                        p_alpha_beta_reduced_,
                                        gr->block);
 
-                /* collocate_l0_blocked(scratch, */
-                /*                      co->data[0] * alpha, */
-                /*                      beta, */
-                /*                      position, */
-                /*                      p_alpha_beta_reduced_, */
-                /*                      gr->block); */
+                if (Exp && (orthogonal[0] || orthogonal[1])) {
+                    if (orthogonal[0])
+                        apply_non_orthorombic_corrections_xz(x * gr->blockDim[2], z * gr->blockDim[0], Exp, gr->block);
+                    if (orthogonal[1])
+                        apply_non_orthorombic_corrections_yz(y * gr->blockDim[1], z * gr->blockDim[0], Exp, gr->block);
+
+                    for (int z = 0; z < gr->block->size[0]; z++) {
+                        for (int y = 0; y < gr->block->size[1]; y++) {
+                            gr->block->data = scratch + gr->block->ld_ * gr->block->size[1];
+                            const double *__restrict const src = &idx3(gr->block[0], z, y, 0);
+                            gr->block->data = &idx4(gr[0], z1, y1, x1, 0);
+                            double *__restrict const dst = &idx3(gr->block[0], z, y, 0);
+                            for (int x = 0; x < gr->block->size[2]; x++) {
+                                dst[x] = beta * dst[x] + src[x];
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -543,12 +608,27 @@ void tensor_reduction_for_collocate_integrate(double *scratch,
     }
 
     int position[3] = {0, 0, 0};
-    collocate_l0_blocked(scratch,
-                         co->data[0] * alpha,
-                         beta,
-                         position,
-                         p_alpha_beta_reduced_,
-                         cube);
+    collocate_l0_blocked_xy(scratch,
+                            co->data[0] * alpha,
+                            cube->size[2],
+                            cube->size[1],
+                            0,
+                            0,
+                            cube->ld_,
+                            p_alpha_beta_reduced_);
+    collocate_l0_blocked_z(scratch,
+                           co->data[0] * alpha,
+                           beta,
+                           0,
+                           p_alpha_beta_reduced_,
+                           cube);
+
+    /* collocate_l0_blocked(scratch, */
+    /*                      co->data[0] * alpha, */
+    /*                      beta, */
+    /*                      position, */
+    /*                      p_alpha_beta_reduced_, */
+    /*                      cube); */
     return;
 }
 
@@ -825,6 +905,8 @@ void grid_collocate(collocation_integration *const handler,
                                                          1.0,
                                                          lower_block_corner,
                                                          upper_block_corner,
+                                                         handler->orthogonal,
+                                                         NULL,
                                                          &handler->coef,
                                                          &handler->pol,
                                                          &handler->blocked_grid);

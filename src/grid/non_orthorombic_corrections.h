@@ -11,8 +11,8 @@ extern void calculate_non_orthorombic_corrections_tensor(const double mu_mean,
 extern void apply_non_orthorombic_corrections(const bool *__restrict plane,
                                               const tensor *const Exp,
                                               tensor *const cube);
-extern void apply_non_orthorombic_corrections_xy(const bool apply, const int x, const int y, const struct tensor_ *const Exp, struct tensor_ *const m);
-extern void apply_non_orthorombic_corrections_xz(const bool apply, const int x, const int z, const struct tensor_ *const Exp, struct tensor_ *const m);
-extern void apply_non_orthorombic_corrections_yz(const bool apply, const int y, const int z, const struct tensor_ *const Exp, struct tensor_ *const m);
+extern void apply_non_orthorombic_corrections_xy(const int x, const int y, const struct tensor_ *const Exp, struct tensor_ *const m);
+extern void apply_non_orthorombic_corrections_xz(const int x, const int z, const struct tensor_ *const Exp, struct tensor_ *const m);
+extern void apply_non_orthorombic_corrections_yz(const int y, const int z, const struct tensor_ *const Exp, struct tensor_ *const m);
 
 #endif

@@ -169,16 +169,19 @@ double integrate_l0_blocked_z(double *scratch,
                               struct tensor_ *const grid)
 {
     const double *__restrict const pz = &idx3(p_alpha_beta_reduced_[0], 0, 0, z0); /* k indice */
-    double result = 0.0;
-    for (int z1 = 0; z1 < grid->size[0]; z1++) {
+    double *__restrict__ dst = &idx3(grid[0], 0, 0, 0);
+    LIBXSMM_PRAGMA_SIMD
+        for (int s = 0; s < grid->size[1] * grid->ld_; s++) {
+            dst[s] *= pz[0];
+        }
+
+    for (int z1 = 1; z1 < grid->size[0]; z1++) {
         double *__restrict__ src = &idx3(grid[0], z1, 0, 0);
-        LIBXSMM_PRAGMA_SIMD
-            for (int s = 0; s < grid->size[1] * grid->ld_; s++) {
-                result += pz[z1] * scratch[s] * src[s];
-            }
+        const double pzz = pz[z1];
+        cblas_daxpy(grid->size[1] * grid->ld_, pzz, src, 1, dst, 1);
     }
 
-    return result;
+    return cblas_ddot(grid->size[1] * grid->ld_, &idx3(grid[0], 0, 0, 0), 1, scratch, 1);
 }
 
 /*
@@ -550,13 +553,29 @@ void grid_integrate(collocation_integration *const handler,
                                           &handler->Exp,
                                           &handler->cube);
 
-    tensor_reduction_for_collocate_integrate(handler->scratch,
-                                             // pointer to scratch memory
-                                             1.0,
-                                             0.0,
-                                             &handler->cube,
-                                             &handler->pol,
-                                             &handler->coef);
+    if (lp != 0) {
+        tensor_reduction_for_collocate_integrate(handler->scratch,
+                                                 // pointer to scratch memory
+                                                 1.0,
+                                                 0.0,
+                                                 &handler->cube,
+                                                 &handler->pol,
+                                                 &handler->coef);
+    } else {
+        collocate_l0_blocked_xy(handler->scratch,
+                                1.0,
+                                handler->cube.size[1],
+                                handler->cube.size[2],
+                                0,
+                                0,
+                                handler->cube.ld_,
+                                &handler->pol);
+        // it is just a scalar product
+        handler->coef.data[0] = integrate_l0_blocked_z(handler->scratch,
+                                                       0,
+                                                       &handler->pol,
+                                                       &handler->cube);
+    }
 
 /* go from ijk -> xyz */
     if (!use_ortho && !use_ortho_forced)
