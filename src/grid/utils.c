@@ -6,6 +6,10 @@
 #include <string.h>
 #include <math.h>
 
+#ifdef __LIBXSMM
+#include <libxsmm.h>
+#endif
+
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -15,15 +19,31 @@
 
 void compute_block_dimensions(const int *const grid_size, int *const blockDim)
 {
-    int block_size_test[6] = {2, 3, 4, 5, 7, 8};
-    bool block_divided[6];
+    int block_size_test[8] = {2, 3, 4, 5, 6, 7, 8, 10};
+    bool block_divided[8];
     for (int d = 0; d < 3; d++) {
-        for (int s = 0; s < 6; s++)
+        for (int s = 0; s < 8; s++)
             block_divided[s] = (grid_size[d] % block_size_test[s] == 0);
 
-        if (block_divided[5])
+        if (block_divided[7])
+        {
+            blockDim[d] = 10;
+            continue;
+        }
+
+        if (block_divided[6])
         {
             blockDim[d] = 8;
+            continue;
+        }
+
+        if (block_divided[5]) {
+            blockDim[d] = 7;
+            continue;
+        }
+
+        if (block_divided[4]) {
+            blockDim[d] = 6;
             continue;
         }
 
@@ -44,11 +64,6 @@ void compute_block_dimensions(const int *const grid_size, int *const blockDim)
 
         if (block_divided[0]) {
             blockDim[d] = 2;
-            continue;
-        }
-
-        if (block_divided[4]) {
-            blockDim[d] = 7;
             continue;
         }
     }
@@ -83,7 +98,6 @@ void grid_fill_pol(const bool transpose,
     if (transpose) {
         initialize_tensor_2(&pol, cmax, lp + 1);
         pol.data = pol_;
-        memset(pol.data, 0, sizeof(double) * pol.alloc_size_);
         /* It is original Ole code. I need to transpose the polynomials for the
          * integration routine and Ole code already does it. */
         for (int ig = 0; ig >= xmin; ig--) {
@@ -113,7 +127,7 @@ void grid_fill_pol(const bool transpose,
     } else {
         initialize_tensor_2(&pol, lp + 1, cmax);
         pol.data = pol_;
-        memset(pol.data, 0, sizeof(double) * pol.alloc_size_);
+        /* memset(pol.data, 0, sizeof(double) * pol.alloc_size_); */
         /*
          *   compute the values of all (x-xp)**lp*exp(..)
          *
@@ -337,6 +351,44 @@ void add_blocked_tensor_to_tensor(const struct tensor_ *block_grid, tensor *gr)
 }
 
 /* recompose the natural grid from the block decomposed grid and add the result
+ * to the grid gr. The blocked tensor coordinates are in the yxz format */
+void add_transpose_blocked_tensor_to_tensor(const struct tensor_ *block_grid, tensor *gr)
+{
+    tensor tmp;
+    initialize_tensor_3(&tmp, block_grid->blockDim[0], block_grid->blockDim[1], block_grid->blockDim[2]);
+    int lower_corner[3], upper_corner[3];
+
+    for (int y = 0; y < block_grid->size[1]; y++) {
+        lower_corner[1] = y * block_grid->blockDim[1];
+        upper_corner[1] = lower_corner[1] + min(gr->size[1] - lower_corner[1], block_grid->blockDim[1]);
+        for (int x = 0; x < block_grid->size[2]; x++) {
+            lower_corner[2] = x * block_grid->blockDim[2];
+            upper_corner[2] = lower_corner[2] + min(gr->size[2] - lower_corner[2], block_grid->blockDim[2]);
+            for (int z = 0; z < block_grid->size[0]; z++) {
+                lower_corner[0] = z * block_grid->blockDim[0];
+                upper_corner[0] = lower_corner[0] + min(gr->size[0] - lower_corner[0], block_grid->blockDim[0]);
+                tmp.data = &idx4(block_grid[0], y, x, z, 0);
+
+                const int sizex = upper_corner[2] - lower_corner[2];
+                const int sizey = upper_corner[1] - lower_corner[1];
+                const int sizez = upper_corner[0] - lower_corner[0];
+
+                for (int z1 = 0; z1 < sizez; z1++) {
+                    for (int y1 = 0; y1 < sizey; y1++) {
+                        double *__restrict__ dst = &idx3(gr[0], lower_corner[0] + z1, lower_corner[1] + y1, lower_corner[2]);
+                        double *__restrict__ src = &idx3(tmp, z1, y1, 0);
+                        for (int x1 = 0; x1 < sizex; x1++) {
+                            dst[x1] += src[x1];
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+/* recompose the natural grid from the block decomposed grid and add the result
  * to the grid gr */
 void compare_blocked_tensor_to_tensor(const struct tensor_ *block_grid, tensor *gr)
 {
@@ -505,6 +557,7 @@ void dgemm_simplified(dgemm_params *const m, const bool use_libxsmm)
             m->flags =  LIBXSMM_GEMM_FLAG_TRANS_A | LIBXSMM_GEMM_FLAG_TRANS_B;
         }
 
+
         if (m->kernel == NULL) {
             m->kernel = libxsmm_dmmdispatch(m->n,
                                             m->m,
@@ -597,17 +650,19 @@ void batched_dgemm_simplified(dgemm_params *const m, const int batch_size, const
         }
 
         if (m->kernel == NULL) {
-            kernel = libxsmm_dmmdispatch(m->n,
-                                         m->m,
-                                         m->k,
-                                         &m->ldb,
-                                         &m->lda,
-                                         &m->ldc,
-                                         &m->alpha,
-                                         &m->beta,
-                                         &m->flags,
-                                         &m->prefetch);
+            m->kernel = libxsmm_dmmdispatch(m->n,
+                                            m->m,
+                                            m->k,
+                                            &m->ldb,
+                                            &m->lda,
+                                            &m->ldc,
+                                            &m->alpha,
+                                            &m->beta,
+                                            &m->flags,
+                                            &m->prefetch);
         }
+
+        kernel = m->kernel;
 
         if (kernel) {
             for (int s = 0; s < batch_size - 1; s++) {
@@ -671,26 +726,6 @@ void extract_sub_grid(const int *lower_corner,
                       const tensor *const grid,
                       tensor *const subgrid)
 {
-    for (int d = 0; d < 3; d++) {
-        if ((lower_corner[d] >= grid->size[d]) ||
-            (lower_corner[d] < 0) ||
-            (lower_corner[d] >= upper_corner[d]) ||
-            (upper_corner[d] > grid->size[d]) ||
-            (upper_corner[d] <= 0) ||
-            (upper_corner[d] - lower_corner[d] > subgrid->size[d]) ||
-            (grid == NULL) ||
-            (subgrid == NULL)) {
-
-            printf("Error : invalid parameters. Values of the given parameters along the first wrong dimension\n");
-            printf("      : lorner corner  [%d] = %d\n", d, lower_corner[d]);
-            printf("      : upper  corner  [%d] = %d\n", d, upper_corner[d]);
-            printf("      : diff           [%d] = %d\n", d, upper_corner[d] - lower_corner[d]);
-            printf("      : src grid size  [%d] = %d\n", d, grid->size[d]);
-            printf("      : dst grid size  [%d] = %d\n", d, subgrid->size[d]);
-            abort();
-        }
-    }
-
     int position1[3] = {0, 0, 0};
 
     if (position) {
@@ -703,7 +738,20 @@ void extract_sub_grid(const int *lower_corner,
     const int sizey = upper_corner[1] - lower_corner[1];
     const int sizez = upper_corner[0] - lower_corner[0];
 
+    /* libxsmm_mcopy_descriptor_init(libxsmm_descriptor_blob* blob, */
+    /*                               unsigned int typesize, unsigned int m, unsigned int n, unsigned int ldo, */
+    /*                               unsigned int ldi, int flags, int prefetch, const int* unroll); */
+
     for (int z = 0; z < sizez; z++) {
+/* #if defined(__LIBXSMM) */
+/*         libxsmm_matcopy(&idx3(subgrid[0], position1[0] + z, position1[1], position1[2]), */
+/*                         &idx3(grid[0], lower_corner[0] + z, lower_corner[1], lower_corner[2]), */
+/*                         sizeof(double), */
+/*                         sizex, */
+/*                         sizey, */
+/*                         grid[0].ld_, */
+/*                         subgrid[0].ld_); */
+/* #else */
         for (int y = 0; y < sizey; y++) {
             double *__restrict__ src = &idx3(grid[0], lower_corner[0] + z, lower_corner[1] + y, lower_corner[2]);
             double *__restrict__ dst = &idx3(subgrid[0], position1[0] + z, position1[1] + y, position1[2]);
@@ -712,11 +760,11 @@ void extract_sub_grid(const int *lower_corner,
                 dst[x] = src[x];
             }
         }
+/* #endif */
     }
 
     return;
 }
-
 
 void add_sub_grid(const int *lower_corner,
                   const int *upper_corner,
@@ -972,8 +1020,7 @@ void compute_block_boundaries(const int *blockDim,
                               const int *lower_boundaries_cube,
                               int *lower_block_corner,
                               int *upper_block_corner,
-                              int *pol_offsets,
-                              bool *fold)
+                              int *pol_offsets)
 {
     int position[3];
     return_cube_position(grid_size,
@@ -985,30 +1032,6 @@ void compute_block_boundaries(const int *blockDim,
     pol_offsets[0] = 0;
     pol_offsets[1] = 0;
     pol_offsets[2] = 0;
-
-    /* for (int axis = 0; axis < 3; axis++) */
-    /*     fold[axis] = (cube_size[axis] >= period[axis]); */
-
-    /* if (fold[0] && fold[1] && fold[2]) { */
-    /*     lower_block_corner[0] = 0; */
-    /*     lower_block_corner[1] = 0; */
-    /*     lower_block_corner[2] = 0; */
-
-    /*     upper_block_corner[0] = blocked_grid_size[0]; */
-    /*     upper_block_corner[1] = blocked_grid_size[1]; */
-    /*     upper_block_corner[2] = blocked_grid_size[2]; */
-    /*     return; */
-    /* } */
-
-    /* if ((position[0] + cube_size[0] < grid_size[0]) && */
-    /*     (position[1] + cube_size[1] < grid_size[1]) && */
-    /*     (position[2] + cube_size[2] < grid_size[2])) { */
-
-    /*     fold[0] = false; */
-    /*     fold[1] = false; */
-    /*     fold[2] = false; */
-    /* } */
-
 
     int blockIdx[3];
     for (int axis = 0; axis < 3; axis++) {
@@ -1024,11 +1047,10 @@ void compute_block_boundaries(const int *blockDim,
         }
     }
 
-
     return;
 }
 
-void verify_orthogonality(const double dh[3][3], bool *const orthogonal)
+void verify_orthogonality(const double dh[3][3], bool orthogonal[3])
 {
     double norm1, norm2, norm3;
 
@@ -1041,11 +1063,11 @@ void verify_orthogonality(const double dh[3][3], bool *const orthogonal)
     norm3 = 1.0 / sqrt(norm3);
 
     /* x z */
-    orthogonal[0] = (fabs(dh[0][0] * dh[2][0] + dh[0][1] * dh[2][1] + dh[0][2] * dh[2][2]) * norm1 * norm3 < 1e-12);
+    orthogonal[0] = ((fabs(dh[0][0] * dh[2][0] + dh[0][1] * dh[2][1] + dh[0][2] * dh[2][2]) * norm1 * norm3) < 1e-12);
     /* y z */
-    orthogonal[1] = (fabs(dh[1][0] * dh[2][0] + dh[1][1] * dh[2][1] + dh[1][2] * dh[2][2]) * norm2 * norm3 < 1e-12);
+    orthogonal[1] = ((fabs(dh[1][0] * dh[2][0] + dh[1][1] * dh[2][1] + dh[1][2] * dh[2][2]) * norm2 * norm3) < 1e-12);
     /* x y */
-    orthogonal[2] = (fabs(dh[0][0] * dh[1][0] + dh[0][1] * dh[1][1] + dh[0][2] * dh[1][2]) * norm1 * norm2 < 1e-12);
+    orthogonal[2] = ((fabs(dh[0][0] * dh[1][0] + dh[0][1] * dh[1][1] + dh[0][2] * dh[1][2]) * norm1 * norm2) < 1e-12);
 }
 
 int return_exponents(const int index) {

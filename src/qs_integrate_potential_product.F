@@ -480,7 +480,7 @@ CONTAINS
       ithread = 0
 !$    ithread = omp_get_thread_num()
       ! sequential mode
-      gaussian_handle = collocate_pgf_create_handle(0, 128, .TRUE.)
+      gaussian_handle = collocate_pgf_create_handle(0, 128, .FALSE.)
 
       work => workt(:, :, ithread)
       hab => habt(:, :, ithread)

@@ -1,7 +1,18 @@
 #ifndef UTILS_H_
 #define UTILS_H_
 
+#include <stdio.h>
 #include <stdbool.h>
+
+#if defined(__MKL) || defined(HAVE_MKL)
+#include <mkl.h>
+#include <mkl_cblas.h>
+#endif
+
+#if defined(__LIBXSMM)
+#include <libxsmm.h>
+#endif
+
 #include "tensor_local.h"
 
 static const int ncoset[] = {1,  // l=0
@@ -45,31 +56,30 @@ inline static int coset(int lx, int ly, int lz) {
     }
 }
 
-
-#if defined(__MKL) || defined(HAVE_MKL)
-#include <mkl.h>
-#include <mkl_cblas.h>
-#endif
-
-#ifdef __LIBXSMM
-#include <libxsmm.h>
-#endif
+inline static int coset_without_offset(int lx, int ly, int lz) {
+    const int l = lx + ly + lz;
+    if (l==0) {
+        return 0;
+    } else {
+        return ((l-lx) * (l-lx+1)) /2 + lz;
+    }
+}
 
 typedef struct dgemm_params_ {
     char storage;
     char op1;
     char op2;
-#if defined(__LIBXSMM)
-    libxsmm_dmmfunction kernel;
-    int prefetch;
-    int flags;
-#endif
     double alpha;
     double beta;
     double *a, *b, *c;
     int m, n, k, lda, ldb, ldc;
     int x, y, z;
     int x1, y1, z1;
+#if defined(__LIBXSMM)
+    libxsmm_dmmfunction kernel;
+    int prefetch;
+    int flags;
+#endif
 } dgemm_params;
 
 extern bool fold_polynomial(double *scratch, tensor *pol, const int axis, const int center, const int cube_size, const int lb_cube, const int lb_grid, const int grid_size, const int period,  int *const pivot);
@@ -80,18 +90,6 @@ extern void find_interval(const int start, const int end, const int *non_zero_el
 extern int multinomial3(const int a, const int b, const int c);
 
 extern int return_exponents(const int index);
-
-extern void apply_non_orthorombic_corrections(const bool *__restrict plane,
-                                              const tensor *const Exp,
-                                              tensor *const cube);
-
-extern void calculate_non_orthorombic_corrections_tensor(const double mu_mean,
-                                                         const double *r_ab,
-                                                         const double basis[3][3],
-                                                         const int *const xmin,
-                                                         const int *const xmax,
-                                                         bool *plane,
-                                                         tensor *const Exp);
 
 inline int return_length_l(const int l) {
     static const int length_[] = {1, 4, 7, 11, 16, 22, 29, 37, 46, 56, 67, 79, 92, 106, 121, 137, 154, \
@@ -157,7 +155,12 @@ extern int compute_cube_properties(const bool ortho,
                                    int *lb_cube,
                                    int *ub_cube,
                                    int *cube_size);
-extern void  return_cube_position(const int *__restrict__ grid_size, const int *__restrict__ lb_grid, const int *__restrict__ cube_center, const int *__restrict__ lower_boundaries_cube, const int *__restrict__period, int *__restrict__ const position);
+extern void  return_cube_position(const int *__restrict__ grid_size,
+                                  const int *__restrict__ lb_grid,
+                                  const int *__restrict__ cube_center,
+                                  const int *__restrict__ lower_boundaries_cube,
+                                  const int *__restrict__period,
+                                  int *__restrict__ const position);
 extern void add_sub_grid_with_pcb(const int *period,
                                   const int *lower_corner,
                                   const int *upper_corner,
@@ -172,18 +175,17 @@ extern void batched_dgemm_simplified(dgemm_params *const m,
                                      const int batch_size,
                                      const bool use_libxsmm);
 
-void compute_block_boundaries(const int *blockDim,
-                              const int *lb_grid,
-                              const int *grid_size,
-                              const int *blocked_grid_size,
-                              const int *period,
-                              const int *cube_center,
-                              const int *cube_size,
-                              const int *lower_boundaries_cube,
-                              int *lower_block_corner,
-                              int *upper_block_corner,
-                              int *pol_offsets,
-                              bool *fold);
+extern void compute_block_boundaries(const int *blockDim,
+                                     const int *lb_grid,
+                                     const int *grid_size,
+                                     const int *blocked_grid_size,
+                                     const int *period,
+                                     const int *cube_center,
+                                     const int *cube_size,
+                                     const int *lower_boundaries_cube,
+                                     int *lower_block_corner,
+                                     int *upper_block_corner,
+                                     int *pol_offsets);
 
 extern void grid_fill_pol(const bool transpose,
                           const double dr,
@@ -196,9 +198,12 @@ extern void grid_fill_pol(const bool transpose,
                           const double zetp,
                           double *pol_);
 
+
 extern void decompose_grid_to_blocked_grid(const tensor *gr, struct tensor_ *block_grid);
 extern void add_blocked_tensor_to_tensor(const struct tensor_ *block_grid, tensor *gr);
 extern void compare_blocked_tensor_to_tensor(const struct tensor_ *block_grid, tensor *gr);
 extern void compute_block_dimensions(const int *const grid_size, int *const blockDim);
-extern void verify_orthogonality(const double dh[3][3], bool *const orthogonal);
+extern void verify_orthogonality(const double dh[3][3], bool orthogonal[3]);
+extern void add_transpose_blocked_tensor_to_tensor(const struct tensor_ *block_grid, tensor *gr);
+
 #endif

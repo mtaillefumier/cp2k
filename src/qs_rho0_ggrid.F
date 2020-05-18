@@ -183,7 +183,7 @@ CONTAINS
 
       ALLOCATE (pab(nch_max, 1))
 
-      gaussian_handle = collocate_pgf_create_handle(0, 128, .TRUE.)
+      gaussian_handle = collocate_pgf_create_handle(0, 128, .FALSE.)
 
       DO ikind = 1, SIZE(atomic_kind_set)
          CALL get_atomic_kind(atomic_kind_set(ikind), atom_list=atom_list, natom=nat)
@@ -527,7 +527,7 @@ CONTAINS
 
       grid_distributed = rs_v%desc%distributed
       ! sequential mode
-      gaussian_handle = collocate_pgf_create_handle(0, 128, .TRUE.)
+      gaussian_handle = collocate_pgf_create_handle(0, 128, .FALSE.)
 
       DO ikind = 1, SIZE(atomic_kind_set, 1)
          NULLIFY (orb_basis_set, atom_list, harmonics)

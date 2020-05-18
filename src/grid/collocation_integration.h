@@ -4,81 +4,76 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
+
+#ifdef __USE_GPU
+#include <cuda.h>
+#include <cublas_v2.h>
+#endif
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include "tensor_local.h"
-#include "thpool.h"
+#ifdef __USE_GPU
+    typedef struct pgf_list_gpu_ {
+        /* */
+        int lmax;
 
-typedef struct collocation_block_ {
-    /* */
-    bool plane[3];
-    tensor pol;
-    tensor coefs;
-    tensor Exp;
-    tensor cube;
-    tensor grid;
+        /* maximum size of the batch */
+        int batch_size;
 
-    /* intermdiate storage for the collocation. We don not allocate these in
-     * advance because it is method dependent */
+        /* size of the batch */
+        int list_length;
 
-    tensor T;
-    tensor W;
-    int position_inside_cube[3];
-    int lower_corner[3];
-    int upper_corner[3];
-    int period[3];
-    int initialized_;
-    /* first block indicating a new gaussian pair */
-    /* this mean that the full cube will be computed. */
-    /* the next blocks will only store the positions etc... */
+        /* number of elements occupied in the buffer */
+        size_t coef_dynamic_alloc_size_gpu_;
 
-    bool new_gaussian_pair_;
-} collocation_block;
+        /*  total size of the buffer */
+        size_t coef_alloc_size_gpu_;
 
-typedef struct collocation_list_ {
-    struct collocation_block_ *list;
-    int number_of_elements_;
-    int total_number_of_elements_;
-    bool done;
-    bool first_round;
-    int initialized_;
-    double *scratch;
-    size_t scratch_size;
-    size_t cube_alloc_size;
-    size_t coef_alloc_size;
-    size_t alpha_alloc_size;
-    size_t pol_alloc_size;
-    size_t T_alloc_size;
-    size_t W_alloc_size;
-    int integration;
-} collocation_list;
+        /* size of the previously allocated coefficent table */
+        size_t coef_previous_alloc_size_;
+
+        double *coef_cpu_;
+        double *coef_gpu_;
+
+        /* Info about the cubes */
+        int *cube_size_cpu_;
+        int *cube_position_cpu_;
+        int *coef_offset_cpu_;
+        double *roffset_cpu_;
+
+        int *cube_size_gpu_;
+        int *cube_position_gpu_;
+        int *coef_offset_gpu_;
+        double *roffset_gpu_;
+
+        /* angular momentum */
+        int *lmax_cpu_;
+        int *lmax_gpu_;
+
+        double *zeta_cpu_;
+        double *zeta_gpu_;
+
+        double *data_gpu_;
+
+        cudaStream_t stream;
+        bool job_finished;
+
+        cublasHandle_t blas_handle;
+        /* if true, the grid on the gpu should be reallocated */
+        bool durty;
+    } pgf_list_gpu;
+#endif
 
 typedef struct collocation_integration_ {
-/* GPU device id. should replace this with GPU UID */
+    /* GPU device id. should replace this with GPU UID */
     int gpu_id;
-
-    bool integrate;
-    /*
-      Do we want the batched or the serial mode. The difference between the two
-      modes is that in one case group of gaussians are treated collectively
-      while they are treated one by one in the other case. When the GPU mode is
-      activated then the batch mode is also activated.
-    */
-    bool sequential_mode;
-
-    /* two lists containing information about the computations to do. Only
-     * allocated when the serial is off */
-    struct collocation_list_ *list[2];
-
-    /* current list to be filled */
-    struct collocation_list_ *current_list;
-
-    /* Just for debugging */
-    int working_thread;
+    bool use_gpu;
 
     /* number of gaussians block in each list */
     int number_of_gaussian;
-
-    /* structure for handling the thread pool */
-    threadpool thpool;
 
     /* some scratch storage to avoid malloc / free all the time */
     tensor alpha;
@@ -87,15 +82,23 @@ typedef struct collocation_integration_ {
 
     /* tensors for the grid to collocate or integrate */
     /* original grid */
-    tensor grid, grid_test;
+    tensor grid;
+
+    int period[3];
+    int lb_grid[3];
+
     /* original grid decomposed in block */
     tensor blocked_grid;
 
     /* do we need to update the grid */
     bool grid_restored;
 
+    /* coordinates of the blocks */
+    tensor blocks_coordinates;
+
     double dh[3][3];
     double dh_inv[3][3];
+    double dx[3];
 
     /* block dimensions */
     int blockDim[4];
@@ -103,7 +106,6 @@ typedef struct collocation_integration_ {
 /* Only allocated in sequential mode */
     tensor cube;
     tensor Exp;
-    bool orthogonal[3];
     size_t Exp_alloc_size;
     size_t cube_alloc_size;
     size_t coef_alloc_size;
@@ -112,43 +114,55 @@ typedef struct collocation_integration_ {
     size_t scratch_alloc_size;
     size_t T_alloc_size;
     size_t W_alloc_size;
+    int lmax;
 
     void *scratch;
+#ifdef __USE_GPU
+    pgf_list_gpu *worker_list;
+#endif
+    int worker_list_size;
+
+    bool durty;
+    bool orthogonal[3];
+    bool integrate;
+
+/* bool sequential_mode; */
+
 } collocation_integration;
 
-
-extern collocation_list *create_collocation_list(const int num_elem, const int integration);
-extern void destroy_collocation_list(struct collocation_list_ *list_collocation);
-extern void print_collocation_block(const struct collocation_block_ *const list);
-extern void *print_collocation_list(void *const handler);
-extern void mark_collocation_new_pair(struct collocation_integration_ *const handler);
-extern void add_collocation_block(struct collocation_integration_ *const handler,
-                                  const int *period,
-                                  const int *cube_size,
-                                  const int *position_inside_cube,
-                                  const int *lower_corner,
-                                  const int *upper_corner,
-                                  const tensor *Exp,
-                                  tensor *grid);
 extern void *collocate_create_handle(const int device_id, const int number_of_gaussian, const bool sequential_mode);
 extern void collocate_synchronize(void *gaussian_handler);
 extern void collocate_finalize(void *gaussian_handle);
 extern void calculate_collocation(void *const in);
-extern void compute_blocks(collocation_integration *const handler,
-                           const int *const lower_boundaries_cube,
-                           const int *const cube_size,
-                           const int *const cube_center,
-                           const int *const period,
-                           const tensor *const Exp,
-                           const int *const lb_grid,
-                           tensor *grid);
 extern void initialize_W_and_T(collocation_integration *const handler, const tensor *cube, const tensor *coef);
 extern void initialize_basis_vectors(collocation_integration *const handler, const double dh[3][3], const double dh_inv[3][3]);
-extern void initialize_grid(collocation_integration *const handler,
+extern void initialize_grid(collocation_integration *handler,
                             const bool use_ortho,
                             const bool integrate,
                             const double dh[3][3],
                             const double dh_inv[3][3],
+                            const int npts[3],
+                            const int lb_grid[3],
                             const int *ngrid,
-                            double *const grid_);
+                            double *grid_);
+
+#ifdef __USE_GPU
+    extern void release_gpu_resources(collocation_integration *handler);
+    extern void initialize_worker_list_on_gpu(collocation_integration *handler, const int device_id, const int number_of_gaussian, const bool use_gpu);
+    extern void initialize_grid_parameters_on_gpu(collocation_integration *handler, const bool grid_resize, const int period[3]);
+
+    extern void reset_list_gpu(pgf_list_gpu *handler);
+    extern void compute_collocation_gpu(pgf_list_gpu *handler);
+    extern void add_orbital_to_list(pgf_list_gpu *list,
+                                    const int lp,
+                                    const int cube_size[3],
+                                    const int cube_position[3],
+                                    const double roffset[3],
+                                    const double zetp,
+                                    const tensor *const coef);
+#endif
+
+#ifdef __cplusplus
+}
+#endif
 #endif

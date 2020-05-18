@@ -1722,7 +1722,7 @@ CONTAINS
 
       ! create an handle for each omp thread. By default the queue of 256 blocks. It is neglected when running in sequential mode
 
-      gaussian_handle =  collocate_pgf_create_handle(0, 256, .TRUE.)
+      gaussian_handle =  collocate_pgf_create_handle(0, 4096, .TRUE.)
 
       pab => pabt(:, :, ithread)
       work => workt(:, :, ithread)
@@ -1899,91 +1899,92 @@ CONTAINS
             END IF
          END DO loop_tasks
       END DO loop_pairs
-!$OMP END DO
+      !$OMP END DO
 
-         ! wait for all computation to complete and release memory.
-         CALL collocate_pgf_synchronize(gaussian_handle)
+      ! wait for all computation to complete and release memory. Do not remove this omp barrier
+      CALL collocate_pgf_synchronize(gaussian_handle)
+      !$OMP BARRIER
 
-         ! Now sum the thread-local grids back into the rs_grid
-         ! (in parallel, each thread writes to a section of the rs_grid at a time)
-         nz = (1 + rs_rho(igrid_level)%rs_grid%ub_local(3) &
-               - rs_rho(igrid_level)%rs_grid%lb_local(3))
-         nxy = (1 + rs_rho(igrid_level)%rs_grid%ub_local(1) &
-                - rs_rho(igrid_level)%rs_grid%lb_local(1)) &
-               *(1 + rs_rho(igrid_level)%rs_grid%ub_local(2) &
-                 - rs_rho(igrid_level)%rs_grid%lb_local(2))
+      ! Now sum the thread-local grids back into the rs_grid
+      ! (in parallel, each thread writes to a section of the rs_grid at a time)
+      nz = (1 + rs_rho(igrid_level)%rs_grid%ub_local(3) &
+           - rs_rho(igrid_level)%rs_grid%lb_local(3))
+      nxy = (1 + rs_rho(igrid_level)%rs_grid%ub_local(1) &
+           - rs_rho(igrid_level)%rs_grid%lb_local(1)) &
+           *(1 + rs_rho(igrid_level)%rs_grid%ub_local(2) &
+           - rs_rho(igrid_level)%rs_grid%lb_local(2))
 
-         ! Work out the number of tree levels, and start the reduction
+      ! Work out the number of tree levels, and start the reduction
 
-         nrlevel = CEILING(LOG10(1.0_dp*nthread)/LOG10(2.0_dp))
+      nrlevel = CEILING(LOG10(1.0_dp*nthread)/LOG10(2.0_dp))
 
-         DO nr = 1, nrlevel
-            nblock = 2**nr
-            nzsize = MIN(nblock, nthread - (ithread/nblock)*nblock)
-            itask = MODULO(ithread, nblock)
+      DO nr = 1, nrlevel
+         nblock = 2**nr
+         nzsize = MIN(nblock, nthread - (ithread/nblock)*nblock)
+         itask = MODULO(ithread, nblock)
 
-            lb = (nz*itask)/nzsize
-            ub = (nz*(itask + 1))/nzsize - 1
-            nw = (ithread/nblock)*nblock
-            lbw = 1 + nxy*lb
+         lb = (nz*itask)/nzsize
+         ub = (nz*(itask + 1))/nzsize - 1
+         nw = (ithread/nblock)*nblock
+         lbw = 1 + nxy*lb
 
-            n = nw + nblock/2
-            IF (n < nthread) THEN
-               lbr = 1 + nxy*lb
+         n = nw + nblock/2
+         IF (n < nthread) THEN
+            lbr = 1 + nxy*lb
 
-               CALL daxpy(nxy*(1 + ub - lb), 1.0_dp, lgrid%r(lbr, n), 1, lgrid%r(lbw, nw), 1)
-            END IF
-!$OMP BARRIER
-         END DO
+            CALL daxpy(nxy*(1 + ub - lb), 1.0_dp, lgrid%r(lbr, n), 1, lgrid%r(lbw, nw), 1)
+         END IF
+         !$OMP BARRIER
+      END DO
 
 
-         ! Copy final result from first local grid to rs_grid
-         lb = (nz*ithread)/nthread
-         ub = (nz*(ithread + 1))/nthread - 1
-         nzsize = 1 + (ub - lb)
+      ! Copy final result from first local grid to rs_grid
+      lb = (nz*ithread)/nthread
+      ub = (nz*(ithread + 1))/nthread - 1
+      nzsize = 1 + (ub - lb)
 
-         lb = lb + rs_rho(igrid_level)%rs_grid%lb_local(3)
-         ub = ub + rs_rho(igrid_level)%rs_grid%lb_local(3)
-         lbr = 1 + nxy*(nz*ithread/nthread)
+      lb = lb + rs_rho(igrid_level)%rs_grid%lb_local(3)
+      ub = ub + rs_rho(igrid_level)%rs_grid%lb_local(3)
+      lbr = 1 + nxy*(nz*ithread/nthread)
 
-         CALL daxpy(nxy*nzsize, 1.0_dp, lgrid%r(lbr, 0), 1, &
-                    rs_rho(igrid_level)%rs_grid%r(:, :, lb:ub), 1)
-!$OMP BARRIER
-      END DO loop_gridlevels
+      CALL daxpy(nxy*nzsize, 1.0_dp, lgrid%r(lbr, 0), 1, &
+           rs_rho(igrid_level)%rs_grid%r(:, :, lb:ub), 1)
+      !$OMP BARRIER
+   END DO loop_gridlevels
 
-      CALL collocate_pgf_finalize(gaussian_handle)
-!$OMP END PARALLEL
+   CALL collocate_pgf_finalize(gaussian_handle)
+   !$OMP END PARALLEL
 
-      !   *** Release work storage ***
+   !   *** Release work storage ***
 
-      IF (distributed_rs_grids) THEN
-         CALL dbcsr_deallocate_matrix_set(deltap)
-      ELSE
-         DO img = 1, nimages
-            NULLIFY (deltap(img)%matrix)
-         END DO
-         DEALLOCATE (deltap)
-      ENDIF
+   IF (distributed_rs_grids) THEN
+      CALL dbcsr_deallocate_matrix_set(deltap)
+   ELSE
+      DO img = 1, nimages
+         NULLIFY (deltap(img)%matrix)
+      END DO
+      DEALLOCATE (deltap)
+   ENDIF
 
-      DEALLOCATE (pabt, workt)
+   DEALLOCATE (pabt, workt)
 
-      CALL density_rs2pw(pw_env, rs_rho, rho, rho_gspace)
+   CALL density_rs2pw(pw_env, rs_rho, rho, rho_gspace)
 
-      total_rho = pw_integrate_function(rho%pw, isign=-1)
+   total_rho = pw_integrate_function(rho%pw, isign=-1)
 
-      CALL timestop(handle)
+   CALL timestop(handle)
 
-   END SUBROUTINE calculate_rho_elec
+ END SUBROUTINE calculate_rho_elec
 
-! **************************************************************************************************
-!> \brief computes the gradient of the density corresponding to a given
-!>        density matrix on the grid
-!> \param matrix_p ...
-!> \param matrix_p_kp ...
-!> \param drho ...
-!> \param drho_gspace ...
-!> \param qs_env ...
-!> \param soft_valid ...
+ ! **************************************************************************************************
+ !> \brief computes the gradient of the density corresponding to a given
+ !>        density matrix on the grid
+ !> \param matrix_p ...
+ !> \param matrix_p_kp ...
+ !> \param drho ...
+ !> \param drho_gspace ...
+ !> \param qs_env ...
+ !> \param soft_valid ...
 !> \param basis_type ...
 !> \note  this is an alternative to calculate the gradient through FFTs
 ! **************************************************************************************************

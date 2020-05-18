@@ -5,6 +5,11 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
+#ifdef __USE_GPU
+#include <cuda.h>
+#include <cuda_runtime.h>
+#endif
+
 typedef struct tensor_ {
     int dim_;
     int size[4];
@@ -62,6 +67,15 @@ inline void initialize_tensor(struct tensor_ *a, const int dim, const int *const
     return;
 }
 
+/* inline void allocate_tensor_on_gpu(struct tensor_ *a) */
+/* { */
+/* #ifdef __USE_GPU */
+/*     cudaMalloc((void**)&a->data_gpu_, sizeof(double) * a->alloc_size_); */
+/* #else */
+/*     printf("GPU support is off\n"); */
+/*     a->data_gpu_ = NULL; */
+/* #endif */
+/* } */
 
 /* initialize a tensor structure for a tensor of dimension dim = 2 */
 
@@ -141,6 +155,7 @@ inline tensor *create_tensor(const int dim, const int *sizes)
     if(posix_memalign((void **)&a->data, 16, sizeof(double) * a->alloc_size_) != 0)
         abort();
     a->old_alloc_size_ = a->alloc_size_;
+    return a;
 }
 
 /* destroy a tensor created with the function above */
@@ -166,7 +181,7 @@ inline void tensor_assign_memory(struct tensor_ *a, void *data)
 {
     if (a == NULL)
         abort();
-    a->data = data;
+    a->data = (double *)data;
 }
 
 inline int tensor_get_leading_dimension(struct tensor_ *a)
@@ -176,7 +191,7 @@ inline int tensor_get_leading_dimension(struct tensor_ *a)
     return a->ld_;
 }
 
-inline int tensor_set_leading_dimension(struct tensor_ *a, const int ld)
+inline void tensor_set_leading_dimension(struct tensor_ *a, const int ld)
 {
     if (a == NULL)
         abort();

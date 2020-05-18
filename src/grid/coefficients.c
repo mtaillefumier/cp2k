@@ -11,12 +11,6 @@
 #include "tensor_local.h"
 #include "coefficients.h"
 
-extern void tensor_reduction_for_collocate_integrate(double *scratch,
-                                                     const double prefactor,
-                                                     const struct tensor_ *co,
-                                                     const struct tensor_ *p_alpha_beta_reduced_,
-                                                     struct tensor_ *cube);
-
 void transform_xyz_to_triangular(const tensor *const coef, double  *const  coef_xyz)
 {
     assert(coef != NULL);
@@ -50,7 +44,7 @@ void transform_yxz_to_triangular(const tensor *const coef, double  *const coef_x
 }
 
 
-void transform_triangular_to_xyz(const double const *coef_xyz, tensor *const coef)
+void transform_triangular_to_xyz(const double  *const coef_xyz, tensor *const coef)
 {
     assert(coef != NULL);
     assert(coef_xyz != NULL);
@@ -126,6 +120,62 @@ void grid_prepare_coef(const int *lmin,
 }
 
 // *****************************************************************************
+void grid_prepare_coef_gpu(const int *lmin,
+                           const int *lmax,
+                           const int lp,
+                           const double prefactor,
+                           const tensor *alpha, // [3][lb_max+1][la_max+1][lp+1]
+                           const double pab[ncoset[lmax[1]]][ncoset[lmax[0]]],
+                           double *coef_xyz) //[lp+1][lp+1][lp+1]
+{
+    assert(alpha != NULL);
+    assert(coef_xyz != NULL);
+    // we need a proper fix for that. We can use the tensor structure for this
+
+    double coef_xyt[lp+1][lp+1];
+    double coef_xtt[lp+1];
+
+    for (int lzb = 0; lzb<=lmax[1]; lzb++) {
+        for (int lza = 0; lza<=lmax[0]; lza++) {
+            memset(coef_xyt, 0, sizeof(double) * (lp + 1)* (lp + 1));
+            for (int lyb = 0; lyb<=lmax[1]-lzb; lyb++) {
+                for (int lya = 0; lya<=lmax[0]-lza; lya++) {
+                    const int lxpm = (lmax[1]-lzb-lyb) + (lmax[0]-lza-lya);
+                    for (int i=0; i<=lxpm; i++) {
+                        coef_xtt[i] = 0.0;
+                    }
+                    for (int lxb = max(lmin[1]-lzb-lyb, 0); lxb<=lmax[1]-lzb-lyb; lxb++) {
+                        for (int lxa = max(lmin[0]-lza-lya, 0); lxa<=lmax[0]-lza-lya; lxa++) {
+                            const int ico = coset(lxa, lya, lza);
+                            const int jco = coset(lxb, lyb, lzb);
+                            const double p_ele = prefactor * pab[jco][ico];
+                            for (int lxp = 0; lxp<=lxa+lxb; lxp++) {
+                                coef_xtt[lxp] += p_ele * idx4(alpha[0], 0, lxb, lxa, lxp);
+                            }
+                        }
+                    }
+                    for (int lyp = 0; lyp<=lya+lyb; lyp++) {
+                        for (int lxp = 0; lxp<=lp-lza-lzb-lya-lyb; lxp++) {
+                            coef_xyt[lyp][lxp] += idx4(alpha[0], 1, lyb, lya, lyp) * coef_xtt[lxp];
+                        }
+                    }
+                }
+            }
+            /* I need to permute two fo the indices for the orthogonal case */
+            for (int lzp = 0; lzp<=lza+lzb; lzp++) {
+                for (int lyp = 0; lyp<=lp-lza-lzb; lyp++) {
+                    for (int lxp = 0; lxp<=lp-lza-lzb-lyp; lxp++) {
+                        coef_xyz[coset_without_offset(lxp, lzp, lyp)] += idx4(alpha[0], 2, lzb, lza, lzp) * coef_xyt[lyp][lxp];
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+
+// *****************************************************************************
 void grid_prepare_alpha(const double ra[3],
                         const double rb[3],
                         const double rp[3],
@@ -161,6 +211,166 @@ void grid_prepare_alpha(const double ra[3],
             }
         }
     }
+}
+
+
+/* this function computes the coefficients initially expressed in the cartesian
+ * space to the grid space. It is inplane */
+
+void grid_transform_coef_xzy_to_ikj(const double dh[3][3],
+                                    const tensor *coef_xyz)
+{
+    assert(coef_xyz != NULL);
+    const int lp = coef_xyz->size[0] - 1;
+    tensor coef_ijk;
+
+    /* this tensor corresponds to the term
+     * $v_{11}^{k_{11}}v_{12}^{k_{12}}v_{13}^{k_{13}}
+     * v_{21}^{k_{21}}v_{22}^{k_{22}}v_{23}^{k_{23}}
+     * v_{31}^{k_{31}}v_{32}^{k_{32}} v_{33}^{k_{33}}$ in Eq.26 found section
+     * III.A of the notes */
+    tensor hmatgridp;
+
+    initialize_tensor_3(&coef_ijk, coef_xyz->size[0], coef_xyz->size[1], coef_xyz->size[2]);
+
+    if(posix_memalign((void **)&coef_ijk.data, 32, sizeof(double) * coef_ijk.alloc_size_) != 0)
+        abort();
+
+    memset(coef_ijk.data, 0, sizeof(double) * coef_ijk.alloc_size_);
+    initialize_tensor_3(&hmatgridp, coef_xyz->size[0], 3, 3);
+
+    posix_memalign((void **)&hmatgridp.data, 32, sizeof(double) * hmatgridp.alloc_size_);
+
+    // transform using multinomials
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            idx3(hmatgridp, 0, j, i) = 1.0;
+            for (int k = 1; k <= lp; k++) {
+                idx3(hmatgridp, k, j, i) = idx3(hmatgridp, k - 1, j, i) * dh[j][i];
+            }
+        }
+    }
+
+    const int lpx = lp;
+    for (int klx = 0; klx <= lpx; klx++) {
+        for (int jlx = 0; jlx <= lpx - klx; jlx++) {
+            for (int ilx = 0; ilx <= lpx - klx - jlx; ilx++) {
+                const int lx = ilx + jlx + klx;
+                const int lpy = lp - lx;
+                for (int kly = 0; kly <= lpy; kly++) {
+                    for (int jly = 0; jly <= lpy - kly; jly++) {
+                        for (int ily = 0; ily <= lpy - kly - jly; ily++) {
+                            const int ly = ily + jly + kly;
+                            const int lpz = lp - lx - ly;
+                            for (int klz = 0; klz <= lpz; klz++) {
+                                for (int jlz = 0; jlz <= lpz - klz; jlz++) {
+                                    for (int ilz = 0; ilz <= lpz - klz - jlz; ilz++) {
+                                        const int lz = ilz + jlz + klz;
+                                        const int il = ilx + ily + ilz;
+                                        const int jl = jlx + jly + jlz;
+                                        const int kl = klx + kly + klz;
+                                        //const int lijk= coef_map[kl][jl][il];
+                                        /* the fac table is the factorial. It
+                                         * would be better to use the
+                                         * multinomials. */
+                                        idx3(coef_ijk, il, kl, jl) += idx3(coef_xyz[0], lx, lz, ly) *
+                                            idx3(hmatgridp, ilx, 0, 0) * idx3(hmatgridp, jlx, 1, 0) * idx3(hmatgridp, klx, 2, 0) *
+                                            idx3(hmatgridp, ily, 0, 1) * idx3(hmatgridp, jly, 1, 1) * idx3(hmatgridp, kly, 2, 1) *
+                                            idx3(hmatgridp, ilz, 0, 2) * idx3(hmatgridp, jlz, 1, 2) * idx3(hmatgridp, klz, 2, 2) *
+                                            fac[lx] * fac[ly] * fac[lz] /
+                                            (fac[ilx] * fac[ily] * fac[ilz] * fac[jlx] * fac[jly] * fac[jlz] * fac[klx] * fac[kly] * fac[klz]);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    memcpy(coef_xyz->data, coef_ijk.data, sizeof(double) * coef_ijk.alloc_size_);
+    free(coef_ijk.data);
+    free(hmatgridp.data);
+}
+
+/* Rotate the coefficients computed in the local grid coordinates to the
+ * cartesians coorinates. The order of the indices indicates how the
+ * coefficients are stored */
+void grid_transform_coef_jik_to_yxz(const double dh[3][3],
+                                    const tensor *coef_xyz)
+{
+    assert(coef_xyz);
+    const int lp = coef_xyz->size[0] - 1;
+    tensor coef_ijk;
+
+    /* this tensor corresponds to the term
+     * $v_{11}^{k_{11}}v_{12}^{k_{12}}v_{13}^{k_{13}}
+     * v_{21}^{k_{21}}v_{22}^{k_{22}}v_{23}^{k_{23}}
+     * v_{31}^{k_{31}}v_{32}^{k_{32}} v_{33}^{k_{33}}$ in Eq.26 found section
+     * III.A of the notes */
+    tensor hmatgridp;
+
+    initialize_tensor_3(&coef_ijk, coef_xyz->size[0], coef_xyz->size[1], coef_xyz->size[2]);
+
+    if(posix_memalign((void **)&coef_ijk.data, 32, sizeof(double) * coef_ijk.alloc_size_) != 0)
+        abort();
+
+    memset(coef_ijk.data, 0, sizeof(double) * coef_ijk.alloc_size_);
+    initialize_tensor_3(&hmatgridp, coef_xyz->size[0], 3, 3);
+
+    posix_memalign((void **)&hmatgridp.data, 32, sizeof(double) * hmatgridp.alloc_size_);
+
+    // transform using multinomials
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            idx3(hmatgridp, 0, j, i) = 1.0;
+            for (int k = 1; k <= lp; k++) {
+                idx3(hmatgridp, k, j, i) = idx3(hmatgridp, k - 1, j, i) * dh[j][i];
+            }
+        }
+    }
+
+    const int lpx = lp;
+    for (int klx = 0; klx <= lpx; klx++) {
+        for (int jlx = 0; jlx <= lpx - klx; jlx++) {
+            for (int ilx = 0; ilx <= lpx - klx - jlx; ilx++) {
+                const int lx = ilx + jlx + klx;
+                const int lpy = lp - lx;
+                for (int kly = 0; kly <= lpy; kly++) {
+                    for (int jly = 0; jly <= lpy - kly; jly++) {
+                        for (int ily = 0; ily <= lpy - kly - jly; ily++) {
+                            const int ly = ily + jly + kly;
+                            const int lpz = lp - lx - ly;
+                            for (int klz = 0; klz <= lpz; klz++) {
+                                for (int jlz = 0; jlz <= lpz - klz; jlz++) {
+                                    for (int ilz = 0; ilz <= lpz - klz - jlz; ilz++) {
+                                        const int lz = ilz + jlz + klz;
+                                        const int il = ilx + ily + ilz;
+                                        const int jl = jlx + jly + jlz;
+                                        const int kl = klx + kly + klz;
+                                        //const int lijk= coef_map[kl][jl][il];
+                                        /* the fac table is the factorial. It
+                                         * would be better to use the
+                                         * multinomials. */
+                                        idx3(coef_ijk, ly, lx, lz) += idx3(coef_xyz[0], jl, il, kl) *
+                                            idx3(hmatgridp, ilx, 0, 0) * idx3(hmatgridp, jlx, 1, 0) * idx3(hmatgridp, klx, 2, 0) *
+                                            idx3(hmatgridp, ily, 0, 1) * idx3(hmatgridp, jly, 1, 1) * idx3(hmatgridp, kly, 2, 1) *
+                                            idx3(hmatgridp, ilz, 0, 2) * idx3(hmatgridp, jlz, 1, 2) * idx3(hmatgridp, klz, 2, 2) *
+                                            fac[lx] * fac[ly] * fac[lz] /
+                                            (fac[ilx] * fac[ily] * fac[ilz] * fac[jlx] * fac[jly] * fac[jlz] * fac[klx] * fac[kly] * fac[klz]);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    memcpy(coef_xyz->data, coef_ijk.data, sizeof(double) * coef_ijk.alloc_size_);
+    free(coef_ijk.data);
+    free(hmatgridp.data);
 }
 
 
@@ -349,355 +559,4 @@ void compute_compact_polynomial_coefficients(const tensor *coef,
             }
         }
     }
-
-
-// it is a collocate now....
-
-    /* (NULL, prefactor, &coef_tmp, &px, co); */
 }
-
-/* inline double return_multimonial_prefactor(const int l, */
-/*                                            const int m, */
-/*                                            int *const alpha, */
-/*                                            int *const gamma, */
-/*                                            int *const beta, */
-/*                                            const tensor *const power, */
-/*                                            const int dir) */
-/* { */
-/*     const int expo1 = return_exponents(return_offset_l(l) + m); */
-/*     *alpha = (expo1 & 0xff0000) >> 16; */
-/*     *gamma = (expo1 & 0xff); */
-/*     *beta = (expo1 & 0xff00) >> 8; */
-/*     return multinomial3(*alpha, *gamma, *beta) * */
-/*         idx3(power[0], *alpha, dir, 0) * */
-/*         idx3(power[0], *gamma, dir, 1) * */
-/*         idx3(power[0], *beta, dir, 2); */
-/* } */
-
-/* this function computes the coefficients initially expressed in the cartesian
- * space to the grid space. It is inplane */
-
-void grid_transform_coef_xzy_to_ikj(const double dh[3][3],
-                                    const tensor *coef_xyz)
-{
-    assert(coef_xyz != NULL);
-    const int lp = coef_xyz->size[0] - 1;
-    tensor coef_ijk;
-
-    /* this tensor corresponds to the term
-     * $v_{11}^{k_{11}}v_{12}^{k_{12}}v_{13}^{k_{13}}
-     * v_{21}^{k_{21}}v_{22}^{k_{22}}v_{23}^{k_{23}}
-     * v_{31}^{k_{31}}v_{32}^{k_{32}} v_{33}^{k_{33}}$ in Eq.26 found section
-     * III.A of the notes */
-    tensor hmatgridp;
-
-    initialize_tensor_3(&coef_ijk, coef_xyz->size[0], coef_xyz->size[1], coef_xyz->size[2]);
-
-    if(posix_memalign((void **)&coef_ijk.data, 32, sizeof(double) * coef_ijk.alloc_size_) != 0)
-        abort();
-
-    memset(coef_ijk.data, 0, sizeof(double) * coef_ijk.alloc_size_);
-    initialize_tensor_3(&hmatgridp, coef_xyz->size[0], 3, 3);
-
-    posix_memalign((void **)&hmatgridp.data, 32, sizeof(double) * hmatgridp.alloc_size_);
-
-    // transform using multinomials
-    for (int i = 0; i < 3; i++) {
-        for (int j = 0; j < 3; j++) {
-            idx3(hmatgridp, 0, j, i) = 1.0;
-            for (int k = 1; k <= lp; k++) {
-                idx3(hmatgridp, k, j, i) = idx3(hmatgridp, k - 1, j, i) * dh[j][i];
-            }
-        }
-    }
-
-    const int lpx = lp;
-    for (int klx = 0; klx <= lpx; klx++) {
-        for (int jlx = 0; jlx <= lpx - klx; jlx++) {
-            for (int ilx = 0; ilx <= lpx - klx - jlx; ilx++) {
-                const int lx = ilx + jlx + klx;
-                const int lpy = lp - lx;
-                for (int kly = 0; kly <= lpy; kly++) {
-                    for (int jly = 0; jly <= lpy - kly; jly++) {
-                        for (int ily = 0; ily <= lpy - kly - jly; ily++) {
-                            const int ly = ily + jly + kly;
-                            const int lpz = lp - lx - ly;
-                            for (int klz = 0; klz <= lpz; klz++) {
-                                for (int jlz = 0; jlz <= lpz - klz; jlz++) {
-                                    for (int ilz = 0; ilz <= lpz - klz - jlz; ilz++) {
-                                        const int lz = ilz + jlz + klz;
-                                        const int il = ilx + ily + ilz;
-                                        const int jl = jlx + jly + jlz;
-                                        const int kl = klx + kly + klz;
-                                        //const int lijk= coef_map[kl][jl][il];
-                                        /* the fac table is the factorial. It
-                                         * would be better to use the
-                                         * multinomials. */
-                                        idx3(coef_ijk, il, kl, jl) += idx3(coef_xyz[0], lx, lz, ly) *
-                                            idx3(hmatgridp, ilx, 0, 0) * idx3(hmatgridp, jlx, 1, 0) * idx3(hmatgridp, klx, 2, 0) *
-                                            idx3(hmatgridp, ily, 0, 1) * idx3(hmatgridp, jly, 1, 1) * idx3(hmatgridp, kly, 2, 1) *
-                                            idx3(hmatgridp, ilz, 0, 2) * idx3(hmatgridp, jlz, 1, 2) * idx3(hmatgridp, klz, 2, 2) *
-                                            fac[lx] * fac[ly] * fac[lz] /
-                                            (fac[ilx] * fac[ily] * fac[ilz] * fac[jlx] * fac[jly] * fac[jlz] * fac[klx] * fac[kly] * fac[klz]);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    memcpy(coef_xyz->data, coef_ijk.data, sizeof(double) * coef_ijk.alloc_size_);
-    free(coef_ijk.data);
-    free(hmatgridp.data);
-}
-
-/* Rotate the coefficients computed in the local grid coordinates to the
- * cartesians coorinates. The order of the indices indicates how the
- * coefficients are stored */
-void grid_transform_coef_jik_to_yxz(const double dh[3][3],
-                                    const tensor *coef_xyz)
-{
-    assert(coef_xyz);
-    const int lp = coef_xyz->size[0] - 1;
-    tensor coef_ijk;
-
-    /* this tensor corresponds to the term
-     * $v_{11}^{k_{11}}v_{12}^{k_{12}}v_{13}^{k_{13}}
-     * v_{21}^{k_{21}}v_{22}^{k_{22}}v_{23}^{k_{23}}
-     * v_{31}^{k_{31}}v_{32}^{k_{32}} v_{33}^{k_{33}}$ in Eq.26 found section
-     * III.A of the notes */
-    tensor hmatgridp;
-
-    initialize_tensor_3(&coef_ijk, coef_xyz->size[0], coef_xyz->size[1], coef_xyz->size[2]);
-
-    if(posix_memalign((void **)&coef_ijk.data, 32, sizeof(double) * coef_ijk.alloc_size_) != 0)
-        abort();
-
-    memset(coef_ijk.data, 0, sizeof(double) * coef_ijk.alloc_size_);
-    initialize_tensor_3(&hmatgridp, coef_xyz->size[0], 3, 3);
-
-    posix_memalign((void **)&hmatgridp.data, 32, sizeof(double) * hmatgridp.alloc_size_);
-
-    // transform using multinomials
-    for (int i = 0; i < 3; i++) {
-        for (int j = 0; j < 3; j++) {
-            idx3(hmatgridp, 0, j, i) = 1.0;
-            for (int k = 1; k <= lp; k++) {
-                idx3(hmatgridp, k, j, i) = idx3(hmatgridp, k - 1, j, i) * dh[j][i];
-            }
-        }
-    }
-
-    const int lpx = lp;
-    for (int klx = 0; klx <= lpx; klx++) {
-        for (int jlx = 0; jlx <= lpx - klx; jlx++) {
-            for (int ilx = 0; ilx <= lpx - klx - jlx; ilx++) {
-                const int lx = ilx + jlx + klx;
-                const int lpy = lp - lx;
-                for (int kly = 0; kly <= lpy; kly++) {
-                    for (int jly = 0; jly <= lpy - kly; jly++) {
-                        for (int ily = 0; ily <= lpy - kly - jly; ily++) {
-                            const int ly = ily + jly + kly;
-                            const int lpz = lp - lx - ly;
-                            for (int klz = 0; klz <= lpz; klz++) {
-                                for (int jlz = 0; jlz <= lpz - klz; jlz++) {
-                                    for (int ilz = 0; ilz <= lpz - klz - jlz; ilz++) {
-                                        const int lz = ilz + jlz + klz;
-                                        const int il = ilx + ily + ilz;
-                                        const int jl = jlx + jly + jlz;
-                                        const int kl = klx + kly + klz;
-                                        //const int lijk= coef_map[kl][jl][il];
-                                        /* the fac table is the factorial. It
-                                         * would be better to use the
-                                         * multinomials. */
-                                        idx3(coef_ijk, ly, lx, lz) += idx3(coef_xyz[0], jl, il, kl) *
-                                            idx3(hmatgridp, ilx, 0, 0) * idx3(hmatgridp, jlx, 1, 0) * idx3(hmatgridp, klx, 2, 0) *
-                                            idx3(hmatgridp, ily, 0, 1) * idx3(hmatgridp, jly, 1, 1) * idx3(hmatgridp, kly, 2, 1) *
-                                            idx3(hmatgridp, ilz, 0, 2) * idx3(hmatgridp, jlz, 1, 2) * idx3(hmatgridp, klz, 2, 2) *
-                                            fac[lx] * fac[ly] * fac[lz] /
-                                            (fac[ilx] * fac[ily] * fac[ilz] * fac[jlx] * fac[jly] * fac[jlz] * fac[klx] * fac[kly] * fac[klz]);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    memcpy(coef_xyz->data, coef_ijk.data, sizeof(double) * coef_ijk.alloc_size_);
-    free(coef_ijk.data);
-    free(hmatgridp.data);
-}
-
-/* /\* // ***************************************************************************** *\/ */
-/* void grid_transform_coef_xyz_to_ijk_variant(const double dh[3][3], */
-/*                                             const double dh_inv[3][3], */
-/*                                             const tensor *coef_xyz) */
-/* { */
-/*     assert(coef_xyz); */
-/*     tensor power; */
-/*     tensor coef_ijk; */
-
-/*     initialize_tensor_3(&coef_ijk, coef_xyz->size[0], coef_xyz->size[1], coef_xyz->size[2]); */
-/*     posix_memalign((void **)&coef_ijk.data, 32, sizeof(double) * coef_xyz->alloc_size_); */
-/*     memset(coef_ijk.data, 0, sizeof(double) * coef_xyz->alloc_size_); */
-
-/*     initialize_tensor_3(&power, coef_xyz->size[0], 3, 3); */
-
-/*     posix_memalign((void **)&power.data, 32, power.alloc_size_ * sizeof(double)); */
-
-/*     idx3(power, 0, 0, 0) = 1.0; */
-/*     idx3(power, 0, 0, 1) = 1.0; */
-/*     idx3(power, 0, 0, 2) = 1.0; */
-/*     idx3(power, 0, 1, 0) = 1.0; */
-/*     idx3(power, 0, 1, 1) = 1.0; */
-/*     idx3(power, 0, 1, 2) = 1.0; */
-/*     idx3(power, 0, 2, 0) = 1.0; */
-/*     idx3(power, 0, 2, 1) = 1.0; */
-/*     idx3(power, 0, 2, 2) = 1.0; */
-
-/*     idx3(power, 1, 0, 0) = dh[2][0]; */
-/*     idx3(power, 1, 0, 1) = dh[2][1]; */
-/*     idx3(power, 1, 0, 2) = dh[2][2]; */
-/*     idx3(power, 1, 1, 0) = dh[1][0]; */
-/*     idx3(power, 1, 1, 1) = dh[1][1]; */
-/*     idx3(power, 1, 1, 2) = dh[1][2]; */
-/*     idx3(power, 1, 2, 0) = dh[0][0]; */
-/*     idx3(power, 1, 2, 1) = dh[0][1]; */
-/*     idx3(power, 1, 2, 2) = dh[0][2]; */
-
-/*     for (int l = 2; l < coef_xyz->size[0]; l++) { */
-/*         idx3(power, l, 0, 0) = dh[2][0] * idx3(power, l - 1, 0, 0); */
-/*         idx3(power, l, 0, 1) = dh[2][1] * idx3(power, l - 1, 0, 1); */
-/*         idx3(power, l, 0, 2) = dh[2][2] * idx3(power, l - 1, 0, 2); */
-/*         idx3(power, l, 1, 0) = dh[1][0] * idx3(power, l - 1, 1, 0); */
-/*         idx3(power, l, 1, 1) = dh[1][1] * idx3(power, l - 1, 1, 1); */
-/*         idx3(power, l, 1, 2) = dh[1][2] * idx3(power, l - 1, 1, 2); */
-/*         idx3(power, l, 2, 0) = dh[0][0] * idx3(power, l - 1, 2, 0); */
-/*         idx3(power, l, 2, 1) = dh[0][1] * idx3(power, l - 1, 2, 1); */
-/*         idx3(power, l, 2, 2) = dh[0][2] * idx3(power, l - 1, 2, 2); */
-/*     } */
-
-/*     for (int a1 = 0; a1 < coef_xyz->size[0]; a1++) { */
-/*         for (int l1 = 0; l1 < return_length_l(a1); l1++) { */
-/*             int alpha_part1, gamma_part1, beta_part1; */
-/*             const double multinomial1 = return_multimonial_prefactor(a1, l1, &alpha_part1, &gamma_part1, &beta_part1, &power, 0); */
-/*             for (int g1 = 0; g1 < coef_xyz->size[1]; g1++) { */
-/*                 for (int l2 = 0; l2 < return_length_l(g1); l2++) { */
-/*                     int alpha_part2, gamma_part2, beta_part2; */
-/*                     const double multinomial2 = return_multimonial_prefactor(g1, l2, &alpha_part2, &gamma_part2, &beta_part2, &power, 2); */
-/*                     for (int b1 = 0; b1 < coef_xyz->size[2]; b1++) { */
-/*                         for (int l3 = 0; l3 < return_length_l(b1); l3++) { */
-/*                             int alpha_part3, gamma_part3, beta_part3; */
-/*                             const double multinomial3 = return_multimonial_prefactor(b1, l3, &alpha_part3, &gamma_part3, &beta_part3, &power, 1); */
-/*                             idx3(coef_ijk, a1, g1, b1) += multinomial3 * */
-/*                                 multinomial2 * */
-/*                                 multinomial1 * */
-/*                                 idx3(coef_xyz[0], */
-/*                                      alpha_part1 + alpha_part2 + alpha_part3, */
-/*                                      gamma_part1 + gamma_part2 + gamma_part3, */
-/*                                      beta_part1 + beta_part2 + beta_part3); */
-/*                         } */
-/*                     } */
-/*                 } */
-/*             } */
-/*         } */
-/*     } */
-
-/*     memcpy(coef_xyz->data, coef_ijk.data, sizeof(double) * coef_ijk.alloc_size_); */
-/*     free(power.data); */
-/*     free(coef_ijk.data); */
-/* } */
-
-
-/* void compute_two_gaussian_coefficients(const tensor *const coef, */
-/*                                        const int *const lmin, const int *const lmax, */
-/*                                        const double *rab, const double *ra, const double *rb, */
-/*                                        tensor *const co) */
-/* { */
-/*     tensor power; */
-
-/*     initialize_tensor_4(&power, 2, 3, lmax[0] + lmax[1] + 1, lmax[0] + lmax[1] + 1); */
-/*     posix_memalign((void **)&power.data, 32, sizeof(double) * power.alloc_size_); */
-
-/*     for (int dir = 0; dir < 3; dir++) { */
-/*         double tmp = rab[dir] - ra[dir]; */
-/*         idx4(power, 0, dir, 0, 0) = 1.0; */
-/*         for (int k = 1; k < lmax[0] + lmax[1] + 1; k++) */
-/*             idx4(power, 0, dir, 0, k) = tmp * idx4(power, 0, dir, 0, k - 1); */
-
-/*         for (int k = 1; k < lmax[0] + lmax[1] + 1; k++) */
-/*             memcpy(&idx4(power, 0, dir, k ,0), */
-/*                    &idx4(power, 0, dir, k - 1, 0), */
-/*                    sizeof(double) * power.size[3]); */
-
-/*         tmp = rab[dir] - rb[dir]; */
-
-/*         idx4(power, 1, dir, 0, 0) = 1.0; */
-/*         for (int k = 1; k < lmax[0] + lmax[1] + 1; k++) */
-/*             idx4(power, 1, dir, 0, k) = tmp * idx4(power, 1, dir, 0, k - 1); */
-
-/*         for (int k = 1; k < lmax[0] + lmax[1] + 1; k++) */
-/*             memcpy(&idx4(power, 1, dir, k ,0), */
-/*                    &idx4(power,1, dir, k - 1, 0), */
-/*                    sizeof(double) * power.size[3]); */
-
-/*         for (int a1 = 0; a1 < lmax[0] + lmax[1] + 1; a1++) */
-/*             for (int k = 0; k < lmax[0] + lmax[1] + 1; k++) */
-/*                 idx4(power, 0, dir, a1, k) *= binomial[a1][k]; */
-
-/*         for (int a1 = 0; a1 < lmax[0] + lmax[1] + 1; a1++) */
-/*             for (int k = 0; k < lmax[0] + lmax[1] + 1; k++) */
-/*                 idx4(power, 1, dir, a1, k) *= binomial[a1][k]; */
-
-/*     } */
-
-/*     /\* We can also use dgemm actually. Use of collocate seems possible *\/ */
-
-
-/*     for (int l1 = lmin[0]; l1 <= lmax[0]; l1++) { */
-/*         for (int l2 = lmin[1]; l2 <= lmax[1]; l2++) { */
-/*             for (int alpha1 = 0; alpha1 <= l1; alpha1++) { */
-/*                 for (int alpha2 = 0; alpha2 <= l2; alpha2++) { */
-/*                     for (int beta1 = 0; beta1 <= (l1 - alpha1); beta1++) { */
-/*                         const int gamma1 = l1 - alpha1 - beta1; */
-/*                         for (int beta2 = 0; beta2 <= (l2 - alpha2); beta2++) { */
-/*                             const int gamma2 = l2 - alpha2 - beta2; */
-/*                             double tmp = 0.0; */
-/*                             for (int k1 = 0; k1 <= alpha1; k1++) { */
-/*                                 /\* */
-/*                                   WARNING : We may have to permute the indices */
-/*                                 *\/ */
-
-/*                                 const double c1 = idx4(power, 2, 0, alpha1, k1); */
-/*                                 for (int k2 = 0; k2 <= alpha2; k2++) { */
-/*                                     const double c2 = c1 * idx4(power, 2, 1, alpha2, k2); */
-/*                                     for (int k3 = 0; k3 <= beta1; k3++) { */
-/*                                         const double c3 = c2 * idx4(power, 1, 0, beta1, k3); */
-/*                                         for (int k4 = 0; k4 <= beta2; k4++) { */
-/*                                             const double c4 = c3 * idx4(power, 1, 1, beta2, k4); */
-/*                                             for (int k5 = 0; k5 <= gamma1; k5++) { */
-/*                                                 const double c5 = c4 * idx4(power, 0, 0, gamma1, k5); */
-/*                                                 const double *__restrict__ src = &idx3(coef[0], k3 + k4, k1 + k2, k5); */
-/*                                                 for (int k6 = 0; k6 <= gamma2; k6++) { */
-/*                                                     tmp += c5 * src[k6] * idx4(power, 0, 1, gamma2, k6); */
-/*                                                 } */
-/*                                             } */
-/*                                         } */
-/*                                     } */
-/*                                 } */
-/*                             } */
-
-/*                             idx2(co[0], return_linear_index_from_exponents(gamma1, beta1, alpha1), */
-/*                                  return_linear_index_from_exponents(gamma2, beta2, alpha2)) = tmp; */
-/*                         } */
-/*                     } */
-/*                 } */
-/*             } */
-/*         } */
-/*     } */
-/* } */

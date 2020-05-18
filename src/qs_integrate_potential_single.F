@@ -153,7 +153,7 @@ CONTAINS
 
       eps_rho_rspace = dft_control%qs_control%eps_rho_rspace
       ! sequential mode
-      gaussian_handle = collocate_pgf_create_handle(0, 128, .TRUE.)
+      gaussian_handle = collocate_pgf_create_handle(0, 128, .FALSE.)
 
       DO ikind = 1, SIZE(atomic_kind_set)
 
@@ -346,7 +346,7 @@ CONTAINS
 
       eps_rho_rspace = dft_control%qs_control%eps_rho_rspace
       ! sequential mode
-      gaussian_handle = collocate_pgf_create_handle(0, 128, .TRUE.)
+      gaussian_handle = collocate_pgf_create_handle(0, 128, .FALSE.)
 
       DO ikind = 1, SIZE(atomic_kind_set)
 
@@ -573,7 +573,7 @@ CONTAINS
 
          eps_rho_rspace = dft_control%qs_control%eps_rho_rspace
          ! sequential mode
-         gaussian_handle = collocate_pgf_create_handle(0, 128, .TRUE.)
+         gaussian_handle = collocate_pgf_create_handle(0, 128, .FALSE.)
 
          DO ikind = 1, SIZE(atomic_kind_set)
 
@@ -746,7 +746,7 @@ CONTAINS
       my_pos = v_rspace%pw%pw_grid%para%my_pos
       group_size = v_rspace%pw%pw_grid%para%group_size
       ! need to change this name
-      gaussian_handle = collocate_pgf_create_handle(0, 128, .TRUE.)
+      gaussian_handle = collocate_pgf_create_handle(0, 128, .FALSE.)
 
       DO ikind = 1, nkind
 
@@ -982,7 +982,7 @@ CONTAINS
       my_pos = v_rspace%pw%pw_grid%para%my_pos
       group_size = v_rspace%pw%pw_grid%para%group_size
       ! need to change this name
-      gaussian_handle = collocate_pgf_create_handle(0, 128, .TRUE.)
+      gaussian_handle = collocate_pgf_create_handle(0, 128, .FALSE.)
 
       DO ikind = 1, nkind
 
