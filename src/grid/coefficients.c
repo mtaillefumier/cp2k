@@ -472,7 +472,9 @@ void compute_compact_polynomial_coefficients(const tensor *coef,
     px.data = libxsmm_aligned_scratch(sizeof(double) * px.alloc_size_, 0/*auto-alignment*/);
     coef_tmp.data = libxsmm_aligned_scratch(sizeof(double) * coef_tmp.alloc_size_, 0/*auto-alignment*/);
 #else
-#error "Need implementation"
+    posix_memalign(&power.data, 32, sizeof(double) * power.alloc_size_);
+    posix_memalign(&px.data, 32, sizeof(double) * px.alloc_size_);
+    posix_memalign(&coef_tmp.data, 32, sizeof(double) * coef_tmp.alloc_size_);
 #endif
     /* I compute (x - xa) ^ k Binomial(alpha, k), for alpha = 0.. l1 + l2 + 1
      * and k = 0 .. l1 + l2 + 1. It is used everywhere here and make the economy
@@ -559,4 +561,14 @@ void compute_compact_polynomial_coefficients(const tensor *coef,
             }
         }
     }
+
+#if defined(__LIBXSMM)
+    libxsmm_free(power.data);
+    libxsmm_free(px.data);
+    libxsmm_free(coef_tmp.data);
+#else
+    free(power.data);
+    free(px.data);
+    free(coef_tmp.data);
+#endif
 }
