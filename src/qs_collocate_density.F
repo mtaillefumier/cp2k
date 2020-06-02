@@ -2410,7 +2410,7 @@ CONTAINS
          routineP = moduleN//':'//routineN
 
       CHARACTER(LEN=default_string_length)               :: my_basis_type
-      INTEGER :: dir, group, group_size, handle, i, iatom, igrid_level, ikind, ipgf, iset, maxco, &
+      INTEGER :: dir, group, group_size, handle, i, iatom, igrid_level, igrid_level_prev, ikind, ipgf, iset, maxco, &
          maxsgf_set, my_pos, na1, na2, nao, natom, ncoa, nseta, offset, sgfa
       INTEGER, ALLOCATABLE, DIMENSION(:)                 :: where_is_the_point
       INTEGER, DIMENSION(3)                              :: lb, location, tp, ub
@@ -2507,6 +2507,8 @@ CONTAINS
          ra(:) = pbc(particle_set(iatom)%r, cell)
          dab = 0.0_dp
 
+         igrid_level_prev = -1;
+
          DO iset = 1, nseta
 
             ncoa = npgfa(iset)*ncoset(la_max(iset))
@@ -2562,24 +2564,30 @@ CONTAINS
                                                     zetp=zeta(ipgf, iset), eps=eps_rho_rspace, &
                                                     prefactor=1.0_dp, cutoff=1.0_dp)
 
-                                                    CALL collocate_pgf_product(gaussian_handle, &
-                                                    la_max(iset), zeta(ipgf, iset), la_min(iset), &
-                                             0, 0.0_dp, 0, &
-                                             ra, (/0.0_dp, 0.0_dp, 0.0_dp/), &
-                                             scale, pab, na1 - 1, 0, rs_rho(igrid_level)%rs_grid, &
-                                             cell, cube_info(igrid_level), &
-                                             radius=radius, ga_gb_function=GRID_FUNC_AB)
+                  CALL collocate_pgf_product(gaussian_handle, &
+                       la_max(iset), zeta(ipgf, iset), la_min(iset), &
+                       0, 0.0_dp, 0, &
+                       ra, (/0.0_dp, 0.0_dp, 0.0_dp/), &
+                       scale, pab, na1 - 1, 0, rs_rho(igrid_level)%rs_grid, &
+                       cell, cube_info(igrid_level), &
+                       radius=radius, ga_gb_function=GRID_FUNC_AB)
                ENDIF
 
+               IF (igrid_level_prev .NE. igrid_level) THEN
+                  ! it is clearly not the thing to do. The loop over the grid
+                  ! should be the first one not mingled with other things.
+                  IF (igrid_level_prev .NE. -1) THEN
+                     CALL collocate_pgf_synchronize(gaussian_handle)
+                  ENDIF
+                  igrid_level_prev = igrid_level
+               End if
             END DO
-
             offset = offset + nsgfa(iset)
-
          END DO
-
       END DO
 
       CALL collocate_pgf_synchronize(gaussian_handle)
+
 
       DO igrid_level = 1, gridlevel_info%ngrid_levels
          CALL rs_pw_transfer(rs_rho(igrid_level)%rs_grid, &
