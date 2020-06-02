@@ -1,7 +1,8 @@
 #include <stdio.h>
 #include <stdbool.h>
+#include <string.h>
 
-#ifdef __USE_GPU
+#ifdef __COLLOCATE_GPU
 #include <cuda.h>
 #include <cublas_v2.h>
 #endif
@@ -23,8 +24,8 @@ void *collocate_create_handle(const int device_id, const int number_of_gaussian,
     }
     memset(handle, 0, sizeof(struct collocation_integration_));
 
-#ifdef __USE_GPU
-    initialize_worker_list_on_gpu(handle, device_id, number_of_gaussian, use_gpu);
+#ifdef __COLLOCATE_GPU
+    initialize_worker_list_on_gpu(handle, device_id, number_of_gaussian, 1, use_gpu);
 #endif
 
     handle->alpha.alloc_size_ = 8192;
@@ -38,7 +39,7 @@ void *collocate_create_handle(const int device_id, const int number_of_gaussian,
     handle->coef_alloc_size = realloc_tensor(&handle->coef);
     handle->pol_alloc_size = realloc_tensor(&handle->pol);
 
-    posix_memalign((void**)&handle->scratch, 64, sizeof(double) * 10240);
+    handle->scratch = memalign(64, sizeof(double) * 10240);
     handle->scratch_alloc_size = 10240;
     handle->T_alloc_size = 8192;
     handle->W_alloc_size = 2048;
@@ -61,7 +62,7 @@ void collocate_synchronize(void *gaussian_handler)
         return;
 
     if (!handler->grid_restored) {
-#ifdef __USE_GPU
+#ifdef __COLLOCATE_GPU
         if (handler->use_gpu) {
             apply_reduction_worker_list(handler);
             handler->grid_restored = true;
@@ -81,7 +82,7 @@ void collocate_finalize(void *gaussian_handle)
     collocate_synchronize(gaussian_handle);
     struct collocation_integration_ *handle = (struct collocation_integration_ *)gaussian_handle;
 
-#ifdef __USE_GPU
+#ifdef __COLLOCATE_GPU
     if (handle->use_gpu && !handle->integrate)
         release_gpu_resources(handle);
 #endif
@@ -122,7 +123,8 @@ void initialize_W_and_T(collocation_integration *const handler, const tensor *cu
 
         if (handler->scratch)
             free(handler->scratch);
-        if (posix_memalign(&handler->scratch, 64, sizeof(double) * handler->scratch_alloc_size) != 0)
+        handler->scratch = memalign(64, sizeof(double) * handler->scratch_alloc_size);
+        if (handler->scratch == NULL)
             abort();
     }
 }
@@ -152,7 +154,8 @@ void initialize_W_and_T_integrate(collocation_integration *const handler, const 
 
         if (handler->scratch)
             free(handler->scratch);
-        if (posix_memalign(&handler->scratch, 64, sizeof(double) * handler->scratch_alloc_size) != 0)
+        handler->scratch = memalign(64, sizeof(double) * handler->scratch_alloc_size);
+        if (handler->scratch == NULL)
             abort();
     }
 }
@@ -243,7 +246,7 @@ void initialize_grid(collocation_integration *handler,
 
         int grid_reverse[3] = {ngrid[2], ngrid[1], ngrid[0]};
 
-#ifdef __USE_GPU
+#ifdef __COLLOCATE_GPU
         if (!handler->integrate && handler->use_gpu) {
             grid_reverse[0] = npts[2];
             grid_reverse[1] = npts[1];
@@ -264,8 +267,6 @@ void initialize_grid(collocation_integration *handler,
         /*     grid_reverse[1] = ngrid[0]; */
         /*     grid_reverse[2] = ngrid[2]; */
         /* } */
-
-        size_t old_alloc_size = handler->blocked_grid.alloc_size_;
 
         compute_block_dimensions(grid_reverse, handler->blockDim);
         initialize_tensor_blocked(&handler->blocked_grid, 3, grid_reverse, handler->blockDim);
@@ -290,10 +291,11 @@ void initialize_grid(collocation_integration *handler,
     }
 }
 
-#if defined(__USE_GPU)
+#if defined(__COLLOCATE_GPU)
 
 void reset_list_gpu(pgf_list_gpu *handler)
 {
+    cudaSetDevice(handler->device_id);
     handler->list_length = 0;
     handler->coef_dynamic_alloc_size_gpu_ = 0;
 }
@@ -311,6 +313,7 @@ void apply_reduction_worker_list(collocation_integration *handler)
 
     for (int i = 1; i < handler->worker_list_size; i++) {
         double one = 1.0;
+        cudaSetDevice(handler->device_id);
         cudaStreamSynchronize(handler->worker_list[i].stream);
         cublasDaxpy(handler->worker_list[0].blas_handle,
                     handler->grid.alloc_size_,

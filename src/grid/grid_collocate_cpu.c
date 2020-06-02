@@ -22,7 +22,6 @@
 #endif
 
 #include "tensor_local.h"
-#include "grid_collocate_replay.h"
 #include "grid_collocate_cpu.h"
 #include "grid_prepare_pab.h"
 #include "grid_common.h"
@@ -348,6 +347,7 @@ void tensor_reduction_for_collocate_integrate_blocked(double *scratch,
 
                 dgemm_simplified(&m2, true);
 
+                /* We can apply the non-orthorombic corrections in the xy plane here. */
                 if (Exp && !orthogonal[2]) {
                     exp_blocked.data = &idx4(Exp[0], 2, y, x, 0);
                     apply_non_orthorombic_corrections_xy_blocked(&exp_blocked, &W);
@@ -597,6 +597,7 @@ void tensor_reduction_for_collocate_integrate(double *scratch,
         dgemm_simplified(&m1, true);
         dgemm_simplified(&m2, true);
 
+        // apply the non orthorombic corrections in the xy plane
         if (Exp && !orthogonal[2]) {
             tensor exp_xy;
             initialize_tensor_2(&exp_xy, Exp->size[1], Exp->size[2]);
@@ -742,7 +743,7 @@ void apply_mapping_cubic(const int *lower_boundaries_cube,
                             if (loop_number_x) {
                                 for (int l = 0; l < loop_number_x; l++) {
                                     /* LIBXSMM_PRAGMA_SIMD */
-#pragma unroll(8)
+#pragma GCC ivdep
                                     for (int x = 0; x < grid->size[2]; x++)
                                         dst[x] += src[shift + x];
 
@@ -750,7 +751,7 @@ void apply_mapping_cubic(const int *lower_boundaries_cube,
                                 }
                             }
 //                            LIBXSMM_PRAGMA_SIMD
-#pragma unroll(8)
+#pragma GCC ivdep
                                 for (int x = 0; x < reminder_x; x++)
                                 dst[x] += src[shift + x];
 
@@ -814,7 +815,7 @@ void grid_collocate(collocation_integration *const handler,
                                        ub_cube,
                                        cube_size);
 
-#ifdef __USE_GPU
+#ifdef __COLLOCATE_GPU
     if (handler->use_gpu) {
         int position[3];
         return_cube_position(handler->grid.size,
@@ -994,7 +995,6 @@ void grid_collocate_pgf_product_cpu(void *const handle,
 
 // Uncomment this to dump all tasks to file.
 // #define __GRID_DUMP_TASKS
-    tensor grid;
     int offset[2] = {o1, o2};
     int pab_size[2] = {n2, n1};
 

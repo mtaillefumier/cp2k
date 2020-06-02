@@ -1,3 +1,6 @@
+#include <stdio.h>
+#include <string.h>
+#include <malloc.h>
 #include <math.h>
 #include "utils.h"
 #include "non_orthorombic_corrections.h"
@@ -104,8 +107,8 @@ void calculate_non_orthorombic_corrections_tensor(const double mu_mean,
     initialize_tensor_3(Exp, 3, max_elem, max_elem);
     realloc_tensor(Exp);
 
-    posix_memalign((void **)&x1, 64, sizeof(double) * max_elem);
-    posix_memalign((void **)&x2, 64, sizeof(double) * max_elem);
+    x1 = memalign(64, sizeof(double) * max_elem);
+    x2 = memalign(64, sizeof(double) * max_elem);
     initialize_tensor_2(&exp_tmp, Exp->size[1], Exp->size[2]);
 
     memset(&idx3(Exp[0], 0, 0, 0), 0, sizeof(double) * Exp->alloc_size_);
@@ -185,7 +188,7 @@ void calculate_non_orthorombic_corrections_tensor_blocked(const double mu_mean,
     if (plane[0] && plane[1] && plane[2])
         return;
 
-    tensor exp_tmp, exp_blocked;
+    tensor exp_blocked;
     double *x1, *x2;
     /* printf("%d %d %d\n", plane[0], plane[1], plane[2]); */
     initialize_tensor_2(&exp_blocked,
@@ -201,11 +204,8 @@ void calculate_non_orthorombic_corrections_tensor_blocked(const double mu_mean,
     const int max_elem = max(max(cube_size[0],
                                  cube_size[1]),
                              cube_size[2]);
-    posix_memalign((void **)&x1, 64, sizeof(double) * max_elem);
-    posix_memalign((void **)&x2, 64, sizeof(double) * max_elem);
-
-    /* initialize_tensor_2(&exp_tmp, max_elem, max_elem); */
-    /* posix_memalign((void **)&exp_tmp.data, 64, sizeof(double) * exp_tmp.alloc_size_); */
+    x1 = memalign(64, sizeof(double) * max_elem);
+    x2 = memalign(64, sizeof(double) * max_elem);
 
     initialize_tensor_4(Exp,
                         3,

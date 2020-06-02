@@ -23,12 +23,12 @@ static void grid_prepare_pab_AB(const int o1,
                                 const int n2_prep,
                                 double pab_prep[n2_prep][n1_prep]) {
 
-    for (int lxa=0; lxa<=la_max; lxa++) {
-    for (int lxb=0; lxb<=lb_max; lxb++) {
-       for (int lya=0; lya<=la_max-lxa; lya++) {
-       for (int lyb=0; lyb<=lb_max-lxb; lyb++) {
-          for (int lza=max(la_min-lxa-lya, 0); lza<=la_max-lxa-lya; lza++) {
-          for (int lzb=max(lb_min-lxb-lyb, 0); lzb<=lb_max-lxb-lyb; lzb++) {
+    for (int lxa = 0; lxa <= la_max; lxa++) {
+    for (int lxb = 0; lxb <= lb_max; lxb++) {
+       for (int lya = 0; lya <= la_max-lxa; lya++) {
+       for (int lyb = 0; lyb <= lb_max-lxb; lyb++) {
+          for (int lza = max(la_min-lxa-lya, 0); lza<=la_max-lxa-lya; lza++) {
+          for (int lzb = max(lb_min-lxb-lyb, 0); lzb<=lb_max-lxb-lyb; lzb++) {
              const int ico = coset(lxa, lya, lza);
              const int jco = coset(lxb, lyb, lzb);
              pab_prep[jco][ico] = pab[o2+jco][o1+ico];

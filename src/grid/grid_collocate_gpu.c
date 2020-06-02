@@ -3,14 +3,18 @@
 #include <stdlib.h>
 #include <assert.h>
 
-#ifdef __USE_GPU
+#ifdef __COLLOCATE_GPU
 #include <cuda.h>
 #include <cuda_runtime.h>
 #endif
 
 #include "collocation_integration.h"
 
-#if defined(__USE_GPU)
+#if defined(__COLLOCATE_GPU)
+
+pgf_list_gpu *create_worker_list(const int number_of_workers, const int batch_size, const int device_id);
+
+void destroy_worker_list(pgf_list_gpu *const list);
 
 void add_orbital_to_list(pgf_list_gpu *const list,
                          const int lp,
@@ -63,78 +67,101 @@ void initialize_gpu_data(collocation_integration *handler)
     if (!handler->use_gpu)
         return;
 
-    for (int i = 0; i < handler->worker_list_size; i++) {
-        handler->worker_list[i].batch_size = handler->number_of_gaussian;
-        handler->worker_list[i].list_length = 0;
-        handler->worker_list[i].coef_dynamic_alloc_size_gpu_ = 0;
-        handler->worker_list[i].cube_size_cpu_ = (int *)malloc(sizeof(int) * 3 * handler->worker_list[i].batch_size);
-        handler->worker_list[i].lmax_cpu_ = (int *)malloc(sizeof(int) * handler->worker_list[i].batch_size);
-        handler->worker_list[i].cube_position_cpu_ = (int *)malloc(sizeof(int) * 3 * handler->worker_list[i].batch_size);
-        handler->worker_list[i].coef_offset_cpu_ = (int *)malloc(sizeof(int) * handler->worker_list[i].batch_size);
-        handler->worker_list[i].roffset_cpu_ = (double *)malloc(sizeof(double) * 3 * handler->worker_list[i].batch_size);
-        handler->worker_list[i].zeta_cpu_ = (double *)malloc(sizeof(double) * handler->worker_list[i].batch_size);
-        handler->worker_list[i].coef_cpu_ = (double *)malloc(sizeof(double) * handler->worker_list[i].batch_size * 8 * 8 * 8);
-        handler->worker_list[i].coef_alloc_size_gpu_ = handler->worker_list[i].batch_size * 8 * 8 * 8;
-
-        cudaSetDevice(handler->gpu_id);
-
-        cudaMalloc((void **)&handler->worker_list[i].cube_size_gpu_, sizeof(int) * 3 * handler->worker_list[i].batch_size);
-        cudaMalloc((void **)&handler->worker_list[i].cube_position_gpu_, sizeof(int) * 3 * handler->worker_list[i].batch_size);
-        cudaMalloc((void **)&handler->worker_list[i].coef_offset_gpu_, sizeof(int) * handler->worker_list[i].batch_size);
-        cudaMalloc((void **)&handler->worker_list[i].lmax_gpu_, sizeof(int) * handler->worker_list[i].batch_size);
-
-        cudaMalloc((void **)&handler->worker_list[i].roffset_gpu_, sizeof(double) * 3 * handler->worker_list[i].batch_size);
-        cudaMalloc((void **)&handler->worker_list[i].zeta_gpu_, sizeof(double) * handler->worker_list[i].batch_size);
-        cudaMalloc((void **)&handler->worker_list[i].coef_gpu_, sizeof(double) * handler->worker_list[i].coef_alloc_size_gpu_);
-        cudaStreamCreate(&handler->worker_list[i].stream);
-        cublasCreate(&handler->worker_list[i].blas_handle);
-    }
+    handler->worker_list =  create_worker_list(handler->worker_list_size,
+                                               handler->number_of_gaussian,
+                                               handler->device_id);
 }
+
+pgf_list_gpu *create_worker_list(const int number_of_workers, const int batch_size, const int device_id)
+{
+    pgf_list_gpu *list = (pgf_list_gpu *) malloc(sizeof(pgf_list_gpu) * number_of_workers);
+    for (int i = 0; i < number_of_workers; i++) {
+        list[i].device_id = device_id;
+        list[i].lmax = -1;
+        list[i].batch_size = batch_size;
+        list[i].list_length = 0;
+        list[i].coef_dynamic_alloc_size_gpu_ = 0;
+        list[i].cube_size_cpu_ = (int *)malloc(sizeof(int) * 3 * list->batch_size);
+        list[i].lmax_cpu_ = (int *)malloc(sizeof(int) * list->batch_size);
+        list[i].cube_position_cpu_ = (int *)malloc(sizeof(int) * 3 * list->batch_size);
+        list[i].coef_offset_cpu_ = (int *)malloc(sizeof(int) * list->batch_size);
+        list[i].roffset_cpu_ = (double *)malloc(sizeof(double) * 3 * list->batch_size);
+        list[i].zeta_cpu_ = (double *)malloc(sizeof(double) * list->batch_size);
+        list[i].coef_cpu_ = (double *)malloc(sizeof(double) * list->batch_size * 8 * 8 * 8);
+        list[i].coef_alloc_size_gpu_ = list->batch_size * 8 * 8 * 8;
+        cudaSetDevice(list[i].device_id);
+
+        cudaMalloc((void **)&list[i].cube_size_gpu_, sizeof(int) * 3 * list->batch_size);
+        cudaMalloc((void **)&list[i].cube_position_gpu_, sizeof(int) * 3 * list->batch_size);
+        cudaMalloc((void **)&list[i].coef_offset_gpu_, sizeof(int) * list->batch_size);
+        cudaMalloc((void **)&list[i].lmax_gpu_, sizeof(int) * list->batch_size);
+
+        cudaMalloc((void **)&list[i].roffset_gpu_, sizeof(double) * 3 * list->batch_size);
+        cudaMalloc((void **)&list[i].zeta_gpu_, sizeof(double) * list->batch_size);
+        cudaMalloc((void **)&list[i].coef_gpu_, sizeof(double) * list->coef_alloc_size_gpu_);
+        cudaStreamCreate(&list[i].stream);
+        cublasCreate(&list[i].blas_handle);
+        list[i].next = list + i + 1;
+    }
+
+    list[number_of_workers - 1].next = NULL;
+    return list;
+}
+
+void destroy_worker_list(pgf_list_gpu *const list) {
+    if (list == NULL)
+        return;
+    for (pgf_list_gpu *lst = list; lst->next; lst++) {
+        cudaSetDevice(list->device_id);
+        cudaFree(lst->cube_size_gpu_);
+        cudaFree(lst->cube_position_gpu_);
+        cudaFree(lst->coef_offset_gpu_);
+        cudaFree(lst->lmax_gpu_);
+        cudaFree(lst->roffset_gpu_);
+        cudaFree(lst->zeta_gpu_);
+        cudaFree(lst->coef_gpu_);
+        cudaStreamDestroy(lst->stream);
+        cublasDestroy(lst->blas_handle);
+
+        free(lst->cube_size_cpu_);
+        free(lst->lmax_cpu_);
+        free(lst->cube_position_cpu_);
+        free(lst->coef_offset_cpu_);
+        free(lst->roffset_cpu_);
+        free(lst->zeta_cpu_);
+        free(lst->coef_cpu_);
+    }
+    free(list);
+}
+
 void release_gpu_resources(collocation_integration *handler)
 {
     if (!handler->use_gpu)
         return;
-
-    for (int i = 0; i < handler->worker_list_size; i++) {
-        cudaFree(handler->worker_list[i].cube_size_gpu_);
-        cudaFree(handler->worker_list[i].cube_position_gpu_);
-        cudaFree(handler->worker_list[i].coef_offset_gpu_);
-        cudaFree(handler->worker_list[i].lmax_gpu_);
-        cudaFree(handler->worker_list[i].roffset_gpu_);
-        cudaFree(handler->worker_list[i].zeta_gpu_);
-        cudaFree(handler->worker_list[i].coef_gpu_);
-        cudaStreamDestroy(handler->worker_list[i].stream);
-        cublasDestroy(handler->worker_list[i].blas_handle);
-
-        free(handler->worker_list[i].cube_size_cpu_);
-        free(handler->worker_list[i].lmax_cpu_);
-        free(handler->worker_list[i].cube_position_cpu_);
-        free(handler->worker_list[i].coef_offset_cpu_);
-        free(handler->worker_list[i].roffset_cpu_);
-        free(handler->worker_list[i].zeta_cpu_);
-        free(handler->worker_list[i].coef_cpu_);
-    }
-    free(handler->worker_list);
+    destroy_worker_list(handler->worker_list);
 }
 
-void initialize_worker_list_on_gpu(collocation_integration *handle, const int device_id, const int number_of_gaussian, const bool use_gpu)
+void initialize_worker_list_on_gpu(collocation_integration *handle,
+                                   const int device_id,
+                                   const int number_of_gaussian,
+                                   const int number_of_workers,
+                                   const bool use_gpu)
 {
     assert(handle != NULL);
-    handle->gpu_id = device_id;
+    handle->device_id = device_id;
     handle->use_gpu = use_gpu;
-    handle->worker_list_size = 1;
+    handle->worker_list_size = number_of_workers;
     handle->number_of_gaussian = number_of_gaussian;
 
-    if ((handle->gpu_id >= 0) && handle->use_gpu) {
+    if ((handle->device_id >= 0) && handle->use_gpu) {
         handle->lmax = -1;
 
         /* we can inclrease this afterwards */
         /* right now only one list */
-        handle->worker_list = (pgf_list_gpu*) malloc(sizeof(pgf_list_gpu));
-        memset(handle->worker_list, 0, sizeof(pgf_list_gpu));
-        initialize_gpu_data(handle);
-        handle->worker_list[0].list_length = 0;
-        handle->worker_list[0].lmax = -1;
+
+        handle->worker_list = create_worker_list(number_of_workers,
+                                                 number_of_gaussian,
+                                                 device_id);
     }
 }
 

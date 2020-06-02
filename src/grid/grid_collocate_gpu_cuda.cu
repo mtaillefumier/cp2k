@@ -61,7 +61,8 @@ __global__ void compute_collocation_gpu_(const int *__restrict__ lmax_gpu_,
 
     for (int z = threadIdx.z; z < cube_size[0]; z += blockDim.z) {
         const double z1 = z - (cube_size[0] / 2) - roffset[0];
-        const int z2 = (z + position[0] + 32 * period_[0]) % period_[0];
+        const int z2 = (z +
+        position[0] + 32 * period_[0]) % period_[0];
         for (int y = threadIdx.y; y < cube_size[1]; y += blockDim.y) {
             double y1 = y - (cube_size[1] / 2) - roffset[1];
             const int y2 = (y + position[1] + 32 * period_[1]) % period_[1];
@@ -103,6 +104,7 @@ extern "C"  void compute_collocation_gpu(pgf_list_gpu *handler)
     if (!handler)
         return;
 
+    cudaSetDevice(handler->device_id);
     cudaStreamSynchronize(handler->stream);
     cudaMemcpyAsync(handler->cube_position_gpu_, handler->cube_position_cpu_, sizeof(int) * 3 * handler->list_length, cudaMemcpyHostToDevice, handler->stream);
     cudaMemcpyAsync(handler->cube_size_gpu_, handler->cube_size_cpu_, sizeof(int) * 3 * handler->list_length, cudaMemcpyHostToDevice, handler->stream);
@@ -143,6 +145,7 @@ extern "C"  void compute_collocation_gpu(pgf_list_gpu *handler)
     reset_list_gpu(handler);
 }
 
+
 extern "C" void initialize_grid_parameters_on_gpu(collocation_integration *handler, const bool grid_resize, const int period[3])
 {
     if (!handler->use_gpu)
@@ -160,6 +163,7 @@ extern "C" void initialize_grid_parameters_on_gpu(collocation_integration *handl
     dh[7] = handler->dh[2][1];
     dh[8] = handler->dh[2][2];
 
+    cudaSetDevice(handler->device_id);
     cudaMemcpyToSymbol(dh_, dh, sizeof(double) * 9);
     cudaMemcpyToSymbol(grid_size_, handler->grid.size, sizeof(int) * 3);
     cudaMemcpyToSymbol(period_, period, sizeof(int) * 3);

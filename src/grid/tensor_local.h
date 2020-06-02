@@ -4,8 +4,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
-
-#ifdef __USE_GPU
+#include <malloc.h>
+#include <string.h>
+#ifdef __COLLOCATE_GPU
 #include <cuda.h>
 #include <cuda_runtime.h>
 #endif
@@ -152,7 +153,8 @@ inline tensor *create_tensor(const int dim, const int *sizes)
         abort();
 
     initialize_tensor(a, dim, sizes);
-    if(posix_memalign((void **)&a->data, 16, sizeof(double) * a->alloc_size_) != 0)
+    a->data = (double *)memalign(64, sizeof(double) * a->alloc_size_);
+    if(a->data == NULL)
         abort();
     a->old_alloc_size_ = a->alloc_size_;
     return a;

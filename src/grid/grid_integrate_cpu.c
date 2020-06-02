@@ -356,9 +356,6 @@ void tensor_reduction_for_integrate_blocked(double *__restrict scratch,
      * fastest one. it can be done with one dgemm.
      */
 
-    int indz = 0;
-
-
     for (int y = 0; y < (upper_block[1] - lower_block[1]); y++) {
         int y1 = (y + lower_block[1]) % gr->size[1];
 
@@ -735,16 +732,15 @@ void grid_integrate_blocked(collocation_integration *const handler,
      * that case the order *should* be the same than for collocate. For l > 0,
      * we need a different storage order which is (X) 2, (Y) 0, and (Z) 1. */
 
-    int perm[3] = {2, 0, 1};
+    /* int perm[3] = {2, 0, 1}; */
 
-    if (lp == 0) {
-        /* I need to restore the same order than for collocate */
-        perm[0] = 0;
-        perm[1] = 1;
-        perm[2] = 2;
-    }
+    /* if (lp == 0) { */
+    /*     /\* I need to restore the same order than for collocate *\/ */
+    /*     perm[0] = 0; */
+    /*     perm[1] = 1; */
+    /*     perm[2] = 2; */
+    /* } */
 
-    bool use_ortho_forced = handler->orthogonal[0] && handler->orthogonal[1] && handler->orthogonal[2];
     if (use_ortho) {
         grid_fill_pol((lp != 0), handler->dh[0][0], roffset[2], pol_offset[2], lb_cube[2], ub_cube[2], lp, cmax, zetp, &idx3(handler->pol, 2, 0, 0)); /* i indice */
         grid_fill_pol((lp != 0), handler->dh[1][1], roffset[1], pol_offset[1], lb_cube[1], ub_cube[1], lp, cmax, zetp, &idx3(handler->pol, 1, 0, 0)); /* j indice */

@@ -1033,7 +1033,6 @@ void compute_block_boundaries(const int *blockDim,
     pol_offsets[1] = 0;
     pol_offsets[2] = 0;
 
-    int blockIdx[3];
     for (int axis = 0; axis < 3; axis++) {
         int tmp = position[axis];
         int blockidx = tmp / blockDim[axis];

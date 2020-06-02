@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <stdbool.h>
+#include <string.h>
 
 #if defined(__MKL) || defined(HAVE_MKL)
 #include <mkl.h>
@@ -155,22 +156,26 @@ extern int compute_cube_properties(const bool ortho,
                                    int *lb_cube,
                                    int *ub_cube,
                                    int *cube_size);
+
 extern void  return_cube_position(const int *__restrict__ grid_size,
                                   const int *__restrict__ lb_grid,
                                   const int *__restrict__ cube_center,
                                   const int *__restrict__ lower_boundaries_cube,
                                   const int *__restrict__period,
                                   int *__restrict__ const position);
+
 extern void add_sub_grid_with_pcb(const int *period,
                                   const int *lower_corner,
                                   const int *upper_corner,
                                   const int *position,
                                   const tensor *subgrid,
                                   tensor *grid);
+
 extern void grid_transform_coef_jik_to_yxz(const double dh[3][3],
                                            const tensor *coef_xyz);
 extern void grid_transform_coef_xzy_to_ikj(const double dh[3][3],
                                            const tensor *coef_xyz);
+
 extern void batched_dgemm_simplified(dgemm_params *const m,
                                      const int batch_size,
                                      const bool use_libxsmm);

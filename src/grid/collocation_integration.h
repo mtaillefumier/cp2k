@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
-#ifdef __USE_GPU
+#ifdef __COLLOCATE_GPU
 #include <cuda.h>
 #include <cublas_v2.h>
 #endif
@@ -15,8 +15,10 @@ extern "C" {
 #endif
 
 #include "tensor_local.h"
-#ifdef __USE_GPU
+#ifdef __COLLOCATE_GPU
     typedef struct pgf_list_gpu_ {
+        /* device_id */
+        int device_id;
         /* */
         int lmax;
 
@@ -62,14 +64,16 @@ extern "C" {
         bool job_finished;
 
         cublasHandle_t blas_handle;
-        /* if true, the grid on the gpu should be reallocated */
+
+        struct pgf_list_gpu_ *next;
+/* if true, the grid on the gpu should be reallocated */
         bool durty;
     } pgf_list_gpu;
 #endif
 
 typedef struct collocation_integration_ {
     /* GPU device id. should replace this with GPU UID */
-    int gpu_id;
+    int device_id;
     bool use_gpu;
 
     /* number of gaussians block in each list */
@@ -117,7 +121,7 @@ typedef struct collocation_integration_ {
     int lmax;
 
     void *scratch;
-#ifdef __USE_GPU
+#ifdef __COLLOCATE_GPU
     pgf_list_gpu *worker_list;
 #endif
     int worker_list_size;
@@ -146,9 +150,9 @@ extern void initialize_grid(collocation_integration *handler,
                             const int *ngrid,
                             double *grid_);
 
-#ifdef __USE_GPU
+#ifdef __COLLOCATE_GPU
     extern void release_gpu_resources(collocation_integration *handler);
-    extern void initialize_worker_list_on_gpu(collocation_integration *handler, const int device_id, const int number_of_gaussian, const bool use_gpu);
+    extern void initialize_worker_list_on_gpu(collocation_integration *handler, const int device_id, const int number_of_gaussian, const int number_of_worker, const bool use_gpu);
     extern void initialize_grid_parameters_on_gpu(collocation_integration *handler, const bool grid_resize, const int period[3]);
 
     extern void reset_list_gpu(pgf_list_gpu *handler);

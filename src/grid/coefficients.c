@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <malloc.h>
 #include <assert.h>
 #if defined(__LIBXSMM)
 #include <libxsmm.h>
@@ -78,12 +79,12 @@ void grid_prepare_coef(const int *lmin,
     memset(coef_xyz->data, 0, coef_xyz->alloc_size_ * sizeof(double));
     // we need a proper fix for that. We can use the tensor structure for this
 
-    double coef_xyt[lp+1][lp+1];
-    double coef_xtt[lp+1];
+    double coef_xyt[lp + 1][lp + 1];
+    double coef_xtt[lp + 1];
 
     for (int lzb = 0; lzb<=lmax[1]; lzb++) {
         for (int lza = 0; lza<=lmax[0]; lza++) {
-            memset(coef_xyt, 0, sizeof(double) * (lp + 1)* (lp + 1));
+            memset(coef_xyt, 0, sizeof(double) * (lp + 1) * (lp + 1));
             for (int lyb = 0; lyb<=lmax[1]-lzb; lyb++) {
                 for (int lya = 0; lya<=lmax[0]-lza; lya++) {
                     const int lxpm = (lmax[1]-lzb-lyb) + (lmax[0]-lza-lya);
@@ -120,6 +121,9 @@ void grid_prepare_coef(const int *lmin,
 }
 
 // *****************************************************************************
+// for gpu, it is better to store only the relevant matrix elements instead of
+// the full matrix. This reduces transfer between CPU and GPU
+
 void grid_prepare_coef_gpu(const int *lmin,
                            const int *lmax,
                            const int lp,
@@ -215,7 +219,8 @@ void grid_prepare_alpha(const double ra[3],
 
 
 /* this function computes the coefficients initially expressed in the cartesian
- * space to the grid space. It is inplane */
+ * space to the grid space. It is inplane and can also be done with
+ * matrix-matrix multiplication. It is in fact a tensor reduction. */
 
 void grid_transform_coef_xzy_to_ikj(const double dh[3][3],
                                     const tensor *coef_xyz)
@@ -233,13 +238,15 @@ void grid_transform_coef_xzy_to_ikj(const double dh[3][3],
 
     initialize_tensor_3(&coef_ijk, coef_xyz->size[0], coef_xyz->size[1], coef_xyz->size[2]);
 
-    if(posix_memalign((void **)&coef_ijk.data, 32, sizeof(double) * coef_ijk.alloc_size_) != 0)
+    coef_ijk.data = memalign(64, sizeof(double) * coef_ijk.alloc_size_);
+
+    if(coef_ijk.data == NULL)
         abort();
 
     memset(coef_ijk.data, 0, sizeof(double) * coef_ijk.alloc_size_);
     initialize_tensor_3(&hmatgridp, coef_xyz->size[0], 3, 3);
 
-    posix_memalign((void **)&hmatgridp.data, 32, sizeof(double) * hmatgridp.alloc_size_);
+    hmatgridp.data = memalign(64, sizeof(double) * hmatgridp.alloc_size_);
 
     // transform using multinomials
     for (int i = 0; i < 3; i++) {
@@ -313,13 +320,14 @@ void grid_transform_coef_jik_to_yxz(const double dh[3][3],
 
     initialize_tensor_3(&coef_ijk, coef_xyz->size[0], coef_xyz->size[1], coef_xyz->size[2]);
 
-    if(posix_memalign((void **)&coef_ijk.data, 32, sizeof(double) * coef_ijk.alloc_size_) != 0)
+    coef_ijk.data = memalign(64, sizeof(double) * coef_ijk.alloc_size_);
+    if(coef_ijk.data == NULL)
         abort();
 
     memset(coef_ijk.data, 0, sizeof(double) * coef_ijk.alloc_size_);
     initialize_tensor_3(&hmatgridp, coef_xyz->size[0], 3, 3);
 
-    posix_memalign((void **)&hmatgridp.data, 32, sizeof(double) * hmatgridp.alloc_size_);
+    hmatgridp.data = memalign(64, sizeof(double) * hmatgridp.alloc_size_);
 
     // transform using multinomials
     for (int i = 0; i < 3; i++) {
@@ -472,9 +480,9 @@ void compute_compact_polynomial_coefficients(const tensor *coef,
     px.data = libxsmm_aligned_scratch(sizeof(double) * px.alloc_size_, 0/*auto-alignment*/);
     coef_tmp.data = libxsmm_aligned_scratch(sizeof(double) * coef_tmp.alloc_size_, 0/*auto-alignment*/);
 #else
-    posix_memalign(&power.data, 32, sizeof(double) * power.alloc_size_);
-    posix_memalign(&px.data, 32, sizeof(double) * px.alloc_size_);
-    posix_memalign(&coef_tmp.data, 32, sizeof(double) * coef_tmp.alloc_size_);
+    power.data = memalign(64, sizeof(double) * power.alloc_size_);
+    px.data = memalign(64, sizeof(double) * px.alloc_size_);
+    coef_tmp.data = memalign(64, sizeof(double) * coef_tmp.alloc_size_);
 #endif
     /* I compute (x - xa) ^ k Binomial(alpha, k), for alpha = 0.. l1 + l2 + 1
      * and k = 0 .. l1 + l2 + 1. It is used everywhere here and make the economy
