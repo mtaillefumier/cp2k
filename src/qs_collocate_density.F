@@ -194,8 +194,8 @@ CONTAINS
 
       eps_rho_rspace = dft_control%qs_control%eps_rho_rspace
 
-!     sequential mode ?
-      gaussian_handle = collocate_pgf_create_handle(0, 256, .TRUE.)
+      ! use CPU only part
+      gaussian_handle = collocate_pgf_create_handle(-1, 256, .FALSE.)
 
       DO ikind = 1, SIZE(atomic_kind_set)
          CALL get_atomic_kind(atomic_kind_set(ikind), natom=natom, atom_list=atom_list)
@@ -382,8 +382,8 @@ CONTAINS
 
       eps_rho_rspace = dft_control%qs_control%eps_rho_rspace
 
-      ! sequential mode by default
-      gaussian_handle = collocate_pgf_create_handle(0, 256, .TRUE.)
+      ! CPU mode is the default. change to true for GPU and -1 to the device number
+      gaussian_handle = collocate_pgf_create_handle(-1, 256, .FALSE.)
 
       DO ikind = 1, SIZE(atomic_kind_set)
          CALL get_atomic_kind(atomic_kind_set(ikind), natom=natom, atom_list=atom_list)
@@ -593,8 +593,8 @@ CONTAINS
       eps_rho_rspace = dft_control%qs_control%eps_rho_rspace
       gridlevel_info => pw_env%gridlevel_info
 
-      ! sequential mode
-      gaussian_handle = collocate_pgf_create_handle(0, 256, .TRUE.)
+      ! CPU mode
+      gaussian_handle = collocate_pgf_create_handle(-1, 1024, .FALSE.)
 
       ! *** set up the pw multi-grids *** !
       CPASSERT(ASSOCIATED(pw_env))
@@ -922,8 +922,8 @@ CONTAINS
       CALL rs_grid_retain(rs_rho)
       CALL rs_grid_zero(rs_rho)
 
-      ! collocate sequential
-      gaussian_handle = collocate_pgf_create_handle(0, 128, .TRUE.)
+      ! CPU mode
+      gaussian_handle = collocate_pgf_create_handle(-1, 128, .FALSE.)
 
       eps_rho_rspace = dft_control%qs_control%eps_rho_rspace
 
@@ -1051,7 +1051,8 @@ CONTAINS
       CALL rs_grid_retain(rs_rho)
       CALL rs_grid_zero(rs_rho)
 
-      gaussian_handle = collocate_pgf_create_handle(0, 128, .TRUE.)
+      ! CPU only
+      gaussian_handle = collocate_pgf_create_handle(-1, 128, .FALSE.)
 
       eps_rho_rspace = dft_control%qs_control%eps_rho_rspace
       pab(1, 1) = 1.0_dp
@@ -1157,7 +1158,8 @@ CONTAINS
       CALL rs_grid_retain(rs_rho)
       CALL rs_grid_zero(rs_rho)
 
-      gaussian_handle = collocate_pgf_create_handle(0, 128, .TRUE.)
+      ! CPU mode
+      gaussian_handle = collocate_pgf_create_handle(-1, 128, .FALSE.)
 
       eps_rho_rspace = dft_control%qs_control%eps_rho_rspace
       pab(1, 1) = 1.0_dp
@@ -1278,7 +1280,8 @@ CONTAINS
       iatom = iatom_in
 
       npme = 0
-      gaussian_handle = collocate_pgf_create_handle(0, 64, .TRUE.)
+      ! CPU only
+      gaussian_handle = collocate_pgf_create_handle(-1, 128, .FALSE.)
 
       IF (rs_rho%desc%parallel .AND. .NOT. rs_rho%desc%distributed) THEN
          IF (MODULO(iatom, rs_rho%desc%group_size) == rs_rho%desc%my_pos) THEN
@@ -1375,7 +1378,7 @@ CONTAINS
       CALL rs_grid_zero(rs_rho)
 
       ! sequential mode on
-      gaussian_handle = collocate_pgf_create_handle(0, 64, .TRUE.)
+      gaussian_handle = collocate_pgf_create_handle(0, 64, .FALSE.)
 
       eps_rho_rspace = dft_control%qs_control%eps_rho_rspace
       pab(1, 1) = 1.0_dp
@@ -1720,7 +1723,7 @@ CONTAINS
       ithread = 0
 !$    ithread = omp_get_thread_num()
 
-      ! create an handle for each omp thread. By default the queue of 256 blocks. It is neglected when running in sequential mode
+      ! create an handle for each omp thread. By default the queue length is 4096 blocks. It is neglected when running in sequential mode
 
       gaussian_handle =  collocate_pgf_create_handle(0, 4096, .TRUE.)
 
@@ -2155,7 +2158,8 @@ CONTAINS
       pab => pabt(:, :, ithread)
       work => workt(:, :, ithread)
 
-      gaussian_handle =  collocate_pgf_create_handle(0, 64, .TRUE.)
+      ! we need to retrieve the GPU from dbscsr
+      gaussian_handle =  collocate_pgf_create_handle(0, 4096, .TRUE.)
 
       loop_xyz: DO idir = 1, 3
          DO igrid_level = 1, gridlevel_info%ngrid_levels
@@ -2489,8 +2493,8 @@ CONTAINS
       group_size = mgrid_rspace(1)%pw%pw_grid%para%group_size
       ALLOCATE (where_is_the_point(0:group_size - 1))
 
-      ! run in sequential mode
-      gaussian_handle = collocate_pgf_create_handle(0, 64, .TRUE.)
+      ! run in CPU mode
+      gaussian_handle = collocate_pgf_create_handle(-1, 64, .FALSE.)
 
       DO iatom = 1, natom
          ikind = particle_set(iatom)%atomic_kind%kind_number

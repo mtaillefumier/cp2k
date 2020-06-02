@@ -9,10 +9,10 @@
 extern "C" {
 #endif
 
-    void *collocate_create_handle(const int device_id, const int number_of_gaussian, const bool sequential_mode);
-    void collocate_finalize(void *gaussian_handle);
-    void collocation_calculate(void *gaussian_handle);
-    void collocate_synchronize(void *gaussian_handle);
+void* collocate_create_handle(const int device_id, const int number_of_gaussian, const bool sequential_mode);
+void collocate_finalize(void* gaussian_handle);
+void collocation_calculate(void* gaussian_handle);
+void collocate_synchronize(void* gaussian_handle);
 
 //******************************************************************************
 // \brief Collocates a single task. A task consists of a pair of atoms each
@@ -42,35 +42,17 @@ extern "C" {
 //
 // \param grid The output grid array to collocate into.
 //******************************************************************************
-    void grid_collocate_pgf_product_cpu(void *const handle,
-                                        const bool use_ortho,
-                                        const int func,
-                                        const int la_max,
-                                        const int la_min,
-                                        const int lb_max,
-                                        const int lb_min,
-                                        const double zeta,
-                                        const double zetb,
-                                        const double rscale,
-                                        const double dh[3][3],
-                                        const double dh_inv[3][3],
-                                        const double ra[3],
-                                        const double rab[3],
-                                        const int npts[3],
-                                        const int ngrid[3],
-                                        const int lb_grid[3],
-                                        const bool periodic[3],
-                                        const double radius,
-                                        const int o1,
-                                        const int o2,
-                                        const int n1,
-                                        const int n2,
-                                        const double pab[n2][n1],
-                                        double *grid_);
+void grid_collocate_pgf_product_cpu(void* const handle, const bool use_ortho, const int func, const int la_max,
+                                    const int la_min, const int lb_max, const int lb_min, const double zeta,
+                                    const double zetb, const double rscale, const double dh[3][3],
+                                    const double dh_inv[3][3], const double ra[3], const double rab[3],
+                                    const int npts[3], const int ngrid[3], const int lb_grid[3], const bool periodic[3],
+                                    const double radius, const int o1, const int o2, const int n1, const int n2,
+                                    const double pab[n2][n1], double* grid_);
 
 #ifdef __cplusplus
 }
 #endif
 
 #endif
-//EOF
+// EOF

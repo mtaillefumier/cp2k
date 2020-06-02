@@ -5,7 +5,8 @@
 #include "utils.h"
 #include "non_orthorombic_corrections.h"
 
-double exp_recursive(const double c_exp, const double c_exp_minus_1, const int index)
+double
+exp_recursive(const double c_exp, const double c_exp_minus_1, const int index)
 {
 
     if (index == -1)
@@ -33,24 +34,27 @@ double exp_recursive(const double c_exp, const double c_exp_minus_1, const int i
     return 1.0;
 }
 
-void exp_i(const double alpha, const int imin, const int imax, double *__restrict__ const res)
+void
+exp_i(const double alpha, const int imin, const int imax, double* __restrict__ const res)
 {
     const double c_exp_co = exp(alpha);
     /* const double c_exp_minus_1 = 1/ c_exp; */
     res[0] = exp(imin * alpha);
     for (int i = 1; i < (imax - imin); i++) {
-        res[i] = res[i - 1] * c_exp_co;//exp_recursive(c_exp_co, 1.0 / c_exp_co, i + imin);
+        res[i] = res[i - 1] * c_exp_co; // exp_recursive(c_exp_co, 1.0 / c_exp_co, i + imin);
     }
 }
 
-void exp_ij(const double alpha, const int offset_i, const int imin, const int imax, const int offset_j, const int jmin, const int jmax, tensor *exp_ij_)
+void
+exp_ij(const double alpha, const int offset_i, const int imin, const int imax, const int offset_j, const int jmin,
+       const int jmax, tensor* exp_ij_)
 {
-    double c_exp = exp(alpha * imin);
+    double c_exp          = exp(alpha * imin);
     const double c_exp_co = exp(alpha);
 
     for (int i = 0; i < (imax - imin); i++) {
-        double *__restrict dst = &idx2(exp_ij_[0], i + offset_i, offset_j);
-        double ctmp = exp_recursive(c_exp, 1.0 / c_exp, jmin);
+        double* __restrict dst = &idx2(exp_ij_[0], i + offset_i, offset_j);
+        double ctmp            = exp_recursive(c_exp, 1.0 / c_exp, jmin);
 
 #pragma GCC ivdep
         for (int j = 0; j < (jmax - jmin); j++) {
@@ -61,18 +65,13 @@ void exp_ij(const double alpha, const int offset_i, const int imin, const int im
     }
 }
 
-void calculate_non_orthorombic_corrections_tensor(const double mu_mean,
-                                                  const double *r_ab,
-                                                  const double basis[3][3],
-                                                  const int *const xmin,
-                                                  const int *const xmax,
-                                                  bool *plane,
-                                                  tensor *const Exp)
+void
+calculate_non_orthorombic_corrections_tensor(const double mu_mean, const double* r_ab, const double basis[3][3],
+                                             const int* const xmin, const int* const xmax, bool* plane,
+                                             tensor* const Exp)
 {
     // zx, zy, yx
-    const int n[3][2] = {{0, 2},
-                         {0, 1},
-                         {1, 2}};
+    const int n[3][2] = {{0, 2}, {0, 1}, {1, 2}};
 
     // need to review this
     const double c[3] = {
@@ -123,44 +122,24 @@ void calculate_non_orthorombic_corrections_tensor(const double mu_mean,
             exp_i(-r_ab[d1] * c[dir], xmin[d2], xmax[d2] + 1, x2);
 
             exp_tmp.data = &idx3(Exp[0], dir, 0, 0);
-            cblas_dger(CblasRowMajor,
-                       xmax[d1] - xmin[d1] + 1,
-                       xmax[d2] - xmin[d2] + 1,
-                       c_exp_const,
-                       x1, 1,
-                       x2, 1,
-                       &idx2(exp_tmp, 0, 0),
-                       exp_tmp.ld_);
-            exp_ij(c[dir],
-                   0,
-                   xmin[d1],
-                   xmax[d1] + 1,
-                   0,
-                   xmin[d2],
-                   xmax[d2] + 1,
-                   &exp_tmp);
+            cblas_dger(CblasRowMajor, xmax[d1] - xmin[d1] + 1, xmax[d2] - xmin[d2] + 1, c_exp_const, x1, 1, x2, 1,
+                       &idx2(exp_tmp, 0, 0), exp_tmp.ld_);
+            exp_ij(c[dir], 0, xmin[d1], xmax[d1] + 1, 0, xmin[d2], xmax[d2] + 1, &exp_tmp);
         }
     }
     free(x1);
     free(x2);
 }
 
-void calculate_non_orthorombic_corrections_tensor_blocked(const double mu_mean,
-                                                          const double *r_ab,
-                                                          const double basis[3][3],
-                                                          const int *const lower_corner,
-                                                          const int *const upper_corner,
-                                                          const int *const block_size,
-                                                          const int *const offset,
-                                                          const int *const xmin,
-                                                          const int *const xmax,
-                                                          bool *plane,
-                                                          tensor *const Exp)
+void
+calculate_non_orthorombic_corrections_tensor_blocked(const double mu_mean, const double* r_ab, const double basis[3][3],
+                                                     const int* const lower_corner, const int* const upper_corner,
+                                                     const int* const block_size, const int* const offset,
+                                                     const int* const xmin, const int* const xmax, bool* plane,
+                                                     tensor* const Exp)
 {
     // zx, zy, yx
-    const int n[3][2] = {{0, 2},
-                         {0, 1},
-                         {1, 2}};
+    const int n[3][2] = {{0, 2}, {0, 1}, {1, 2}};
 
     // need to review this
     const double c[3] = {
@@ -191,28 +170,18 @@ void calculate_non_orthorombic_corrections_tensor_blocked(const double mu_mean,
     tensor exp_blocked;
     double *x1, *x2;
     /* printf("%d %d %d\n", plane[0], plane[1], plane[2]); */
-    initialize_tensor_2(&exp_blocked,
-                        max(block_size[0], block_size[1]),
-                        max(block_size[1], block_size[2]));
+    initialize_tensor_2(&exp_blocked, max(block_size[0], block_size[1]), max(block_size[1], block_size[2]));
 
-    const int cube_size[3] = {
-        (upper_corner[0] - lower_corner[0]) * block_size[0],
-        (upper_corner[1] - lower_corner[1]) * block_size[1],
-        (upper_corner[2] - lower_corner[2]) * block_size[2]
-    };
+    const int cube_size[3] = {(upper_corner[0] - lower_corner[0]) * block_size[0],
+                              (upper_corner[1] - lower_corner[1]) * block_size[1],
+                              (upper_corner[2] - lower_corner[2]) * block_size[2]};
 
-    const int max_elem = max(max(cube_size[0],
-                                 cube_size[1]),
-                             cube_size[2]);
-    x1 = memalign(64, sizeof(double) * max_elem);
-    x2 = memalign(64, sizeof(double) * max_elem);
+    const int max_elem = max(max(cube_size[0], cube_size[1]), cube_size[2]);
+    x1                 = memalign(64, sizeof(double) * max_elem);
+    x2                 = memalign(64, sizeof(double) * max_elem);
 
-    initialize_tensor_4(Exp,
-                        3,
-                        max(upper_corner[0] - lower_corner[0],
-                            upper_corner[1] - lower_corner[1]),
-                        max(upper_corner[2] - lower_corner[2],
-                            upper_corner[1] - lower_corner[1]),
+    initialize_tensor_4(Exp, 3, max(upper_corner[0] - lower_corner[0], upper_corner[1] - lower_corner[1]),
+                        max(upper_corner[2] - lower_corner[2], upper_corner[1] - lower_corner[1]),
                         exp_blocked.alloc_size_);
 
     realloc_tensor(Exp);
@@ -233,27 +202,21 @@ void calculate_non_orthorombic_corrections_tensor_blocked(const double mu_mean,
             for (int y = 0; y < (upper_corner[d1] - lower_corner[d1]); y++) {
                 const int y_1 = y * block_size[d1];
                 for (int x = 0; x < (upper_corner[d2] - lower_corner[d2]); x++) {
-                    const int x_1 = x * block_size[d2];
+                    const int x_1    = x * block_size[d2];
                     exp_blocked.data = &idx4(Exp[0], dir, y, x, 0);
 
                     for (int y2 = 0; y2 < block_size[d1]; y2++) {
-                        double *__restrict dst = &idx2(exp_blocked, y2, 0);
-                        const double scal = x1[y_1 + y2] * c_exp_const;
-                        const double *__restrict src = &x2[x_1];
+                        double* __restrict dst       = &idx2(exp_blocked, y2, 0);
+                        const double scal            = x1[y_1 + y2] * c_exp_const;
+                        const double* __restrict src = &x2[x_1];
 #pragma GCC ivdep
                         for (int x3 = 0; x3 < block_size[d2]; x3++) {
                             dst[x3] = scal * src[x3];
                         }
                     }
 
-                    exp_ij(c[dir],
-                           0,
-                           xmin[d1] - offset[d1] + y_1,
-                           xmin[d1] - offset[d1] + y_1 + block_size[d1],
-                           0,
-                           xmin[d2] - offset[d2] + x_1,
-                           xmin[d2] - offset[d2] + x_1 + block_size[d2],
-                           &exp_blocked);
+                    exp_ij(c[dir], 0, xmin[d1] - offset[d1] + y_1, xmin[d1] - offset[d1] + y_1 + block_size[d1], 0,
+                           xmin[d2] - offset[d2] + x_1, xmin[d2] - offset[d2] + x_1 + block_size[d2], &exp_blocked);
                 }
                 /* for (int s = 0; s < exp_tmp.alloc_size_; s++) */
                 /*     printf("exp : %.15lf\n", exp_tmp.data[s]); */
@@ -262,13 +225,13 @@ void calculate_non_orthorombic_corrections_tensor_blocked(const double mu_mean,
                 /*     for (int x = 0; x < (upper_corner[d2] - lower_corner[d2]); x++) { */
                 /*         const int x1 = x * block_size[d2]; */
                 /*         exp_blocked.data = &idx4(Exp[0], dir, y, x, 0); */
-            /*         for (int yy = 0; yy < block_size[d1]; yy++) { */
-            /*             memcpy(&idx2(exp_blocked, yy, 0), */
-            /*                    &idx2(exp_tmp, y1 + yy, x1), */
-            /*                    sizeof(double) * block_size[d2]); */
-            /*         } */
-            /*     } */
-            /* } */
+                /*         for (int yy = 0; yy < block_size[d1]; yy++) { */
+                /*             memcpy(&idx2(exp_blocked, yy, 0), */
+                /*                    &idx2(exp_tmp, y1 + yy, x1), */
+                /*                    sizeof(double) * block_size[d2]); */
+                /*         } */
+                /*     } */
+                /* } */
             }
         }
     }
@@ -278,23 +241,23 @@ void calculate_non_orthorombic_corrections_tensor_blocked(const double mu_mean,
     /* free(exp_tmp.data); */
 }
 
-
-void apply_non_orthorombic_corrections(const bool *__restrict plane, const tensor *const Exp, tensor *const cube)
+void
+apply_non_orthorombic_corrections(const bool* __restrict plane, const tensor* const Exp, tensor* const cube)
 {
     // Well we should never call non orthorombic corrections if everything is orthorombic
     if (plane[0] && plane[1] && plane[2])
         return;
 
-/*k and i are orthogonal, k and j as well */
+    /*k and i are orthogonal, k and j as well */
     if (plane[0] && plane[1]) {
         for (int z = 0; z < cube->size[0]; z++) {
             for (int y = 0; y < cube->size[1]; y++) {
-                const double *__restrict__ yx = &idx3(Exp[0], 2, y, 0);
-                double *__restrict dst = &idx3(cube[0], z, y, 0);
+                const double* __restrict__ yx = &idx3(Exp[0], 2, y, 0);
+                double* __restrict dst        = &idx3(cube[0], z, y, 0);
                 LIBXSMM_PRAGMA_SIMD
-                    for (int x = 0; x < cube->size[2]; x++) {
-                        dst[x] *= yx[x];
-                    }
+                for (int x = 0; x < cube->size[2]; x++) {
+                    dst[x] *= yx[x];
+                }
             }
         }
         return;
@@ -304,12 +267,12 @@ void apply_non_orthorombic_corrections(const bool *__restrict plane, const tenso
     if (plane[0] && plane[2]) {
         for (int z = 0; z < cube->size[0]; z++) {
             for (int y = 0; y < cube->size[1]; y++) {
-                const double zy = idx3(Exp[0], 1, z, y);
-                double *__restrict dst = &idx3(cube[0], z, y, 0);
+                const double zy        = idx3(Exp[0], 1, z, y);
+                double* __restrict dst = &idx3(cube[0], z, y, 0);
                 LIBXSMM_PRAGMA_SIMD
-                    for (int x = 0; x < cube->size[2]; x++) {
-                        dst[x] *= zy;
-                    }
+                for (int x = 0; x < cube->size[2]; x++) {
+                    dst[x] *= zy;
+                }
             }
         }
         return;
@@ -318,13 +281,13 @@ void apply_non_orthorombic_corrections(const bool *__restrict plane, const tenso
     /* j, k are orthognal, i and j are orthognal */
     if (plane[1] && plane[2]) {
         for (int z = 0; z < cube->size[0]; z++) {
-            double *__restrict__ zx = &idx3(Exp[0], 0, z, 0);
+            double* __restrict__ zx = &idx3(Exp[0], 0, z, 0);
             for (int y = 0; y < cube->size[1]; y++) {
-                double *__restrict dst = &idx3(cube[0], z, y, 0);
+                double* __restrict dst = &idx3(cube[0], z, y, 0);
                 LIBXSMM_PRAGMA_SIMD
-                    for (int x = 0; x < cube->size[2]; x++) {
-                        dst[x] *= zx[x];
-                    }
+                for (int x = 0; x < cube->size[2]; x++) {
+                    dst[x] *= zx[x];
+                }
             }
         }
         return;
@@ -334,13 +297,13 @@ void apply_non_orthorombic_corrections(const bool *__restrict plane, const tenso
         // z perpendicular to x. but y non perpendicular to any
         for (int z = 0; z < cube->size[0]; z++) {
             for (int y = 0; y < cube->size[1]; y++) {
-                const double zy = idx3(Exp[0], 1, z, y);
-                const double *__restrict__ yx = &idx3(Exp[0], 2, y, 0);
-                double *__restrict dst = &idx3(cube[0], z, y, 0);
+                const double zy               = idx3(Exp[0], 1, z, y);
+                const double* __restrict__ yx = &idx3(Exp[0], 2, y, 0);
+                double* __restrict dst        = &idx3(cube[0], z, y, 0);
                 LIBXSMM_PRAGMA_SIMD
-                    for (int x = 0; x < cube->size[2]; x++) {
-                        dst[x] *= zy * yx[x];
-                    }
+                for (int x = 0; x < cube->size[2]; x++) {
+                    dst[x] *= zy * yx[x];
+                }
             }
         }
         return;
@@ -349,54 +312,54 @@ void apply_non_orthorombic_corrections(const bool *__restrict plane, const tenso
     if (plane[1]) {
         // z perpendicular to y, but x and z are not and y and x neither
         for (int z = 0; z < cube->size[0]; z++) {
-            double *__restrict__ zx = &idx3(Exp[0], 0, z, 0);
+            double* __restrict__ zx = &idx3(Exp[0], 0, z, 0);
             for (int y = 0; y < cube->size[1]; y++) {
-                const double *__restrict__ yx = &idx3(Exp[0], 2, y, 0);
-                double *__restrict dst = &idx3(cube[0], z, y, 0);
+                const double* __restrict__ yx = &idx3(Exp[0], 2, y, 0);
+                double* __restrict dst        = &idx3(cube[0], z, y, 0);
                 LIBXSMM_PRAGMA_SIMD
-                    for (int x = 0; x < cube->size[2]; x++) {
-                        dst[x] *= zx[x] * yx[x];
-                    }
+                for (int x = 0; x < cube->size[2]; x++) {
+                    dst[x] *= zx[x] * yx[x];
+                }
             }
         }
         return;
     }
-
 
     if (plane[2]) {
-// x perpendicular to y, but x and z are not and y and z neither
+        // x perpendicular to y, but x and z are not and y and z neither
         for (int z = 0; z < cube->size[0]; z++) {
-            double *__restrict__ zx = &idx3(Exp[0], 0, z, 0);
+            double* __restrict__ zx = &idx3(Exp[0], 0, z, 0);
             for (int y = 0; y < cube->size[1]; y++) {
-                const double zy = idx3(Exp[0], 1, z, y);
-                double *__restrict dst = &idx3(cube[0], z, y, 0);
+                const double zy        = idx3(Exp[0], 1, z, y);
+                double* __restrict dst = &idx3(cube[0], z, y, 0);
                 LIBXSMM_PRAGMA_SIMD
-                    for (int x = 0; x < cube->size[2]; x++) {
-                        dst[x] *= zx[x] * zy;
-                    }
+                for (int x = 0; x < cube->size[2]; x++) {
+                    dst[x] *= zx[x] * zy;
+                }
             }
         }
         return;
     }
 
-/* generic  case */
+    /* generic  case */
 
     for (int z = 0; z < cube->size[0]; z++) {
-        double *__restrict__ zx = &idx3(Exp[0], 0, z, 0);
+        double* __restrict__ zx = &idx3(Exp[0], 0, z, 0);
         for (int y = 0; y < cube->size[1]; y++) {
-            const double zy = idx3(Exp[0], 1, z, y);
-            const double *__restrict__ yx = &idx3(Exp[0], 2, y, 0);
-            double *__restrict dst = &idx3(cube[0], z, y, 0);
+            const double zy               = idx3(Exp[0], 1, z, y);
+            const double* __restrict__ yx = &idx3(Exp[0], 2, y, 0);
+            double* __restrict dst        = &idx3(cube[0], z, y, 0);
             LIBXSMM_PRAGMA_SIMD
-                for (int x = 0; x < cube->size[2]; x++) {
-                    dst[x] *= zx[x] * zy * yx[x];
-                }
+            for (int x = 0; x < cube->size[2]; x++) {
+                dst[x] *= zx[x] * zy * yx[x];
+            }
         }
     }
     return;
 }
 
-/* void apply_non_orthorombic_corrections_xy(const int x, const int y, const struct tensor_ *const Exp, struct tensor_ *const m) */
+/* void apply_non_orthorombic_corrections_xy(const int x, const int y, const struct tensor_ *const Exp, struct tensor_
+ * *const m) */
 /* { */
 /*     for (int gamma = 0; gamma < m->size[0]; gamma++) { */
 /*         for (int y1 = 0; y1 < m->size[1]; y1++) { */
@@ -409,7 +372,8 @@ void apply_non_orthorombic_corrections(const bool *__restrict plane, const tenso
 /*     } */
 /* } */
 
-/* void apply_non_orthorombic_corrections_xz(const int x, const int z, const struct tensor_ *const Exp, struct tensor_ *const m) */
+/* void apply_non_orthorombic_corrections_xz(const int x, const int z, const struct tensor_ *const Exp, struct tensor_
+ * *const m) */
 /* { */
 /*     for (int z1 = 0; z1 < m->size[0]; z1++) { */
 /*         const double *__restrict src = &idx3(Exp[0], 0, z1 + z, x); */
@@ -423,7 +387,8 @@ void apply_non_orthorombic_corrections(const bool *__restrict plane, const tenso
 /*     } */
 /* } */
 
-/* void apply_non_orthorombic_corrections_yz(const int y, const int z, const struct tensor_ *const Exp, struct tensor_ *const m) */
+/* void apply_non_orthorombic_corrections_yz(const int y, const int z, const struct tensor_ *const Exp, struct tensor_
+ * *const m) */
 /* { */
 /*     for (int z1 = 0; z1 < m->size[0]; z1++) { */
 /*         for (int y1 = 0; y1 < m->size[1]; y1++) { */
@@ -436,26 +401,13 @@ void apply_non_orthorombic_corrections(const bool *__restrict plane, const tenso
 /*     } */
 /* } */
 
-void apply_non_orthorombic_corrections_xy_blocked(const struct tensor_ *const Exp, struct tensor_ *const m)
+void
+apply_non_orthorombic_corrections_xy_blocked(const struct tensor_* const Exp, struct tensor_* const m)
 {
     for (int gamma = 0; gamma < m->size[0]; gamma++) {
         for (int y1 = 0; y1 < m->size[1]; y1++) {
-            double *__restrict dst = &idx3(m[0], gamma, y1, 0);
-            const double *__restrict src = &idx2(Exp[0], y1, 0);
-            #pragma GCC ivdep
-            for (int x1 = 0; x1 < m->size[2]; x1++) {
-                dst[x1] *= src[x1];
-            }
-        }
-    }
-}
-
-void apply_non_orthorombic_corrections_xz_blocked(const struct tensor_ *const Exp, struct tensor_ *const m)
-{
-    for (int z1 = 0; z1 < m->size[0]; z1++) {
-        const double *__restrict src = &idx2(Exp[0], z1, 0);
-        for (int y1 = 0; y1 < m->size[1]; y1++) {
-            double *__restrict dst = &idx3(m[0], z1, y1, 0);
+            double* __restrict dst       = &idx3(m[0], gamma, y1, 0);
+            const double* __restrict src = &idx2(Exp[0], y1, 0);
 #pragma GCC ivdep
             for (int x1 = 0; x1 < m->size[2]; x1++) {
                 dst[x1] *= src[x1];
@@ -464,12 +416,28 @@ void apply_non_orthorombic_corrections_xz_blocked(const struct tensor_ *const Ex
     }
 }
 
-void apply_non_orthorombic_corrections_yz_blocked(const struct tensor_ *const Exp, struct tensor_ *const m)
+void
+apply_non_orthorombic_corrections_xz_blocked(const struct tensor_* const Exp, struct tensor_* const m)
+{
+    for (int z1 = 0; z1 < m->size[0]; z1++) {
+        const double* __restrict src = &idx2(Exp[0], z1, 0);
+        for (int y1 = 0; y1 < m->size[1]; y1++) {
+            double* __restrict dst = &idx3(m[0], z1, y1, 0);
+#pragma GCC ivdep
+            for (int x1 = 0; x1 < m->size[2]; x1++) {
+                dst[x1] *= src[x1];
+            }
+        }
+    }
+}
+
+void
+apply_non_orthorombic_corrections_yz_blocked(const struct tensor_* const Exp, struct tensor_* const m)
 {
     for (int z1 = 0; z1 < m->size[0]; z1++) {
         for (int y1 = 0; y1 < m->size[1]; y1++) {
-            const double  src = idx2(Exp[0], z1, y1);
-            double *__restrict dst = &idx3(m[0], z1, y1, 0);
+            const double src       = idx2(Exp[0], z1, y1);
+            double* __restrict dst = &idx3(m[0], z1, y1, 0);
 #pragma GCC ivdep
             for (int x1 = 0; x1 < m->size[2]; x1++) {
                 dst[x1] *= src;
@@ -478,13 +446,15 @@ void apply_non_orthorombic_corrections_yz_blocked(const struct tensor_ *const Ex
     }
 }
 
-void apply_non_orthorombic_corrections_xz_yz_blocked(const struct tensor_ *const Exp_xz, const struct tensor_ *const Exp_yz, struct tensor_ *const m)
+void
+apply_non_orthorombic_corrections_xz_yz_blocked(const struct tensor_* const Exp_xz, const struct tensor_* const Exp_yz,
+                                                struct tensor_* const m)
 {
     for (int z1 = 0; z1 < m->size[0]; z1++) {
-        const double *__restrict src_xz = &idx2(Exp_xz[0], z1, 0);
+        const double* __restrict src_xz = &idx2(Exp_xz[0], z1, 0);
         for (int y1 = 0; y1 < m->size[1]; y1++) {
-            const double  src = idx2(Exp_yz[0], z1, y1);
-            double *__restrict dst = &idx3(m[0], z1, y1, 0);
+            const double src       = idx2(Exp_yz[0], z1, y1);
+            double* __restrict dst = &idx3(m[0], z1, y1, 0);
 #pragma GCC ivdep
             for (int x1 = 0; x1 < m->size[2]; x1++) {
                 dst[x1] *= src * src_xz[x1];

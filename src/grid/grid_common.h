@@ -5,8 +5,6 @@
 #ifndef GRID_COMMON_H
 #define GRID_COMMON_H
 
+#endif // GRID_COMMON_H
 
-
-#endif  // GRID_COMMON_H
-
-//EOF
+// EOF

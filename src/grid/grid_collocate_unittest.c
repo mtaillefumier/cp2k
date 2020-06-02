@@ -9,7 +9,9 @@
 //
 #include "grid_collocate_replay.h"
 
-static int run_test(const char cp2k_root_dir[], const char task_file[]) {
+static int
+run_test(const char cp2k_root_dir[], const char task_file[])
+{
     char filename[1024] = "";
 
     assert(strlen(cp2k_root_dir) < 512);
@@ -31,7 +33,9 @@ static int run_test(const char cp2k_root_dir[], const char task_file[]) {
     }
 }
 
-int main(int argc, char *argv[]){
+int
+main(int argc, char* argv[])
+{
     if (argc != 2) {
         printf("Usage: grid_base_ref_unittest.x <cp2k-root-dir>\n");
         return 1;
@@ -47,4 +51,4 @@ int main(int argc, char *argv[]){
     return errors;
 }
 
-//EOF
+// EOF

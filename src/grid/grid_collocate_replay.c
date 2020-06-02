@@ -3,7 +3,7 @@
  *  Copyright (C) 2000 - 2020  CP2K developers group                         *
  *****************************************************************************/
 
-#define _XOPEN_SOURCE 700   /* Enable POSIX 2008/13 */
+#define _XOPEN_SOURCE 700 /* Enable POSIX 2008/13 */
 
 #include <stdio.h>
 #include <stdbool.h>
@@ -17,40 +17,23 @@
 #include "grid_collocate_replay.h"
 #include "grid_collocate_cpu.h"
 
-
 // *****************************************************************************
-void grid_collocate_record(const bool use_ortho,
-                           const int func,
-                           const int la_max,
-                           const int la_min,
-                           const int lb_max,
-                           const int lb_min,
-                           const double zeta,
-                           const double zetb,
-                           const double rscale,
-                           const double dh[3][3],
-                           const double dh_inv[3][3],
-                           const double ra[3],
-                           const double rab[3],
-                           const int npts[3],
-                           const int ngrid[3],
-                           const int lb_grid[3],
-                           const bool periodic[3],
-                           const double radius,
-                           const int o1,
-                           const int o2,
-                           const int n1,
-                           const int n2,
-                           const double pab[n2][n1],
-                           const double grid[ngrid[2]][ngrid[1]][ngrid[0]]){
+void
+grid_collocate_record(const bool use_ortho, const int func, const int la_max, const int la_min, const int lb_max,
+                      const int lb_min, const double zeta, const double zetb, const double rscale,
+                      const double dh[3][3], const double dh_inv[3][3], const double ra[3], const double rab[3],
+                      const int npts[3], const int ngrid[3], const int lb_grid[3], const bool periodic[3],
+                      const double radius, const int o1, const int o2, const int n1, const int n2,
+                      const double pab[n2][n1], const double grid[ngrid[2]][ngrid[1]][ngrid[0]])
+{
 
     static int counter = 0;
     counter++;
     char filename[100];
     snprintf(filename, sizeof(filename), "grid_collocate_%05i.task", counter);
 
-    const int D = DECIMAL_DIG;  // In C11 we could use DBL_DECIMAL_DIG.
-    FILE *fp = fopen(filename, "w+");
+    const int D = DECIMAL_DIG; // In C11 we could use DBL_DECIMAL_DIG.
+    FILE* fp    = fopen(filename, "w+");
     fprintf(fp, "#Grid collocate task v5\n");
     fprintf(fp, "use_ortho %i\n", use_ortho);
     fprintf(fp, "func %i\n", func);
@@ -61,9 +44,9 @@ void grid_collocate_record(const bool use_ortho,
     fprintf(fp, "zeta %.*e\n", D, zeta);
     fprintf(fp, "zetb %.*e\n", D, zetb);
     fprintf(fp, "rscale %.*e\n", D, rscale);
-    for (int i=0; i<3; i++)
+    for (int i = 0; i < 3; i++)
         fprintf(fp, "dh %i %.*e %.*e %.*e\n", i, D, dh[i][0], D, dh[i][1], D, dh[i][2]);
-    for (int i=0; i<3; i++)
+    for (int i = 0; i < 3; i++)
         fprintf(fp, "dh_inv %i %.*e %.*e %.*e\n", i, D, dh_inv[i][0], D, dh_inv[i][1], D, dh_inv[i][2]);
     fprintf(fp, "ra %.*e %.*e %.*e\n", D, ra[0], D, ra[1], D, ra[2]);
     fprintf(fp, "rab %.*e %.*e %.*e\n", D, rab[0], D, rab[1], D, rab[2]);
@@ -77,16 +60,16 @@ void grid_collocate_record(const bool use_ortho,
     fprintf(fp, "n1 %i\n", n1);
     fprintf(fp, "n2 %i\n", n2);
 
-    for (int i=0; i < n2; i++) {
-        for (int j=0; j < n1; j++) {
+    for (int i = 0; i < n2; i++) {
+        for (int j = 0; j < n1; j++) {
             fprintf(fp, "pab %i %i %.*e\n", i, j, D, pab[i][j]);
         }
     }
 
     int ngrid_nonzero = 0;
-    for (int i=0; i<ngrid[2]; i++) {
-        for (int j=0; j<ngrid[1]; j++) {
-            for (int k=0; j<ngrid[0]; j++) {
+    for (int i = 0; i < ngrid[2]; i++) {
+        for (int j = 0; j < ngrid[1]; j++) {
+            for (int k = 0; j < ngrid[0]; j++) {
                 if (grid[i][j][k] != 0.0) {
                     ngrid_nonzero++;
                 }
@@ -95,9 +78,9 @@ void grid_collocate_record(const bool use_ortho,
     }
     fprintf(fp, "ngrid_nonzero %i\n", ngrid_nonzero);
 
-    for (int i=0; i<ngrid[2]; i++) {
-        for (int j=0; j<ngrid[1]; j++) {
-            for (int k=0; j<ngrid[0]; j++) {
+    for (int i = 0; i < ngrid[2]; i++) {
+        for (int j = 0; j < ngrid[1]; j++) {
+            for (int k = 0; j < ngrid[0]; j++) {
                 if (grid[i][j][k] != 0.0) {
                     fprintf(fp, "grid %i %i %i %.*e\n", i, j, k, D, grid[i][j][k]);
                 }
@@ -107,13 +90,14 @@ void grid_collocate_record(const bool use_ortho,
     fprintf(fp, "#THE_END\n");
     fclose(fp);
     printf("Wrote %s\n", filename);
-
 }
 
 // *****************************************************************************
-double grid_collocate_replay(const char* filename, const int cycles, const int num_blocks, const bool sequential){
+double
+grid_collocate_replay(const char* filename, const int cycles, const int num_blocks, const bool sequential)
+{
     printf("Task:     %s\n", filename);
-    FILE *fp = fopen(filename, "r");
+    FILE* fp = fopen(filename, "r");
     assert(fp != NULL && "Could not open task file.");
 
     char line[100], key[100];
@@ -168,7 +152,7 @@ double grid_collocate_replay(const char* filename, const int cycles, const int n
     assert(strcmp(key, "rscale") == 0);
 
     double dh[3][3];
-    for (int i=0; i<3; i++) {
+    for (int i = 0; i < 3; i++) {
         int j;
         assert(fgets(line, sizeof(line), fp) != NULL);
         assert(sscanf(line, "%99s %i %le %le %le", key, &j, &dh[i][0], &dh[i][1], &dh[i][2]) == 5);
@@ -176,7 +160,7 @@ double grid_collocate_replay(const char* filename, const int cycles, const int n
     }
 
     double dh_inv[3][3];
-    for (int i=0; i<3; i++) {
+    for (int i = 0; i < 3; i++) {
         int j;
         assert(fgets(line, sizeof(line), fp) != NULL);
         assert(sscanf(line, "%99s %i %le %le %le", key, &j, &dh_inv[i][0], &dh_inv[i][1], &dh_inv[i][2]) == 5);
@@ -241,21 +225,22 @@ double grid_collocate_replay(const char* filename, const int cycles, const int n
 
     double pab[n2][n1];
     double dmax = -10000000;
-    for (int i=0; i<n2; i++) {
-        for (int j=0; j<n1; j++) {
+    for (int i = 0; i < n2; i++) {
+        for (int j = 0; j < n1; j++) {
             int i2, j2;
             double value;
             assert(fgets(line, sizeof(line), fp) != NULL);
             assert(sscanf(line, "%99s %i %i %le", key, &i2, &j2, &value) == 4);
-            assert(strcmp(key, "pab") == 0 && i == i2 && j==j2);
+            assert(strcmp(key, "pab") == 0 && i == i2 && j == j2);
             pab[i][j] = value;
-            if(fabs(value) > dmax) dmax = fabs(value);
+            if (fabs(value) > dmax)
+                dmax = fabs(value);
         }
     }
 
     dmax = 1.0 / dmax;
-    for (int i=0; i<n2; i++) {
-        for (int j=0; j<n1; j++) {
+    for (int i = 0; i < n2; i++) {
+        for (int j = 0; j < n1; j++) {
             pab[i][j] *= dmax;
         }
     }
@@ -266,15 +251,15 @@ double grid_collocate_replay(const char* filename, const int cycles, const int n
 
     // Can be large, run with "ulimit -s unlimited".
     double grid_ref[ngrid[2]][ngrid[1]][ngrid[0]];
-    for (int i=0; i<ngrid[2]; i++) {
-        for (int j=0; j<ngrid[1]; j++) {
-            for (int k=0; k<ngrid[0]; k++) {
+    for (int i = 0; i < ngrid[2]; i++) {
+        for (int j = 0; j < ngrid[1]; j++) {
+            for (int k = 0; k < ngrid[0]; k++) {
                 grid_ref[i][j][k] = 0.0;
             }
         }
     }
 
-    for (int n=0; n < ngrid_nonzero; n++) {
+    for (int n = 0; n < ngrid_nonzero; n++) {
         int i, j, k;
         double value;
         assert(fgets(line, sizeof(line), fp) != NULL);
@@ -292,35 +277,13 @@ double grid_collocate_replay(const char* filename, const int cycles, const int n
 
     struct timespec start_time;
     clock_gettime(CLOCK_THREAD_CPUTIME_ID, &start_time);
-    void *gaussian_handle =  NULL;
-    gaussian_handle= collocate_create_handle(0, num_blocks, sequential);
+    void* gaussian_handle = NULL;
+    gaussian_handle       = collocate_create_handle(0, num_blocks, sequential);
 
-    for (int i=0; i < cycles ; i++) {
-        grid_collocate_pgf_product_cpu(gaussian_handle,
-                                       use_ortho,
-                                       func,
-                                       la_max,
-                                       la_min,
-                                       lb_max,
-                                       lb_min,
-                                       zeta,
-                                       zetb,
-                                       rscale,
-                                       dh,
-                                       dh_inv,
-                                       ra,
-                                       rab,
-                                       npts,
-                                       ngrid,
-                                       lb_grid,
-                                       periodic,
-                                       radius,
-                                       o1,
-                                       o2,
-                                       n1,
-                                       n2,
-                                       pab,
-                                       &grid_test[0][0][0]);
+    for (int i = 0; i < cycles; i++) {
+        grid_collocate_pgf_product_cpu(gaussian_handle, use_ortho, func, la_max, la_min, lb_max, lb_min, zeta, zetb,
+                                       rscale, dh, dh_inv, ra, rab, npts, ngrid, lb_grid, periodic, radius, o1, o2, n1,
+                                       n2, pab, &grid_test[0][0][0]);
     }
 
     collocate_finalize(gaussian_handle);
@@ -335,7 +298,7 @@ double grid_collocate_replay(const char* filename, const int cycles, const int n
             for (int k = 0; k < ngrid[0]; k++) {
                 printf("(%.6e %.6e) ", grid_test[i][j][k], ((double)cycles * grid_ref[i][j][k] * dmax));
                 const double diff = fabs((grid_test[i][j][k] - ((double)cycles * grid_ref[i][j][k] * dmax)));
-                max_diff = fmax(max_diff, diff);
+                max_diff          = fmax(max_diff, diff);
                 printf("%le\n", diff);
             }
             /* printf("\n"); */
@@ -351,4 +314,4 @@ double grid_collocate_replay(const char* filename, const int cycles, const int n
     return 0.0;
 }
 
-//EOF
+// EOF

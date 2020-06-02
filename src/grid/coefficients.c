@@ -12,12 +12,13 @@
 #include "tensor_local.h"
 #include "coefficients.h"
 
-void transform_xyz_to_triangular(const tensor *const coef, double  *const  coef_xyz)
+void
+transform_xyz_to_triangular(const tensor* const coef, double* const coef_xyz)
 {
     assert(coef != NULL);
     assert(coef_xyz != NULL);
 
-    int lxyz = 0;
+    int lxyz     = 0;
     const int lp = (coef->size[0] - 1);
     for (int lzp = 0; lzp <= lp; lzp++) {
         for (int lyp = 0; lyp <= lp - lzp; lyp++) {
@@ -28,12 +29,12 @@ void transform_xyz_to_triangular(const tensor *const coef, double  *const  coef_
     }
 }
 
-
-void transform_yxz_to_triangular(const tensor *const coef, double  *const coef_xyz)
+void
+transform_yxz_to_triangular(const tensor* const coef, double* const coef_xyz)
 {
     assert(coef != NULL);
     assert(coef_xyz != NULL);
-    int lxyz = 0;
+    int lxyz     = 0;
     const int lp = (coef->size[0] - 1);
     for (int lzp = 0; lzp <= lp; lzp++) {
         for (int lyp = 0; lyp <= lp - lzp; lyp++) {
@@ -44,12 +45,12 @@ void transform_yxz_to_triangular(const tensor *const coef, double  *const coef_x
     }
 }
 
-
-void transform_triangular_to_xyz(const double  *const coef_xyz, tensor *const coef)
+void
+transform_triangular_to_xyz(const double* const coef_xyz, tensor* const coef)
 {
     assert(coef != NULL);
     assert(coef_xyz != NULL);
-    int lxyz = 0;
+    int lxyz     = 0;
     const int lp = coef->size[0] - 1;
     for (int lzp = 0; lzp <= lp; lzp++) {
         for (int lyp = 0; lyp <= lp - lzp; lyp++) {
@@ -63,15 +64,12 @@ void transform_triangular_to_xyz(const double  *const coef_xyz, tensor *const co
     }
 }
 
-
 // *****************************************************************************
-void grid_prepare_coef(const int *lmin,
-                       const int *lmax,
-                       const int lp,
-                       const double prefactor,
-                       const tensor *alpha, // [3][lb_max+1][la_max+1][lp+1]
-                       const double pab[ncoset[lmax[1]]][ncoset[lmax[0]]],
-                       tensor *coef_xyz) //[lp+1][lp+1][lp+1]
+void
+grid_prepare_coef(const int* lmin, const int* lmax, const int lp, const double prefactor,
+                  const tensor* alpha, // [3][lb_max+1][la_max+1][lp+1]
+                  const double pab[ncoset[lmax[1]]][ncoset[lmax[0]]],
+                  tensor* coef_xyz) //[lp+1][lp+1][lp+1]
 {
     assert(alpha != NULL);
     assert(coef_xyz != NULL);
@@ -82,36 +80,36 @@ void grid_prepare_coef(const int *lmin,
     double coef_xyt[lp + 1][lp + 1];
     double coef_xtt[lp + 1];
 
-    for (int lzb = 0; lzb<=lmax[1]; lzb++) {
-        for (int lza = 0; lza<=lmax[0]; lza++) {
+    for (int lzb = 0; lzb <= lmax[1]; lzb++) {
+        for (int lza = 0; lza <= lmax[0]; lza++) {
             memset(coef_xyt, 0, sizeof(double) * (lp + 1) * (lp + 1));
-            for (int lyb = 0; lyb<=lmax[1]-lzb; lyb++) {
-                for (int lya = 0; lya<=lmax[0]-lza; lya++) {
-                    const int lxpm = (lmax[1]-lzb-lyb) + (lmax[0]-lza-lya);
-                    for (int i=0; i<=lxpm; i++) {
+            for (int lyb = 0; lyb <= lmax[1] - lzb; lyb++) {
+                for (int lya = 0; lya <= lmax[0] - lza; lya++) {
+                    const int lxpm = (lmax[1] - lzb - lyb) + (lmax[0] - lza - lya);
+                    for (int i = 0; i <= lxpm; i++) {
                         coef_xtt[i] = 0.0;
                     }
-                    for (int lxb = max(lmin[1]-lzb-lyb, 0); lxb<=lmax[1]-lzb-lyb; lxb++) {
-                        for (int lxa = max(lmin[0]-lza-lya, 0); lxa<=lmax[0]-lza-lya; lxa++) {
-                            const int ico = coset(lxa, lya, lza);
-                            const int jco = coset(lxb, lyb, lzb);
+                    for (int lxb = max(lmin[1] - lzb - lyb, 0); lxb <= lmax[1] - lzb - lyb; lxb++) {
+                        for (int lxa = max(lmin[0] - lza - lya, 0); lxa <= lmax[0] - lza - lya; lxa++) {
+                            const int ico      = coset(lxa, lya, lza);
+                            const int jco      = coset(lxb, lyb, lzb);
                             const double p_ele = prefactor * pab[jco][ico];
-                            for (int lxp = 0; lxp<=lxa+lxb; lxp++) {
+                            for (int lxp = 0; lxp <= lxa + lxb; lxp++) {
                                 coef_xtt[lxp] += p_ele * idx4(alpha[0], 0, lxb, lxa, lxp);
                             }
                         }
                     }
-                    for (int lyp = 0; lyp<=lya+lyb; lyp++) {
-                        for (int lxp = 0; lxp<=lp-lza-lzb-lya-lyb; lxp++) {
+                    for (int lyp = 0; lyp <= lya + lyb; lyp++) {
+                        for (int lxp = 0; lxp <= lp - lza - lzb - lya - lyb; lxp++) {
                             coef_xyt[lyp][lxp] += idx4(alpha[0], 1, lyb, lya, lyp) * coef_xtt[lxp];
                         }
                     }
                 }
             }
             /* I need to permute two fo the indices for the orthogonal case */
-            for (int lzp = 0; lzp<=lza+lzb; lzp++) {
-                for (int lyp = 0; lyp<=lp-lza-lzb; lyp++) {
-                    for (int lxp = 0; lxp<=lp-lza-lzb-lyp; lxp++) {
+            for (int lzp = 0; lzp <= lza + lzb; lzp++) {
+                for (int lyp = 0; lyp <= lp - lza - lzb; lyp++) {
+                    for (int lxp = 0; lxp <= lp - lza - lzb - lyp; lxp++) {
                         idx3(coef_xyz[0], lxp, lzp, lyp) += idx4(alpha[0], 2, lzb, lza, lzp) * coef_xyt[lyp][lxp];
                     }
                 }
@@ -124,52 +122,51 @@ void grid_prepare_coef(const int *lmin,
 // for gpu, it is better to store only the relevant matrix elements instead of
 // the full matrix. This reduces transfer between CPU and GPU
 
-void grid_prepare_coef_gpu(const int *lmin,
-                           const int *lmax,
-                           const int lp,
-                           const double prefactor,
-                           const tensor *alpha, // [3][lb_max+1][la_max+1][lp+1]
-                           const double pab[ncoset[lmax[1]]][ncoset[lmax[0]]],
-                           double *coef_xyz) //[lp+1][lp+1][lp+1]
+void
+grid_prepare_coef_gpu(const int* lmin, const int* lmax, const int lp, const double prefactor,
+                      const tensor* alpha, // [3][lb_max+1][la_max+1][lp+1]
+                      const double pab[ncoset[lmax[1]]][ncoset[lmax[0]]],
+                      double* coef_xyz) //[lp+1][lp+1][lp+1]
 {
     assert(alpha != NULL);
     assert(coef_xyz != NULL);
     // we need a proper fix for that. We can use the tensor structure for this
 
-    double coef_xyt[lp+1][lp+1];
-    double coef_xtt[lp+1];
+    double coef_xyt[lp + 1][lp + 1];
+    double coef_xtt[lp + 1];
 
-    for (int lzb = 0; lzb<=lmax[1]; lzb++) {
-        for (int lza = 0; lza<=lmax[0]; lza++) {
-            memset(coef_xyt, 0, sizeof(double) * (lp + 1)* (lp + 1));
-            for (int lyb = 0; lyb<=lmax[1]-lzb; lyb++) {
-                for (int lya = 0; lya<=lmax[0]-lza; lya++) {
-                    const int lxpm = (lmax[1]-lzb-lyb) + (lmax[0]-lza-lya);
-                    for (int i=0; i<=lxpm; i++) {
+    for (int lzb = 0; lzb <= lmax[1]; lzb++) {
+        for (int lza = 0; lza <= lmax[0]; lza++) {
+            memset(coef_xyt, 0, sizeof(double) * (lp + 1) * (lp + 1));
+            for (int lyb = 0; lyb <= lmax[1] - lzb; lyb++) {
+                for (int lya = 0; lya <= lmax[0] - lza; lya++) {
+                    const int lxpm = (lmax[1] - lzb - lyb) + (lmax[0] - lza - lya);
+                    for (int i = 0; i <= lxpm; i++) {
                         coef_xtt[i] = 0.0;
                     }
-                    for (int lxb = max(lmin[1]-lzb-lyb, 0); lxb<=lmax[1]-lzb-lyb; lxb++) {
-                        for (int lxa = max(lmin[0]-lza-lya, 0); lxa<=lmax[0]-lza-lya; lxa++) {
-                            const int ico = coset(lxa, lya, lza);
-                            const int jco = coset(lxb, lyb, lzb);
+                    for (int lxb = max(lmin[1] - lzb - lyb, 0); lxb <= lmax[1] - lzb - lyb; lxb++) {
+                        for (int lxa = max(lmin[0] - lza - lya, 0); lxa <= lmax[0] - lza - lya; lxa++) {
+                            const int ico      = coset(lxa, lya, lza);
+                            const int jco      = coset(lxb, lyb, lzb);
                             const double p_ele = prefactor * pab[jco][ico];
-                            for (int lxp = 0; lxp<=lxa+lxb; lxp++) {
+                            for (int lxp = 0; lxp <= lxa + lxb; lxp++) {
                                 coef_xtt[lxp] += p_ele * idx4(alpha[0], 0, lxb, lxa, lxp);
                             }
                         }
                     }
-                    for (int lyp = 0; lyp<=lya+lyb; lyp++) {
-                        for (int lxp = 0; lxp<=lp-lza-lzb-lya-lyb; lxp++) {
+                    for (int lyp = 0; lyp <= lya + lyb; lyp++) {
+                        for (int lxp = 0; lxp <= lp - lza - lzb - lya - lyb; lxp++) {
                             coef_xyt[lyp][lxp] += idx4(alpha[0], 1, lyb, lya, lyp) * coef_xtt[lxp];
                         }
                     }
                 }
             }
             /* I need to permute two fo the indices for the orthogonal case */
-            for (int lzp = 0; lzp<=lza+lzb; lzp++) {
-                for (int lyp = 0; lyp<=lp-lza-lzb; lyp++) {
-                    for (int lxp = 0; lxp<=lp-lza-lzb-lyp; lxp++) {
-                        coef_xyz[coset_without_offset(lxp, lzp, lyp)] += idx4(alpha[0], 2, lzb, lza, lzp) * coef_xyt[lyp][lxp];
+            for (int lzp = 0; lzp <= lza + lzb; lzp++) {
+                for (int lyp = 0; lyp <= lp - lza - lzb; lyp++) {
+                    for (int lxp = 0; lxp <= lp - lza - lzb - lyp; lxp++) {
+                        coef_xyz[coset_without_offset(lxp, lzp, lyp)] +=
+                            idx4(alpha[0], 2, lzb, lza, lzp) * coef_xyt[lyp][lxp];
                     }
                 }
             }
@@ -177,14 +174,9 @@ void grid_prepare_coef_gpu(const int *lmin,
     }
 }
 
-
-
 // *****************************************************************************
-void grid_prepare_alpha(const double ra[3],
-                        const double rb[3],
-                        const double rp[3],
-                        const int *lmax,
-                        tensor *alpha)
+void
+grid_prepare_alpha(const double ra[3], const double rb[3], const double rp[3], const int* lmax, tensor* alpha)
 {
     assert(alpha != NULL);
     // Initialize with zeros.
@@ -194,22 +186,22 @@ void grid_prepare_alpha(const double ra[3],
     //   compute polynomial expansion coefs -> (x-a)**lxa (x-b)**lxb -> sum_{ls} alpha(ls,lxa,lxb,1)*(x-p)**ls
     //
 
-    for (int iaxis=0; iaxis<3; iaxis++) {
+    for (int iaxis = 0; iaxis < 3; iaxis++) {
         const double drpa = rp[iaxis] - ra[iaxis];
         const double drpb = rp[iaxis] - rb[iaxis];
         for (int lxa = 0; lxa <= lmax[0]; lxa++) {
             for (int lxb = 0; lxb <= lmax[1]; lxb++) {
                 double binomial_k_lxa = 1.0;
-                double a = 1.0;
+                double a              = 1.0;
                 for (int k = 0; k <= lxa; k++) {
                     double binomial_l_lxb = 1.0;
-                    double b = 1.0;
+                    double b              = 1.0;
                     for (int l = 0; l <= lxb; l++) {
                         idx4(alpha[0], iaxis, lxb, lxa, lxa - l + lxb - k) += binomial_k_lxa * binomial_l_lxb * a * b;
                         binomial_l_lxb *= ((double)(lxb - l)) / ((double)(l + 1));
                         b *= drpb;
                     }
-                    binomial_k_lxa *= ((double)(lxa-k)) / ((double)(k+1));
+                    binomial_k_lxa *= ((double)(lxa - k)) / ((double)(k + 1));
                     a *= drpa;
                 }
             }
@@ -217,13 +209,12 @@ void grid_prepare_alpha(const double ra[3],
     }
 }
 
-
 /* this function computes the coefficients initially expressed in the cartesian
  * space to the grid space. It is inplane and can also be done with
  * matrix-matrix multiplication. It is in fact a tensor reduction. */
 
-void grid_transform_coef_xzy_to_ikj(const double dh[3][3],
-                                    const tensor *coef_xyz)
+void
+grid_transform_coef_xzy_to_ikj(const double dh[3][3], const tensor* coef_xyz)
 {
     assert(coef_xyz != NULL);
     const int lp = coef_xyz->size[0] - 1;
@@ -240,7 +231,7 @@ void grid_transform_coef_xzy_to_ikj(const double dh[3][3],
 
     coef_ijk.data = memalign(64, sizeof(double) * coef_ijk.alloc_size_);
 
-    if(coef_ijk.data == NULL)
+    if (coef_ijk.data == NULL)
         abort();
 
     memset(coef_ijk.data, 0, sizeof(double) * coef_ijk.alloc_size_);
@@ -262,12 +253,12 @@ void grid_transform_coef_xzy_to_ikj(const double dh[3][3],
     for (int klx = 0; klx <= lpx; klx++) {
         for (int jlx = 0; jlx <= lpx - klx; jlx++) {
             for (int ilx = 0; ilx <= lpx - klx - jlx; ilx++) {
-                const int lx = ilx + jlx + klx;
+                const int lx  = ilx + jlx + klx;
                 const int lpy = lp - lx;
                 for (int kly = 0; kly <= lpy; kly++) {
                     for (int jly = 0; jly <= lpy - kly; jly++) {
                         for (int ily = 0; ily <= lpy - kly - jly; ily++) {
-                            const int ly = ily + jly + kly;
+                            const int ly  = ily + jly + kly;
                             const int lpz = lp - lx - ly;
                             for (int klz = 0; klz <= lpz; klz++) {
                                 for (int jlz = 0; jlz <= lpz - klz; jlz++) {
@@ -276,16 +267,19 @@ void grid_transform_coef_xzy_to_ikj(const double dh[3][3],
                                         const int il = ilx + ily + ilz;
                                         const int jl = jlx + jly + jlz;
                                         const int kl = klx + kly + klz;
-                                        //const int lijk= coef_map[kl][jl][il];
+                                        // const int lijk= coef_map[kl][jl][il];
                                         /* the fac table is the factorial. It
                                          * would be better to use the
                                          * multinomials. */
-                                        idx3(coef_ijk, il, kl, jl) += idx3(coef_xyz[0], lx, lz, ly) *
-                                            idx3(hmatgridp, ilx, 0, 0) * idx3(hmatgridp, jlx, 1, 0) * idx3(hmatgridp, klx, 2, 0) *
-                                            idx3(hmatgridp, ily, 0, 1) * idx3(hmatgridp, jly, 1, 1) * idx3(hmatgridp, kly, 2, 1) *
-                                            idx3(hmatgridp, ilz, 0, 2) * idx3(hmatgridp, jlz, 1, 2) * idx3(hmatgridp, klz, 2, 2) *
-                                            fac[lx] * fac[ly] * fac[lz] /
-                                            (fac[ilx] * fac[ily] * fac[ilz] * fac[jlx] * fac[jly] * fac[jlz] * fac[klx] * fac[kly] * fac[klz]);
+                                        idx3(coef_ijk, il, kl, jl) +=
+                                            idx3(coef_xyz[0], lx, lz, ly) * idx3(hmatgridp, ilx, 0, 0) *
+                                            idx3(hmatgridp, jlx, 1, 0) * idx3(hmatgridp, klx, 2, 0) *
+                                            idx3(hmatgridp, ily, 0, 1) * idx3(hmatgridp, jly, 1, 1) *
+                                            idx3(hmatgridp, kly, 2, 1) * idx3(hmatgridp, ilz, 0, 2) *
+                                            idx3(hmatgridp, jlz, 1, 2) * idx3(hmatgridp, klz, 2, 2) * fac[lx] *
+                                            fac[ly] * fac[lz] /
+                                            (fac[ilx] * fac[ily] * fac[ilz] * fac[jlx] * fac[jly] * fac[jlz] *
+                                             fac[klx] * fac[kly] * fac[klz]);
                                     }
                                 }
                             }
@@ -304,8 +298,8 @@ void grid_transform_coef_xzy_to_ikj(const double dh[3][3],
 /* Rotate the coefficients computed in the local grid coordinates to the
  * cartesians coorinates. The order of the indices indicates how the
  * coefficients are stored */
-void grid_transform_coef_jik_to_yxz(const double dh[3][3],
-                                    const tensor *coef_xyz)
+void
+grid_transform_coef_jik_to_yxz(const double dh[3][3], const tensor* coef_xyz)
 {
     assert(coef_xyz);
     const int lp = coef_xyz->size[0] - 1;
@@ -321,7 +315,7 @@ void grid_transform_coef_jik_to_yxz(const double dh[3][3],
     initialize_tensor_3(&coef_ijk, coef_xyz->size[0], coef_xyz->size[1], coef_xyz->size[2]);
 
     coef_ijk.data = memalign(64, sizeof(double) * coef_ijk.alloc_size_);
-    if(coef_ijk.data == NULL)
+    if (coef_ijk.data == NULL)
         abort();
 
     memset(coef_ijk.data, 0, sizeof(double) * coef_ijk.alloc_size_);
@@ -343,12 +337,12 @@ void grid_transform_coef_jik_to_yxz(const double dh[3][3],
     for (int klx = 0; klx <= lpx; klx++) {
         for (int jlx = 0; jlx <= lpx - klx; jlx++) {
             for (int ilx = 0; ilx <= lpx - klx - jlx; ilx++) {
-                const int lx = ilx + jlx + klx;
+                const int lx  = ilx + jlx + klx;
                 const int lpy = lp - lx;
                 for (int kly = 0; kly <= lpy; kly++) {
                     for (int jly = 0; jly <= lpy - kly; jly++) {
                         for (int ily = 0; ily <= lpy - kly - jly; ily++) {
-                            const int ly = ily + jly + kly;
+                            const int ly  = ily + jly + kly;
                             const int lpz = lp - lx - ly;
                             for (int klz = 0; klz <= lpz; klz++) {
                                 for (int jlz = 0; jlz <= lpz - klz; jlz++) {
@@ -357,16 +351,19 @@ void grid_transform_coef_jik_to_yxz(const double dh[3][3],
                                         const int il = ilx + ily + ilz;
                                         const int jl = jlx + jly + jlz;
                                         const int kl = klx + kly + klz;
-                                        //const int lijk= coef_map[kl][jl][il];
+                                        // const int lijk= coef_map[kl][jl][il];
                                         /* the fac table is the factorial. It
                                          * would be better to use the
                                          * multinomials. */
-                                        idx3(coef_ijk, ly, lx, lz) += idx3(coef_xyz[0], jl, il, kl) *
-                                            idx3(hmatgridp, ilx, 0, 0) * idx3(hmatgridp, jlx, 1, 0) * idx3(hmatgridp, klx, 2, 0) *
-                                            idx3(hmatgridp, ily, 0, 1) * idx3(hmatgridp, jly, 1, 1) * idx3(hmatgridp, kly, 2, 1) *
-                                            idx3(hmatgridp, ilz, 0, 2) * idx3(hmatgridp, jlz, 1, 2) * idx3(hmatgridp, klz, 2, 2) *
-                                            fac[lx] * fac[ly] * fac[lz] /
-                                            (fac[ilx] * fac[ily] * fac[ilz] * fac[jlx] * fac[jly] * fac[jlz] * fac[klx] * fac[kly] * fac[klz]);
+                                        idx3(coef_ijk, ly, lx, lz) +=
+                                            idx3(coef_xyz[0], jl, il, kl) * idx3(hmatgridp, ilx, 0, 0) *
+                                            idx3(hmatgridp, jlx, 1, 0) * idx3(hmatgridp, klx, 2, 0) *
+                                            idx3(hmatgridp, ily, 0, 1) * idx3(hmatgridp, jly, 1, 1) *
+                                            idx3(hmatgridp, kly, 2, 1) * idx3(hmatgridp, ilz, 0, 2) *
+                                            idx3(hmatgridp, jlz, 1, 2) * idx3(hmatgridp, klz, 2, 2) * fac[lx] *
+                                            fac[ly] * fac[lz] /
+                                            (fac[ilx] * fac[ily] * fac[ilz] * fac[jlx] * fac[jly] * fac[jlz] *
+                                             fac[klx] * fac[kly] * fac[klz]);
                                     }
                                 }
                             }
@@ -381,21 +378,14 @@ void grid_transform_coef_jik_to_yxz(const double dh[3][3],
     free(hmatgridp.data);
 }
 
-
-
 /* this function will replace the function grid_prepare_coef when I get the
  * tensor coef right. This need change elsewhere in cp2k, something I do not
  * want to do right now. I need to rethink the order of the parameters */
 
-void compute_compact_polynomial_coefficients(const tensor *coef,
-                                             const int *coef_offset_,
-                                             const int *lmin,
-                                             const int *lmax,
-                                             const double *ra,
-                                             const double *rb,
-                                             const double *rab,
-                                             const double prefactor,
-                                             tensor *co)
+void
+compute_compact_polynomial_coefficients(const tensor* coef, const int* coef_offset_, const int* lmin, const int* lmax,
+                                        const double* ra, const double* rb, const double* rab, const double prefactor,
+                                        tensor* co)
 {
     assert(coef != NULL);
     assert(co != NULL);
@@ -411,30 +401,20 @@ void compute_compact_polynomial_coefficients(const tensor *coef,
         {1, 7, 21, 35, 35, 21, 7, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
         {1, 8, 28, 56, 70, 56, 28, 8, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
         {1, 9, 36, 84, 126, 126, 84, 36, 9, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-        {1, 10, 45, 120, 210, 252, 210, 120, 45, 10, 1,
-         0, 0,  0,  0,   0,   0,   0,   0,   0,  0},
-        {1, 11, 55, 165, 330, 462, 462, 330, 165, 55, 11,
-         1, 0,  0,  0,   0,   0,   0,   0,   0,   0},
-        {1,  12, 66, 220, 495, 792, 924, 792, 495, 220, 66,
-         12, 1,  0,  0,   0,   0,   0,   0,   0,   0},
-        {1,  13, 78, 286, 715, 1287, 1716, 1716, 1287, 715, 286,
-         78, 13, 1,  0,   0,   0,    0,    0,    0,    0},
-        {1,   14, 91, 364, 1001, 2002, 3003, 3432, 3003, 2002, 1001,
-         364, 91, 14, 1,   0,    0,    0,    0,    0,    0},
-        {1,    15,  105, 455, 1365, 3003, 5005, 6435, 6435, 5005, 3003,
-         1365, 455, 105, 15,  1,    0,    0,    0,    0,    0},
-        {1,    16,   120, 560, 1820, 4368, 8008, 11440, 12870, 11440, 8008,
-         4368, 1820, 560, 120, 16,   1,    0,    0,     0,     0},
-        {1,     17,   136,  680, 2380, 6188, 12376, 19448, 24310, 24310, 19448,
-         12376, 6188, 2380, 680, 136,  17,   1,     0,     0,     0},
+        {1, 10, 45, 120, 210, 252, 210, 120, 45, 10, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {1, 11, 55, 165, 330, 462, 462, 330, 165, 55, 11, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {1, 12, 66, 220, 495, 792, 924, 792, 495, 220, 66, 12, 1, 0, 0, 0, 0, 0, 0, 0, 0},
+        {1, 13, 78, 286, 715, 1287, 1716, 1716, 1287, 715, 286, 78, 13, 1, 0, 0, 0, 0, 0, 0, 0},
+        {1, 14, 91, 364, 1001, 2002, 3003, 3432, 3003, 2002, 1001, 364, 91, 14, 1, 0, 0, 0, 0, 0, 0},
+        {1, 15, 105, 455, 1365, 3003, 5005, 6435, 6435, 5005, 3003, 1365, 455, 105, 15, 1, 0, 0, 0, 0, 0},
+        {1, 16, 120, 560, 1820, 4368, 8008, 11440, 12870, 11440, 8008, 4368, 1820, 560, 120, 16, 1, 0, 0, 0, 0},
+        {1, 17, 136, 680, 2380, 6188, 12376, 19448, 24310, 24310, 19448, 12376, 6188, 2380, 680, 136, 17, 1, 0, 0, 0},
         {1,     18,    153,  816,  3060, 8568, 18564, 31824, 43758, 48620, 43758,
          31824, 18564, 8568, 3060, 816,  153,  18,    1,     0,     0},
-        {1,     19,    171,   969,   3876,  11628, 27132,
-         50388, 75582, 92378, 92378, 75582, 50388, 27132,
-         11628, 3876,  969,   171,   19,    1,     0},
-        {1,     20,     190,    1140,   4845,   15504,  38760,
-         77520, 125970, 167960, 184756, 167960, 125970, 77520,
-         38760, 15504,  4845,   1140,   190,    20,     1}};
+        {1,     19,    171,   969,   3876, 11628, 27132, 50388, 75582, 92378, 92378,
+         75582, 50388, 27132, 11628, 3876, 969,   171,   19,    1,     0},
+        {1,      20,     190,   1140,  4845,  15504, 38760, 77520, 125970, 167960, 184756,
+         167960, 125970, 77520, 38760, 15504, 4845,  1140,  190,   20,     1}};
 
     if (lmax[0] + lmax[1] == 0) {
         idx3(co[0], 0, 0, 0) = prefactor * idx2(coef[0], 0, 0);
@@ -472,16 +452,16 @@ void compute_compact_polynomial_coefficients(const tensor *coef,
     initialize_tensor_4(&power, 2, 3, lmax[0] + lmax[1] + 1, lmax[0] + lmax[1] + 1);
     initialize_tensor_3(&px, 3, (lmax[0] + 1) * (lmax[1] + 1), lmax[0] + lmax[1] + 1);
     initialize_tensor_3(&coef_tmp, (lmax[0] + 1) * (lmax[1] + 1), // alpha
-                        (lmax[0] + 1) * (lmax[1] + 1),  // gamma
-                        (lmax[0] + 1) * (lmax[1] + 1)); // beta
+                        (lmax[0] + 1) * (lmax[1] + 1),            // gamma
+                        (lmax[0] + 1) * (lmax[1] + 1));           // beta
 
 #if defined(__LIBXSMM)
-    power.data = libxsmm_aligned_scratch(sizeof(double) * power.alloc_size_, 0/*auto-alignment*/);
-    px.data = libxsmm_aligned_scratch(sizeof(double) * px.alloc_size_, 0/*auto-alignment*/);
-    coef_tmp.data = libxsmm_aligned_scratch(sizeof(double) * coef_tmp.alloc_size_, 0/*auto-alignment*/);
+    power.data    = libxsmm_aligned_scratch(sizeof(double) * power.alloc_size_, 0 /*auto-alignment*/);
+    px.data       = libxsmm_aligned_scratch(sizeof(double) * px.alloc_size_, 0 /*auto-alignment*/);
+    coef_tmp.data = libxsmm_aligned_scratch(sizeof(double) * coef_tmp.alloc_size_, 0 /*auto-alignment*/);
 #else
-    power.data = memalign(64, sizeof(double) * power.alloc_size_);
-    px.data = memalign(64, sizeof(double) * px.alloc_size_);
+    power.data    = memalign(64, sizeof(double) * power.alloc_size_);
+    px.data       = memalign(64, sizeof(double) * px.alloc_size_);
     coef_tmp.data = memalign(64, sizeof(double) * coef_tmp.alloc_size_);
 #endif
     /* I compute (x - xa) ^ k Binomial(alpha, k), for alpha = 0.. l1 + l2 + 1
@@ -489,17 +469,14 @@ void compute_compact_polynomial_coefficients(const tensor *coef,
      * of multiplications and function calls
      */
     for (int dir = 0; dir < 3; dir++) {
-        double tmp = rab[dir] - ra[dir];
+        double tmp                = rab[dir] - ra[dir];
         idx4(power, 0, dir, 0, 0) = 1.0;
         for (int k = 1; k < lmax[0] + lmax[1] + 1; k++) {
-            idx4(power, 0, dir, 0, k) =
-                tmp * idx4(power, 0, dir, 0, k - 1);
+            idx4(power, 0, dir, 0, k) = tmp * idx4(power, 0, dir, 0, k - 1);
         }
 
         for (int k = 1; k < lmax[0] + lmax[1] + 1; k++)
-            memcpy(&idx4(power, 0, dir, k, 0),
-                   &idx4(power, 0, dir, k - 1, 0),
-                   sizeof(double) * power.size[3]);
+            memcpy(&idx4(power, 0, dir, k, 0), &idx4(power, 0, dir, k - 1, 0), sizeof(double) * power.size[3]);
 
         for (int a1 = 0; a1 < lmax[0] + lmax[1] + 1; a1++)
             for (int k = 0; k < lmax[0] + lmax[1] + 1; k++)
@@ -509,13 +486,10 @@ void compute_compact_polynomial_coefficients(const tensor *coef,
 
         idx4(power, 1, dir, 0, 0) = 1.0;
         for (int k = 1; k < lmax[0] + lmax[1] + 1; k++)
-            idx4(power, 1, dir, 0, k) =
-                tmp * idx4(power, 1, dir, 0, k - 1);
+            idx4(power, 1, dir, 0, k) = tmp * idx4(power, 1, dir, 0, k - 1);
 
         for (int k = 1; k < lmax[0] + lmax[1] + 1; k++)
-            memcpy(&idx4(power, 1, dir, k, 0),
-                   &idx4(power, 1, dir, k - 1, 0),
-                   sizeof(double) * power.size[3]);
+            memcpy(&idx4(power, 1, dir, k, 0), &idx4(power, 1, dir, k - 1, 0), sizeof(double) * power.size[3]);
 
         for (int a1 = 0; a1 < lmax[0] + lmax[1] + 1; a1++)
             for (int k = 0; k < lmax[0] + lmax[1] + 1; k++)
@@ -529,9 +503,8 @@ void compute_compact_polynomial_coefficients(const tensor *coef,
             for (int k1 = 0; k1 <= a1; k1++) {
                 const double c1 = idx4(power, 0, i, a1, a1 - k1);
                 for (int a2 = 0; a2 <= lmax[1]; a2++) {
-                    const double *__restrict__ src = &idx4(power, 1, i, a2, 0);
-                    double *__restrict__ dst =
-                        &idx3(px, perm[i], a1 * (lmax[1] + 1) + a2, k1);
+                    const double* __restrict__ src = &idx4(power, 1, i, a2, 0);
+                    double* __restrict__ dst       = &idx3(px, perm[i], a1 * (lmax[1] + 1) + a2, k1);
                     for (int k2 = 0; k2 <= a2; k2++) {
                         dst[k2] += c1 * src[a2 - k2];
                     }
@@ -551,15 +524,14 @@ void compute_compact_polynomial_coefficients(const tensor *coef,
                     const int i_b = b1 * (lmax[1] + 1) + b2;
                     for (int g1 = max(0, lmin[0] - a1 - b1); g1 <= lmax[0]; g1++) {
                         const int l1 = g1 + a1 + b1;
-                        if ((l1 >= lmin[0]) && (l1 <=lmax[0])) {
-                            const int i1 = coef_offset_[0]  +
-                                return_linear_index_from_exponents(a1, b1, g1);
-                            const double *__restrict__ src = &idx2(coef[0], i1, 0);
+                        if ((l1 >= lmin[0]) && (l1 <= lmax[0])) {
+                            const int i1 = coef_offset_[0] + return_linear_index_from_exponents(a1, b1, g1);
+                            const double* __restrict__ src = &idx2(coef[0], i1, 0);
                             for (int g2 = 0; g2 <= lmax[1]; g2++) {
                                 const int l2 = g2 + a2 + b2;
-                                if ((l2 >= lmin[1]) && (l2 <=lmax[1])) {
+                                if ((l2 >= lmin[1]) && (l2 <= lmax[1])) {
                                     const int i_g = g1 * (lmax[1] + 1) + g2;
-                                    const int i2 = coef_offset_[1] + return_linear_index_from_exponents(a2, b2, g2);
+                                    const int i2  = coef_offset_[1] + return_linear_index_from_exponents(a2, b2, g2);
                                     idx3(coef_tmp, i_b, i_a, i_g) += src[i2];
                                 }
                             }

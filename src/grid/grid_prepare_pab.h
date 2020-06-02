@@ -34,24 +34,12 @@
 #define GRID_FUNC_DYDY 802
 #define GRID_FUNC_DZDZ 803
 
-void grid_prepare_get_ldiffs(const int func,
-                             int* lmin_diff,
-                             int* lmax_diff);
+void grid_prepare_get_ldiffs(const int func, int* lmin_diff, int* lmax_diff);
 
-void grid_prepare_pab(const int func,
-                      const int o1,
-                      const int o2,
-                      const int *lmax,
-                      const int *lmin,
-                      const double zeta,
-                      const double zetb,
-                      const int n1,
-                      const int n2,
-                      const double pab[n2][n1],
-                      const int n1_prep,
-                      const int n2_prep,
-                      double pab_prep[n2_prep][n1_prep]);
+void grid_prepare_pab(const int func, const int o1, const int o2, const int* lmax, const int* lmin, const double zeta,
+                      const double zetb, const int n1, const int n2, const double pab[n2][n1], const int n1_prep,
+                      const int n2_prep, double pab_prep[n2_prep][n1_prep]);
 
 #endif
 
-//EOF
+// EOF
