@@ -51,6 +51,7 @@ MODULE qs_collocate_density
                                               dbcsr_get_block_p,&
                                               dbcsr_p_type,&
                                               dbcsr_type
+   USE dbcsr_config,                    ONLY: get_accdrv_active_device_id
    USE external_potential_types,        ONLY: get_potential,&
                                               gth_potential_type
    USE gaussian_gridlevels,             ONLY: gaussian_gridlevel,&
@@ -1725,7 +1726,7 @@ CONTAINS
 
       ! create an handle for each omp thread. By default the queue length is 4096 blocks. It is neglected when running in sequential mode
 
-      gaussian_handle =  collocate_pgf_create_handle(0, 4096, .TRUE.)
+      gaussian_handle =  collocate_pgf_create_handle(get_accdrv_active_device_id(), 4096, .TRUE.)
 
       pab => pabt(:, :, ithread)
       work => workt(:, :, ithread)
@@ -2575,16 +2576,10 @@ CONTAINS
                        scale, pab, na1 - 1, 0, rs_rho(igrid_level)%rs_grid, &
                        cell, cube_info(igrid_level), &
                        radius=radius, ga_gb_function=GRID_FUNC_AB)
-               ENDIF
 
-               IF (igrid_level_prev .NE. igrid_level) THEN
-                  ! it is clearly not the thing to do. The loop over the grid
-                  ! should be the first one not mingled with other things.
-                  IF (igrid_level_prev .NE. -1) THEN
-                     CALL collocate_pgf_synchronize(gaussian_handle)
-                  ENDIF
-                  igrid_level_prev = igrid_level
-               End if
+                  ! need to be rewritten. It is not efficient to do that
+                  CALL collocate_pgf_synchronize(gaussian_handle)
+               ENDIF
             END DO
             offset = offset + nsgfa(iset)
          END DO

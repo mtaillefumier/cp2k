@@ -1213,7 +1213,7 @@ CONTAINS
       hirshfeld_env => hirshfeld_control%hirshfeld_env
 
       ! create an handle for each omp thread. By default the queue if 1024 blocks
-      gaussian_handle =  collocate_pgf_create_handle(0, 128, .TRUE.)
+      gaussian_handle =  collocate_pgf_create_handle(-1, 1024, .FALSE.)
 
       ! Build weight function
       ALLOCATE (is_constraint(natom))
@@ -1304,6 +1304,9 @@ CONTAINS
                                              rs_rho_all, cell, cube_info, radius=radius, &
                                              ga_gb_function=GRID_FUNC_AB, use_subpatch=.TRUE., &
                                              subpatch_pattern=subpatch_pattern)
+
+                  CALL collocate_pgf_synchronize(gaussian_handle)
+
                   IF (is_constraint(atom_a)) THEN
                      radius_constr = exp_radius_very_extended(la_min=0, la_max=0, lb_min=0, lb_max=0, &
                                                               ra=ra, rb=ra, rp=ra, &
@@ -1317,6 +1320,7 @@ CONTAINS
                                                 radius=radius_constr, &
                                                 ga_gb_function=GRID_FUNC_AB, use_subpatch=.TRUE., &
                                                 subpatch_pattern=subpatch_pattern)
+                     CALL collocate_pgf_synchronize(gaussian_handle)
                   END IF
                   IF (cdft_control%atomic_charges .AND. igroup == 1) THEN
                      IF (compute_charge(atom_a)) &
@@ -1325,13 +1329,13 @@ CONTAINS
                           rs_single(iatom)%rs_grid, cell, cube_info, radius=radius, &
                           ga_gb_function=GRID_FUNC_AB, use_subpatch=.TRUE., &
                           subpatch_pattern=subpatch_pattern)
+                     CALL collocate_pgf_synchronize(gaussian_handle)
                   END IF
                END DO
             END DO
             DEALLOCATE (cores)
          END DO
          DEALLOCATE (pab)
-         CALL collocate_pgf_synchronize(gaussian_handle)
 
          ! Transfer rs_rho_all to the correct grid and save it
          CALL get_hirshfeld_info(hirshfeld_env, fnorm=fnorm)

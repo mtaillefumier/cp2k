@@ -219,7 +219,7 @@ CONTAINS
 
       L_local_col = 0.0_dp
       ! need to change this name
-      gaussian_handle = collocate_pgf_create_handle(0, 128, .TRUE.)
+      gaussian_handle = collocate_pgf_create_handle(-1, 128, .FALSE.)
       i_counter = 0
       DO LLL = my_group_L_start, my_group_L_end
          i_counter = i_counter + 1

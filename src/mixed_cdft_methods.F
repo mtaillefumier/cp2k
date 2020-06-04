@@ -2572,7 +2572,8 @@ CONTAINS
          nthread = 1
          ithread = 0
 
-         gaussian_handle = collocate_pgf_create_handle(0, 128, .TRUE.)
+         ! cpu only
+         gaussian_handle = collocate_pgf_create_handle(-1, 128, .FALSE.)
 
          DO ikind = 1, SIZE(atomic_kind_set)
             numexp = cavity_env%kind_shape_fn(ikind)%numexp

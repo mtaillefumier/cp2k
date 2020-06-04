@@ -458,8 +458,8 @@ CONTAINS
       nthread = 1
       ithread = 0
 
-      ! sequential mode
-      gaussian_handle = collocate_pgf_create_handle(0, 128, .TRUE.)
+      ! CPU mode
+      gaussian_handle = collocate_pgf_create_handle(-1, 256, .FALSE.)
 
       DO ikind = 1, SIZE(atomic_kind_set)
          numexp = hirshfeld_env%kind_shape_fn(ikind)%numexp
@@ -590,7 +590,7 @@ CONTAINS
       ALLOCATE (hab(1, 1), pab(1, 1))
 
       ! need to change this name
-      gaussian_handle = collocate_pgf_create_handle(0, 128, .TRUE.)
+      gaussian_handle = collocate_pgf_create_handle(0, 128, .FALSE.)
 
       DO ikind = 1, SIZE(atomic_kind_set)
          numexp = hirshfeld_env%kind_shape_fn(ikind)%numexp

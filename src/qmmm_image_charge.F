@@ -411,7 +411,7 @@ CONTAINS
       END DO
 
       ! sequential mode
-      gaussian_handle = collocate_pgf_create_handle(0, 128, .TRUE.)
+      gaussian_handle = collocate_pgf_create_handle(-1, 128, .FALSE.)
 
       DO j = 1, npme
 
@@ -500,8 +500,8 @@ CONTAINS
       NULLIFY (cores, hab, pab, cell, auxbas_rs_desc, pw_env, para_env, &
                dft_control, rs_v, virial)
       use_virial = .FALSE.
-      ! sequential mode
-      gaussian_handle = collocate_pgf_create_handle(0, 128, .TRUE.)
+      ! CPU mode
+      gaussian_handle = collocate_pgf_create_handle(-1, 128, .FALSE.)
       ALLOCATE (hab(1, 1))
       ALLOCATE (pab(1, 1))
 
