@@ -6,6 +6,26 @@ __constant__ __device__ double dh_[9];
 
 extern __shared__  double array[];
 
+#if __CUDA_ARCH__ < 600
+__device__ double atomicAdd1(double* address, double val)
+{
+    unsigned long long int* address_as_ull =
+        (unsigned long long int*)address;
+    unsigned long long int old = *address_as_ull, assumed;
+
+    do {
+        assumed = old;
+        old = atomicCAS(address_as_ull, assumed,
+                        __double_as_longlong(val +
+                                             __longlong_as_double(assumed)));
+
+        // Note: uses integer comparison to avoid hang in case of NaN (since NaN != NaN)
+    } while (assumed != old);
+
+    return __longlong_as_double(old);
+}
+#endif
+
 __device__ void  return_cube_position(const int *grid_size,
                                       const int *lb_grid,
                                       const int *cube_center,
@@ -93,7 +113,11 @@ __global__ void compute_collocation_gpu_(const int *__restrict__ lmax_gpu_,
                 }
 
                 res *= exp_factor;
+#if __CUDA_ARCH__ < 600
+                atomicAdd1(&grid_gpu_[(z2 * grid_size_[1] + y2) * grid_size_[2] + x2], res);
+#else
                 atomicAdd(&grid_gpu_[(z2 * grid_size_[1] + y2) * grid_size_[2] + x2], res);
+#endif
             }
         }
     }

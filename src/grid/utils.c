@@ -506,7 +506,8 @@ realloc_tensor(tensor* t)
     t->data = NULL;
 
     if (t->data == NULL) {
-        if (posix_memalign((void**)&t->data, 32, sizeof(double) * t->alloc_size_) != 0)
+        t->data = memalign(32, sizeof(double) * t->alloc_size_);
+        if (!t->data)
             abort();
         t->old_alloc_size_ = t->alloc_size_;
     }
