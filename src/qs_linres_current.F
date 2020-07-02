@@ -1147,6 +1147,7 @@ CONTAINS
                                     ra, rab, scale, jpab_a, na1 - 1, nb1 - 1, &
                                     rs_current(igrid_level)%rs_grid, cell, cube_info(igrid_level), &
                                     radius=radius, ga_gb_function=adbmdab_func)
+         CALL collocate_pgf_synchronize(gaussian_handle)
          IF (do_igaim) THEN
             ! here the decontracted mat_jb_{ab} is multiplied by
             !     f_{ab} = g_{a} * g_{b} ! THIS GOES OUTSIDE THE LOOP !
@@ -1156,6 +1157,7 @@ CONTAINS
                                           ra, rab, scale2, jpab_d, na1 - 1, nb1 - 1, &
                                           rs_rho(igrid_level)%rs_grid, cell, cube_info(igrid_level), &
                                           radius=radius, ga_gb_function=GRID_FUNC_AB)
+               CALL collocate_pgf_synchronize(gaussian_handle)
             ENDIF !rm
             ! here the decontracted mat_jp_rii{ab} is multiplied by
             !     f_{ab} = g_{a} (d(r) - R_{b})_{iiB} (dg_{b}/dr)_{idir} -
@@ -1221,8 +1223,8 @@ CONTAINS
                                        rs_current(igrid_level)%rs_grid, cell, cube_info(igrid_level), &
                                        radius=radius, &
                                        ga_gb_function=encode_ardbmdarb_func(idir=idir, ir=iiB))
+            CALL collocate_pgf_synchronize(gaussian_handle)
          ENDIF
-         CALL collocate_pgf_synchronize(gaussian_handle)
       END DO loop_tasks
 
       !

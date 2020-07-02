@@ -27,6 +27,7 @@ add_orbital_to_list(pgf_list_gpu* const list, const int lp, const int cube_size[
     list->cube_size_cpu_[3 * list->list_length + 1] = cube_size[1];
     list->cube_size_cpu_[3 * list->list_length + 2] = cube_size[2];
 
+
     list->cube_position_cpu_[3 * list->list_length]     = cube_position[0];
     list->cube_position_cpu_[3 * list->list_length + 1] = cube_position[1];
     list->cube_position_cpu_[3 * list->list_length + 2] = cube_position[2];
@@ -143,9 +144,15 @@ release_gpu_resources(collocation_integration* handler)
 }
 
 void
-initialize_worker_list_on_gpu(collocation_integration* handle, const int device_id, const int number_of_gaussian,
-                              const int number_of_workers, const bool use_gpu)
+initialize_worker_list_on_gpu(collocation_integration* handle,
+                              const int device_id,
+                              const int number_of_gaussian,
+                              const int number_of_workers,
+                              const bool use_gpu)
 {
+    if ((!use_gpu) || (device_id < 0))
+        return;
+
     assert(handle != NULL);
     handle->device_id          = device_id;
     handle->use_gpu            = use_gpu;

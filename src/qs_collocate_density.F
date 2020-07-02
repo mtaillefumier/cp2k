@@ -1726,8 +1726,11 @@ CONTAINS
 
       ! create an handle for each omp thread. By default the queue length is 4096 blocks. It is neglected when running in sequential mode
 
-      gaussian_handle =  collocate_pgf_create_handle(get_accdrv_active_device_id(), 4096, .TRUE.)
-
+      if(get_accdrv_active_device_id() .lt. 0) then
+         gaussian_handle =  collocate_pgf_create_handle(-1, 4096, .FALSE.)
+      else
+         gaussian_handle =  collocate_pgf_create_handle(get_accdrv_active_device_id(), 4096, .FALSE.)
+      endif
       pab => pabt(:, :, ithread)
       work => workt(:, :, ithread)
 

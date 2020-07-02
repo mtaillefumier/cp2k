@@ -66,6 +66,8 @@ typedef struct pgf_list_gpu_
 
     cublasHandle_t blas_handle;
 
+    int3 grid_size, grid_lower_corner_position, period;
+
     struct pgf_list_gpu_* next;
     /* if true, the grid on the gpu should be reallocated */
     bool durty;

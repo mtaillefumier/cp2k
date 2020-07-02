@@ -862,8 +862,19 @@ grid_collocate_pgf_product_cpu(void* const handle, const bool use_ortho, const i
 
     memset(pab_prep, 0, n2_prep * n1_prep * sizeof(double));
 
-    grid_prepare_pab(func, offset[0], offset[1], lmax, lmin, zeta, zetb, pab_size[0], pab_size[1], pab, n1_prep,
-                     n2_prep, pab_prep);
+    grid_prepare_pab(func,
+                     offset[0],
+                     offset[1],
+                     lmax,
+                     lmin,
+                     zeta,
+                     zetb,
+                     pab_size[0],
+                     pab_size[1],
+                     pab,
+                     n1_prep,
+                     n2_prep,
+                     pab_prep);
 
     //   *** initialise the coefficient matrix, we transform the sum
     //

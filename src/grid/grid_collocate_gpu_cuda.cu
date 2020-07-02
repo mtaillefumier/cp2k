@@ -1,8 +1,15 @@
 #include <cuda.h>
+#include <cooperative_groups.h>
+
 #include "collocation_integration.h"
-__constant__ __device__ int grid_size_[3];
-__constant__ __device__ int period_[3];
+
+namespace cg = cooperative_groups;
+
 __constant__ __device__ double dh_[9];
+
+/* lower corner of the grid block when the grid is divided over multiple mpi
+ * ranks */
+__constant__ __device__ int grid_lower_boundaries_[3];
 
 extern __shared__  double array[];
 
@@ -39,7 +46,10 @@ __device__ void  return_cube_position(const int *grid_size,
 }
 
 
-__global__ void compute_collocation_gpu_(const int *__restrict__ lmax_gpu_,
+__global__ void compute_collocation_gpu_(const int3 grid_size_,
+                                         const int3 grid_lower_corner_pos_,
+                                         const int3 period_,
+                                         const int *__restrict__ lmax_gpu_,
                                          const double *__restrict__ zeta_gpu,
                                          const int *cube_size_gpu_,
                                          const int *cube_position_,
@@ -81,14 +91,28 @@ __global__ void compute_collocation_gpu_(const int *__restrict__ lmax_gpu_,
 
     for (int z = threadIdx.z; z < cube_size[0]; z += blockDim.z) {
         const double z1 = z - (cube_size[0] / 2) - roffset[0];
-        const int z2 = (z +
-        position[0] + 32 * period_[0]) % period_[0];
+        const int z2 = (z + position[0] + 32 * period_.z) % period_.z - grid_lower_corner_pos_.z;
+
+        if ((z2 < 0) || (z2 > grid_size_.z)) {
+            continue;
+        }
+
         for (int y = threadIdx.y; y < cube_size[1]; y += blockDim.y) {
             double y1 = y - (cube_size[1] / 2) - roffset[1];
-            const int y2 = (y + position[1] + 32 * period_[1]) % period_[1];
+            const int y2 = (y + position[1] + 32 * period_.y) % period_.y - grid_lower_corner_pos_.y;
+
+            if ((y2 < 0) || (y2 > grid_size_.y)) {
+                continue;
+            }
+
             for (int x = threadIdx.x; x < cube_size[2]; x += blockDim.x) {
                 const double x1 = x - (cube_size[2] / 2) - roffset[2];
-                const int x2 = (x + position[2] + 32 * period_[2]) % period_[2];
+                const int x2 = (x + position[2] + 32 * period_.x) % period_.x - grid_lower_corner_pos_.x;
+
+                if ((x2 < 0) || (x2 > grid_size_.x)) {
+                    continue;
+                }
+
                 double3 r3;
                 r3.x = z1 * dh_[6] + y1 * dh_[3] + x1 * dh_[0];
                 r3.y = z1 * dh_[7] + y1 * dh_[4] + x1 * dh_[1];
@@ -103,8 +127,9 @@ __global__ void compute_collocation_gpu_(const int *__restrict__ lmax_gpu_,
                     double dz = 1;
                     for (int gamma = 0; gamma <= lmax; gamma++) {
                         double dy = dx * dz;
+                        const int off = (alpha * (lmax + 1) + gamma) * (lmax + 1);
                         for (int beta = 0; beta <= lmax; beta++) {
-                            res += coefs_[(alpha * (lmax + 1) + gamma) * (lmax + 1) + beta] * dy;
+                            res += coefs_[off + beta] * dy;
                             dy *= r3.y;
                         }
                         dz *= r3.z;
@@ -114,14 +139,96 @@ __global__ void compute_collocation_gpu_(const int *__restrict__ lmax_gpu_,
 
                 res *= exp_factor;
 #if __CUDA_ARCH__ < 600
-                atomicAdd1(&grid_gpu_[(z2 * grid_size_[1] + y2) * grid_size_[2] + x2], res);
+                atomicAdd1(&grid_gpu_[(z2 * grid_size_.y + y2) * grid_size_.x + x2], res);
 #else
-                atomicAdd(&grid_gpu_[(z2 * grid_size_[1] + y2) * grid_size_[2] + x2], res);
+                atomicAdd(&grid_gpu_[(z2 * grid_size_.y + y2) * grid_size_.x + x2], res);
 #endif
             }
         }
     }
 }
+
+__global__ void compute_integration_gpu_(const int3 grid_size,
+                                         const int3 grid_lower_corner_pos,
+                                         const int3 period,
+                                         const int *__restrict__ lmax_gpu_,
+                                         const double *__restrict__ zeta_gpu,
+                                         const int *cube_size_gpu_,
+                                         const int *cube_position_,
+                                         const double *__restrict__ roffset_gpu_,
+                                         const int *__restrict__ coef_offset_gpu_,
+                                         const double *__restrict__ grid_gpu_,
+                                         const double *__restrict__ coef_gpu_)
+{
+    /* the period is sotred in constant memory */
+    /* the displacement vectors as well */
+
+    int lmax = lmax_gpu_[blockIdx.x];
+
+    const int position[3] = {cube_position_[3 * blockIdx.x],
+                             cube_position_[3 * blockIdx.x + 1],
+                             cube_position_[3 * blockIdx.x + 2]};
+
+    const int cube_size[3] = {cube_size_gpu_[3 * blockIdx.x],
+                              cube_size_gpu_[3 * blockIdx.x + 1],
+                              cube_size_gpu_[3 * blockIdx.x + 2]};
+
+    const double roffset[3] = {roffset_gpu_[3 * blockIdx.x],
+                               roffset_gpu_[3 * blockIdx.x + 1],
+                               roffset_gpu_[3 * blockIdx.x + 2]};
+    const double *__restrict__ coef = coef_gpu_ + coef_offset_gpu_[blockIdx.x];
+
+    const double zeta = zeta_gpu[blockIdx.x];
+
+    double  *coefs_ = (double *)array;
+
+    int id = (threadIdx.z * blockDim.y + threadIdx.y) * blockDim.x +
+        threadIdx.x;
+
+    for (int i = id;
+         i < ((lmax + 1) * (lmax + 1) * (lmax + 1));
+         i += (blockDim.x * blockDim.y * blockDim.z))
+        coefs_[i] = 0.0;
+    __syncthreads();
+
+    for (int z = threadIdx.z; z < cube_size[0]; z += blockDim.z) {
+        const double z1 = z - (cube_size[0] / 2) - roffset[0];
+        const int z2 = (z + position[0] + 32 * period.z) % period.z;
+        for (int y = threadIdx.y; y < cube_size[1]; y += blockDim.y) {
+            double y1 = y - (cube_size[1] / 2) - roffset[1];
+            const int y2 = (y + position[1] + 32 * period.y) % period.y;
+            for (int x = threadIdx.x; x < cube_size[2]; x += blockDim.x) {
+                const double x1 = x - (cube_size[2] / 2) - roffset[2];
+                const int x2 = (x + position[2] + 32 * period.x) % period.x;
+                double3 r3;
+                r3.x = z1 * dh_[6] + y1 * dh_[3] + x1 * dh_[0];
+                r3.y = z1 * dh_[7] + y1 * dh_[4] + x1 * dh_[1];
+                r3.z = z1 * dh_[8] + y1 * dh_[5] + x1 * dh_[2];
+                double exp_factor = exp(-(r3.x * r3.x + r3.y * r3.y + r3.z * r3.z) * zeta);
+                double res = 0.0;
+                double dx = 1;
+                const double grid_value = grid_gpu_[(z2 * grid_size.y + y2) * grid_size.x + x2] * exp_factor;
+                /* NOTE: the coefficients are stored as lx,lz,ly */
+
+                for (int alpha = 0; alpha <= lmax; alpha++) {
+                    double dz = 1;
+                    for (int gamma = 0; gamma <= lmax; gamma++) {
+                        double dy = dx * dz;
+                        const int off = (alpha * (lmax + 1) + gamma) * (lmax + 1);
+                        for (int beta = 0; beta <= lmax; beta++) {
+                            coefs_[off + beta] += grid_value * dy;
+                            dy *= r3.y;
+                        }
+                        dz *= r3.z;
+                    }
+                    dx *= r3.x;
+                }
+            }
+        }
+    }
+}
+
+
 
 extern "C"  void compute_collocation_gpu(pgf_list_gpu *handler)
 {
@@ -156,9 +263,13 @@ extern "C"  void compute_collocation_gpu(pgf_list_gpu *handler)
     thread.x = 4;
     thread.y = 4;
     thread.z = 4;
+
     compute_collocation_gpu_<<<block,
         thread,
-        (handler->lmax + 1) * (handler->lmax + 1) * (handler->lmax + 1) * sizeof(double), handler->stream>>>(handler->lmax_gpu_,
+        (handler->lmax + 1) * (handler->lmax + 1) * (handler->lmax + 1) * sizeof(double), handler->stream>>>(handler->grid_size,
+                                                                                                             handler->grid_lower_corner_position,
+                                                                                                             handler->period,
+                                                                                                             handler->lmax_gpu_,
                                                                                                              handler->zeta_gpu_,
                                                                                                              handler->cube_size_gpu_,
                                                                                                              handler->cube_position_gpu_,
@@ -189,8 +300,20 @@ extern "C" void initialize_grid_parameters_on_gpu(collocation_integration *handl
 
     cudaSetDevice(handler->device_id);
     cudaMemcpyToSymbol(dh_, dh, sizeof(double) * 9);
-    cudaMemcpyToSymbol(grid_size_, handler->grid.size, sizeof(int) * 3);
-    cudaMemcpyToSymbol(period_, period, sizeof(int) * 3);
+    // cudaMemcpyToSymbol(grid_size_, handler->grid.size, sizeof(int) * 3);
+    // cudaMemcpyToSymbol(period_, period, sizeof(int) * 3);
+
+    handler->worker_list->grid_size.x = handler->grid.size[2];
+    handler->worker_list->grid_size.y = handler->grid.size[1];
+    handler->worker_list->grid_size.z = handler->grid.size[0];
+
+    handler->worker_list->period.x = period[2];
+    handler->worker_list->period.y = period[1];
+    handler->worker_list->period.z = period[0];
+
+    handler->worker_list->grid_lower_corner_position.x = handler->lb_grid[2];
+    handler->worker_list->grid_lower_corner_position.y = handler->lb_grid[1];
+    handler->worker_list->grid_lower_corner_position.z = handler->lb_grid[0];
 
     if (grid_resize || (handler->worker_list->data_gpu_ == NULL)) {
         if (handler->worker_list->data_gpu_)

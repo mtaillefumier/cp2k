@@ -25,9 +25,11 @@ collocate_create_handle(const int device_id, const int number_of_gaussian, const
     }
     memset(handle, 0, sizeof(struct collocation_integration_));
 
+    if (device_id >= 0) {
 #ifdef __COLLOCATE_GPU
-    initialize_worker_list_on_gpu(handle, device_id, number_of_gaussian, 1, use_gpu);
+        initialize_worker_list_on_gpu(handle, device_id, number_of_gaussian, 1, use_gpu);
 #endif
+    }
 
     handle->alpha.alloc_size_ = 8192;
     handle->coef.alloc_size_  = 1024;

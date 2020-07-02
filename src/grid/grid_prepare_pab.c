@@ -58,46 +58,55 @@ grid_prepare_pab_DADB(const int o1, const int o2, const int la_max, const int la
 
                             ico_l = coset(max(lxa - 1, 0), lya, lza);
                             jco_l = coset(max(lxb - 1, 0), lyb, lzb);
-                            pab_prep[jco_l][ico_l] += 0.5 * lxa * lxb * pab[o2 + jco][o1 + ico];
+                            pab_prep[jco_l][ico_l] += /* 0.5 * */ lxa * lxb * pab[o2 + jco][o1 + ico];
+
                             ico_l = coset(max(lxa - 1, 0), lya, lza);
                             jco_l = coset((lxb + 1), lyb, lzb);
-                            pab_prep[jco_l][ico_l] += -1.0 * lxa * zetb * pab[o2 + jco][o1 + ico];
+                            pab_prep[jco_l][ico_l] -= 2.0 * lxa * zetb * pab[o2 + jco][o1 + ico];
+
                             ico_l = coset((lxa + 1), lya, lza);
                             jco_l = coset(max(lxb - 1, 0), lyb, lzb);
-                            pab_prep[jco_l][ico_l] += -1.0 * zeta * lxb * pab[o2 + jco][o1 + ico];
+                            pab_prep[jco_l][ico_l] -= 2.0 * zeta * lxb * pab[o2 + jco][o1 + ico];
+
                             ico_l = coset((lxa + 1), lya, lza);
                             jco_l = coset((lxb + 1), lyb, lzb);
-                            pab_prep[jco_l][ico_l] += 2.0 * zeta * zetb * pab[o2 + jco][o1 + ico];
+                            pab_prep[jco_l][ico_l] += 4.0 * zeta * zetb * pab[o2 + jco][o1 + ico];
 
                             // y
 
                             ico_l = coset(lxa, max(lya - 1, 0), lza);
                             jco_l = coset(lxb, max(lyb - 1, 0), lzb);
-                            pab_prep[jco_l][ico_l] += 0.5 * lya * lyb * pab[o2 + jco][o1 + ico];
+                            pab_prep[jco_l][ico_l] += /* 0.5 * */ lya * lyb * pab[o2 + jco][o1 + ico];
+
                             ico_l = coset(lxa, max(lya - 1, 0), lza);
                             jco_l = coset(lxb, (lyb + 1), lzb);
-                            pab_prep[jco_l][ico_l] += -1.0 * lya * zetb * pab[o2 + jco][o1 + ico];
+                            pab_prep[jco_l][ico_l] -= 2.0 * lya * zetb * pab[o2 + jco][o1 + ico];
+
                             ico_l = coset(lxa, (lya + 1), lza);
                             jco_l = coset(lxb, max(lyb - 1, 0), lzb);
-                            pab_prep[jco_l][ico_l] += -1.0 * zeta * lyb * pab[o2 + jco][o1 + ico];
+                            pab_prep[jco_l][ico_l] -= 2.0 * zeta * lyb * pab[o2 + jco][o1 + ico];
+
                             ico_l = coset(lxa, (lya + 1), lza);
                             jco_l = coset(lxb, (lyb + 1), lzb);
-                            pab_prep[jco_l][ico_l] += 2.0 * zeta * zetb * pab[o2 + jco][o1 + ico];
+                            pab_prep[jco_l][ico_l] += 4.0 * zeta * zetb * pab[o2 + jco][o1 + ico];
 
                             // z
 
                             ico_l = coset(lxa, lya, max(lza - 1, 0));
                             jco_l = coset(lxb, lyb, max(lzb - 1, 0));
-                            pab_prep[jco_l][ico_l] += 0.5 * lza * lzb * pab[o2 + jco][o1 + ico];
+                            pab_prep[jco_l][ico_l] += /* 0.5 * */ lza * lzb * pab[o2 + jco][o1 + ico];
+
                             ico_l = coset(lxa, lya, max(lza - 1, 0));
                             jco_l = coset(lxb, lyb, (lzb + 1));
-                            pab_prep[jco_l][ico_l] += -1.0 * lza * zetb * pab[o2 + jco][o1 + ico];
+                            pab_prep[jco_l][ico_l] -= 2.0 * lza * zetb * pab[o2 + jco][o1 + ico];
+
                             ico_l = coset(lxa, lya, (lza + 1));
                             jco_l = coset(lxb, lyb, max(lzb - 1, 0));
-                            pab_prep[jco_l][ico_l] += -1.0 * zeta * lzb * pab[o2 + jco][o1 + ico];
+                            pab_prep[jco_l][ico_l] -= 2.0 * zeta * lzb * pab[o2 + jco][o1 + ico];
+
                             ico_l = coset(lxa, lya, (lza + 1));
                             jco_l = coset(lxb, lyb, (lzb + 1));
-                            pab_prep[jco_l][ico_l] += 2.0 * zeta * zetb * pab[o2 + jco][o1 + ico];
+                            pab_prep[jco_l][ico_l] += 4.0 * zeta * zetb * pab[o2 + jco][o1 + ico];
                         }
                     }
                 }
@@ -135,46 +144,65 @@ grid_prepare_pab_ADBmDAB(const int idir, const int o1, const int o2, const int l
                             int ico_l, jco_l;
 
                             // ! this element of pab results in 4 elements of pab_prep
-
-                            if (idir == 1) { // x
+                            switch (idir) {
+                            case 1: { // x
                                 ico_l = coset(lxa, lya, lza);
                                 jco_l = coset(max(lxb - 1, 0), lyb, lzb);
-                                pab_prep[jco_l][ico_l] += +lxb * pab[o2 + jco][o1 + ico];
-                                ico_l = coset(lxa, lya, lza);
+                                pab_prep[jco_l][ico_l] += lxb * pab[o2 + jco][o1 + ico];
+
+                                // ico_l = coset(lxa, lya, lza);
                                 jco_l = coset((lxb + 1), lyb, lzb);
-                                pab_prep[jco_l][ico_l] += -2.0 * zetb * pab[o2 + jco][o1 + ico];
+                                pab_prep[jco_l][ico_l] -= 2.0 * zetb * pab[o2 + jco][o1 + ico];
+
                                 ico_l = coset(max(lxa - 1, 0), lya, lza);
                                 jco_l = coset(lxb, lyb, lzb);
-                                pab_prep[jco_l][ico_l] += -lxa * pab[o2 + jco][o1 + ico];
-                                ico_l = coset((lxa + 1), lya, lza);
-                                jco_l = coset(lxb, lyb, lzb);
-                                pab_prep[jco_l][ico_l] += +2.0 * zeta * pab[o2 + jco][o1 + ico];
-                            } else if (idir == 2) { // y
+                                pab_prep[jco_l][ico_l] -= lxa * pab[o2 + jco][o1 + ico];
+
+                                ico_l = coset(lxa + 1, lya, lza);
+                                //jco_l = coset(lxb, lyb, lzb);
+                                pab_prep[jco_l][ico_l] += 2.0 * zeta * pab[o2 + jco][o1 + ico];
+                            }
+                                break;
+                            case 2:
+                            { // y
                                 ico_l = coset(lxa, lya, lza);
                                 jco_l = coset(lxb, max(lyb - 1, 0), lzb);
-                                pab_prep[jco_l][ico_l] += +lyb * pab[o2 + jco][o1 + ico];
-                                ico_l = coset(lxa, lya, lza);
-                                jco_l = coset(lxb, (lyb + 1), lzb);
-                                pab_prep[jco_l][ico_l] += -2.0 * zetb * pab[o2 + jco][o1 + ico];
+                                pab_prep[jco_l][ico_l] += lyb * pab[o2 + jco][o1 + ico];
+
+                                //ico_l = coset(lxa, lya, lza);
+                                jco_l = coset(lxb, lyb + 1, lzb);
+                                pab_prep[jco_l][ico_l] -= 2.0 * zetb * pab[o2 + jco][o1 + ico];
+
                                 ico_l = coset(lxa, max(lya - 1, 0), lza);
                                 jco_l = coset(lxb, lyb, lzb);
-                                pab_prep[jco_l][ico_l] += -lya * pab[o2 + jco][o1 + ico];
-                                ico_l = coset(lxa, (lya + 1), lza);
-                                jco_l = coset(lxb, lyb, lzb);
-                                pab_prep[jco_l][ico_l] += +2.0 * zeta * pab[o2 + jco][o1 + ico];
-                            } else { // z
+                                pab_prep[jco_l][ico_l] -= lya * pab[o2 + jco][o1 + ico];
+
+                                ico_l = coset(lxa, lya + 1, lza);
+                                //jco_l = coset(lxb, lyb, lzb);
+                                pab_prep[jco_l][ico_l] += 2.0 * zeta * pab[o2 + jco][o1 + ico];
+                            }
+                            break;
+                            case 3:
+                            { // z
                                 ico_l = coset(lxa, lya, lza);
                                 jco_l = coset(lxb, lyb, max(lzb - 1, 0));
-                                pab_prep[jco_l][ico_l] += +lzb * pab[o2 + jco][o1 + ico];
-                                ico_l = coset(lxa, lya, lza);
-                                jco_l = coset(lxb, lyb, (lzb + 1));
-                                pab_prep[jco_l][ico_l] += -2.0 * zetb * pab[o2 + jco][o1 + ico];
+                                pab_prep[jco_l][ico_l] += lzb * pab[o2 + jco][o1 + ico];
+
+                                //ico_l = coset(lxa, lya, lza);
+                                jco_l = coset(lxb, lyb, lzb + 1);
+                                pab_prep[jco_l][ico_l] -= 2.0 * zetb * pab[o2 + jco][o1 + ico];
+
                                 ico_l = coset(lxa, lya, max(lza - 1, 0));
                                 jco_l = coset(lxb, lyb, lzb);
-                                pab_prep[jco_l][ico_l] += -lza * pab[o2 + jco][o1 + ico];
-                                ico_l = coset(lxa, lya, (lza + 1));
-                                jco_l = coset(lxb, lyb, lzb);
-                                pab_prep[jco_l][ico_l] += +2.0 * zeta * pab[o2 + jco][o1 + ico];
+                                pab_prep[jco_l][ico_l] -= lza * pab[o2 + jco][o1 + ico];
+
+                                ico_l = coset(lxa, lya, lza + 1);
+                                //jco_l = coset(lxb, lyb, lzb);
+                                pab_prep[jco_l][ico_l] += 2.0 * zeta * pab[o2 + jco][o1 + ico];
+                            }
+                            break;
+                            default:
+                                break;
                             }
                         }
                     }
@@ -183,7 +211,6 @@ grid_prepare_pab_ADBmDAB(const int idir, const int o1, const int o2, const int l
         }
     }
 }
-
 // *****************************************************************************
 static void
 grid_prepare_pab_ARDBmDARB(const int idir, const int ir, const int o1, const int o2, const int la_max, const int la_min,
@@ -214,124 +241,192 @@ grid_prepare_pab_ARDBmDARB(const int idir, const int ir, const int o1, const int
                             int ico_l, jco_l;
 
                             // this element of pab results in 4 elements of pab_prep
+                            switch(idir) {
+                            case 1: {
+                                switch(ir) {
+                                case 1: {
+                                    ico_l = coset(lxa, lya, lza);
+                                    jco_l = coset(lxb, lyb, lzb);
+                                    pab_prep[jco_l][ico_l] += lxb * pab[o2 + jco][o1 + ico];
 
-                            if (idir == 1 && ir == 1) {
-                                ico_l = coset(lxa, lya, lza);
-                                jco_l = coset(lxb, lyb, lzb);
-                                pab_prep[jco_l][ico_l] += +lxb * pab[o2 + jco][o1 + ico];
-                                ico_l = coset(lxa, lya, lza);
-                                jco_l = coset((lxb + 2), lyb, lzb);
-                                pab_prep[jco_l][ico_l] += -2.0 * zetb * pab[o2 + jco][o1 + ico];
-                                ico_l = coset(max(lxa - 1, 0), lya, lza);
-                                jco_l = coset((lxb + 1), lyb, lzb);
-                                pab_prep[jco_l][ico_l] += -lxa * pab[o2 + jco][o1 + ico];
-                                ico_l = coset((lxa + 1), lya, lza);
-                                jco_l = coset((lxb + 1), lyb, lzb);
-                                pab_prep[jco_l][ico_l] += +2.0 * zeta * pab[o2 + jco][o1 + ico];
-                            } else if (idir == 1 && ir == 2) {
-                                ico_l = coset(lxa, lya, lza);
-                                jco_l = coset(max(lxb - 1, 0), (lyb + 1), lzb);
-                                pab_prep[jco_l][ico_l] += +lxb * pab[o2 + jco][o1 + ico];
-                                ico_l = coset(lxa, lya, lza);
-                                jco_l = coset((lxb + 1), (lyb + 1), lzb);
-                                pab_prep[jco_l][ico_l] += -2.0 * zetb * pab[o2 + jco][o1 + ico];
-                                ico_l = coset(max(lxa - 1, 0), lya, lza);
-                                jco_l = coset(lxb, (lyb + 1), lzb);
-                                pab_prep[jco_l][ico_l] += -lxa * pab[o2 + jco][o1 + ico];
-                                ico_l = coset((lxa + 1), lya, lza);
-                                jco_l = coset(lxb, (lyb + 1), lzb);
-                                pab_prep[jco_l][ico_l] += +2.0 * zeta * pab[o2 + jco][o1 + ico];
-                            } else if (idir == 1 && ir == 3) {
-                                ico_l = coset(lxa, lya, lza);
-                                jco_l = coset(max(lxb - 1, 0), lyb, (lzb + 1));
-                                pab_prep[jco_l][ico_l] += +lxb * pab[o2 + jco][o1 + ico];
-                                ico_l = coset(lxa, lya, lza);
-                                jco_l = coset((lxb + 1), lyb, (lzb + 1));
-                                pab_prep[jco_l][ico_l] += -2.0 * zetb * pab[o2 + jco][o1 + ico];
-                                ico_l = coset(max(lxa - 1, 0), lya, lza);
-                                jco_l = coset(lxb, lyb, (lzb + 1));
-                                pab_prep[jco_l][ico_l] += -lxa * pab[o2 + jco][o1 + ico];
-                                ico_l = coset((lxa + 1), lya, lza);
-                                jco_l = coset(lxb, lyb, (lzb + 1));
-                                pab_prep[jco_l][ico_l] += +2.0 * zeta * pab[o2 + jco][o1 + ico];
-                            } else if (idir == 2 && ir == 1) {
-                                ico_l = coset(lxa, lya, lza);
-                                jco_l = coset((lxb + 1), max(lyb - 1, 0), lzb);
-                                pab_prep[jco_l][ico_l] += +lyb * pab[o2 + jco][o1 + ico];
-                                ico_l = coset(lxa, lya, lza);
-                                jco_l = coset((lxb + 1), (lyb + 1), lzb);
-                                pab_prep[jco_l][ico_l] += -2.0 * zetb * pab[o2 + jco][o1 + ico];
-                                ico_l = coset(lxa, max(lya - 1, 0), lza);
-                                jco_l = coset((lxb + 1), lyb, lzb);
-                                pab_prep[jco_l][ico_l] += -lya * pab[o2 + jco][o1 + ico];
-                                ico_l = coset(lxa, (lya + 1), lza);
-                                jco_l = coset((lxb + 1), lyb, lzb);
-                                pab_prep[jco_l][ico_l] += +2.0 * zeta * pab[o2 + jco][o1 + ico];
-                            } else if (idir == 2 && ir == 2) {
-                                ico_l = coset(lxa, lya, lza);
-                                jco_l = coset(lxb, lyb, lzb);
-                                pab_prep[jco_l][ico_l] += +lyb * pab[o2 + jco][o1 + ico];
-                                ico_l = coset(lxa, lya, lza);
-                                jco_l = coset(lxb, (lyb + 2), lzb);
-                                pab_prep[jco_l][ico_l] += -2.0 * zetb * pab[o2 + jco][o1 + ico];
-                                ico_l = coset(lxa, max(lya - 1, 0), lza);
-                                jco_l = coset(lxb, (lyb + 1), lzb);
-                                pab_prep[jco_l][ico_l] += -lya * pab[o2 + jco][o1 + ico];
-                                ico_l = coset(lxa, (lya + 1), lza);
-                                jco_l = coset(lxb, (lyb + 1), lzb);
-                                pab_prep[jco_l][ico_l] += +2.0 * zeta * pab[o2 + jco][o1 + ico];
-                            } else if (idir == 2 && ir == 3) {
-                                ico_l = coset(lxa, lya, lza);
-                                jco_l = coset(lxb, max(lyb - 1, 0), (lzb + 1));
-                                pab_prep[jco_l][ico_l] += +lyb * pab[o2 + jco][o1 + ico];
-                                ico_l = coset(lxa, lya, lza);
-                                jco_l = coset(lxb, (lyb + 1), (lzb + 1));
-                                pab_prep[jco_l][ico_l] += -2.0 * zetb * pab[o2 + jco][o1 + ico];
-                                ico_l = coset(lxa, max(lya - 1, 0), lza);
-                                jco_l = coset(lxb, lyb, (lzb + 1));
-                                pab_prep[jco_l][ico_l] += -lya * pab[o2 + jco][o1 + ico];
-                                ico_l = coset(lxa, (lya + 1), lza);
-                                jco_l = coset(lxb, lyb, (lzb + 1));
-                                pab_prep[jco_l][ico_l] += +2.0 * zeta * pab[o2 + jco][o1 + ico];
-                            } else if (idir == 3 && ir == 1) {
-                                ico_l = coset(lxa, lya, lza);
-                                jco_l = coset((lxb + 1), lyb, max(lzb - 1, 0));
-                                pab_prep[jco_l][ico_l] += +lzb * pab[o2 + jco][o1 + ico];
-                                ico_l = coset(lxa, lya, lza);
-                                jco_l = coset((lxb + 1), lyb, (lzb + 1));
-                                pab_prep[jco_l][ico_l] += -2.0 * zetb * pab[o2 + jco][o1 + ico];
-                                ico_l = coset(lxa, lya, max(lza - 1, 0));
-                                jco_l = coset((lxb + 1), lyb, lzb);
-                                pab_prep[jco_l][ico_l] += -lza * pab[o2 + jco][o1 + ico];
-                                ico_l = coset(lxa, lya, (lza + 1));
-                                jco_l = coset((lxb + 1), lyb, lzb);
-                                pab_prep[jco_l][ico_l] += +2.0 * zeta * pab[o2 + jco][o1 + ico];
-                            } else if (idir == 3 && ir == 2) {
-                                ico_l = coset(lxa, lya, lza);
-                                jco_l = coset(lxb, (lyb + 1), max(lzb - 1, 0));
-                                pab_prep[jco_l][ico_l] += +lzb * pab[o2 + jco][o1 + ico];
-                                ico_l = coset(lxa, lya, lza);
-                                jco_l = coset(lxb, (lyb + 1), (lzb + 1));
-                                pab_prep[jco_l][ico_l] += -2.0 * zetb * pab[o2 + jco][o1 + ico];
-                                ico_l = coset(lxa, lya, max(lza - 1, 0));
-                                jco_l = coset(lxb, (lyb + 1), lzb);
-                                pab_prep[jco_l][ico_l] += -lza * pab[o2 + jco][o1 + ico];
-                                ico_l = coset(lxa, lya, (lza + 1));
-                                jco_l = coset(lxb, (lyb + 1), lzb);
-                                pab_prep[jco_l][ico_l] += +2.0 * zeta * pab[o2 + jco][o1 + ico];
-                            } else if (idir == 3 && ir == 3) {
-                                ico_l = coset(lxa, lya, lza);
-                                jco_l = coset(lxb, lyb, lzb);
-                                pab_prep[jco_l][ico_l] += +lzb * pab[o2 + jco][o1 + ico];
-                                ico_l = coset(lxa, lya, lza);
-                                jco_l = coset(lxb, lyb, (lzb + 2));
-                                pab_prep[jco_l][ico_l] += -2.0 * zetb * pab[o2 + jco][o1 + ico];
-                                ico_l = coset(lxa, lya, max(lza - 1, 0));
-                                jco_l = coset(lxb, lyb, (lzb + 1));
-                                pab_prep[jco_l][ico_l] += -lza * pab[o2 + jco][o1 + ico];
-                                ico_l = coset(lxa, lya, (lza + 1));
-                                jco_l = coset(lxb, lyb, (lzb + 1));
-                                pab_prep[jco_l][ico_l] += +2.0 * zeta * pab[o2 + jco][o1 + ico];
+                                    ico_l = coset(lxa, lya, lza);
+                                    jco_l = coset((lxb + 2), lyb, lzb);
+                                    pab_prep[jco_l][ico_l] -= 2.0 * zetb * pab[o2 + jco][o1 + ico];
+
+                                    ico_l = coset(max(lxa - 1, 0), lya, lza);
+                                    jco_l = coset((lxb + 1), lyb, lzb);
+                                    pab_prep[jco_l][ico_l] -= lxa * pab[o2 + jco][o1 + ico];
+
+                                    ico_l = coset((lxa + 1), lya, lza);
+                                    jco_l = coset((lxb + 1), lyb, lzb);
+                                    pab_prep[jco_l][ico_l] += 2.0 * zeta * pab[o2 + jco][o1 + ico];
+                                }
+                                    break;
+                                case 2: {
+                                    ico_l = coset(lxa, lya, lza);
+                                    jco_l = coset(max(lxb - 1, 0), (lyb + 1), lzb);
+                                    pab_prep[jco_l][ico_l] += lxb * pab[o2 + jco][o1 + ico];
+
+                                    ico_l = coset(lxa, lya, lza);
+                                    jco_l = coset((lxb + 1), (lyb + 1), lzb);
+                                    pab_prep[jco_l][ico_l] -= 2.0 * zetb * pab[o2 + jco][o1 + ico];
+
+                                    ico_l = coset(max(lxa - 1, 0), lya, lza);
+                                    jco_l = coset(lxb, (lyb + 1), lzb);
+                                    pab_prep[jco_l][ico_l] -= lxa * pab[o2 + jco][o1 + ico];
+
+                                    ico_l = coset((lxa + 1), lya, lza);
+                                    jco_l = coset(lxb, (lyb + 1), lzb);
+                                    pab_prep[jco_l][ico_l] += 2.0 * zeta * pab[o2 + jco][o1 + ico];
+                                }
+                                    break;
+                                case 3: {
+                                    ico_l = coset(lxa, lya, lza);
+                                    jco_l = coset(max(lxb - 1, 0), lyb, (lzb + 1));
+                                    pab_prep[jco_l][ico_l] += lxb * pab[o2 + jco][o1 + ico];
+
+                                    ico_l = coset(lxa, lya, lza);
+                                    jco_l = coset((lxb + 1), lyb, (lzb + 1));
+                                    pab_prep[jco_l][ico_l] -= 2.0 * zetb * pab[o2 + jco][o1 + ico];
+
+                                    ico_l = coset(max(lxa - 1, 0), lya, lza);
+                                    jco_l = coset(lxb, lyb, (lzb + 1));
+                                    pab_prep[jco_l][ico_l] -= lxa * pab[o2 + jco][o1 + ico];
+
+                                    ico_l = coset((lxa + 1), lya, lza);
+                                    jco_l = coset(lxb, lyb, (lzb + 1));
+                                    pab_prep[jco_l][ico_l] += 2.0 * zeta * pab[o2 + jco][o1 + ico];
+                                }
+                                    break;
+                                default:
+                                    break;
+                                }
+                            }
+                                break;
+                            case 2: {
+                                switch(ir) {
+                                case 1:{
+                                    ico_l = coset(lxa, lya, lza);
+                                    jco_l = coset((lxb + 1), max(lyb - 1, 0), lzb);
+                                    pab_prep[jco_l][ico_l] += lyb * pab[o2 + jco][o1 + ico];
+
+                                    ico_l = coset(lxa, lya, lza);
+                                    jco_l = coset((lxb + 1), (lyb + 1), lzb);
+                                    pab_prep[jco_l][ico_l] -= 2.0 * zetb * pab[o2 + jco][o1 + ico];
+
+                                    ico_l = coset(lxa, max(lya - 1, 0), lza);
+                                    jco_l = coset((lxb + 1), lyb, lzb);
+                                    pab_prep[jco_l][ico_l] -= lya * pab[o2 + jco][o1 + ico];
+
+                                    ico_l = coset(lxa, (lya + 1), lza);
+                                    jco_l = coset((lxb + 1), lyb, lzb);
+                                    pab_prep[jco_l][ico_l] += 2.0 * zeta * pab[o2 + jco][o1 + ico];
+                                }
+                                    break;
+                                case 2:{
+                                    ico_l = coset(lxa, lya, lza);
+                                    jco_l = coset(lxb, lyb, lzb);
+                                    pab_prep[jco_l][ico_l] += lyb * pab[o2 + jco][o1 + ico];
+
+                                    ico_l = coset(lxa, lya, lza);
+                                    jco_l = coset(lxb, (lyb + 2), lzb);
+                                    pab_prep[jco_l][ico_l] -= 2.0 * zetb * pab[o2 + jco][o1 + ico];
+
+                                    ico_l = coset(lxa, max(lya - 1, 0), lza);
+                                    jco_l = coset(lxb, (lyb + 1), lzb);
+                                    pab_prep[jco_l][ico_l] -= lya * pab[o2 + jco][o1 + ico];
+
+                                    ico_l = coset(lxa, (lya + 1), lza);
+                                    jco_l = coset(lxb, (lyb + 1), lzb);
+                                    pab_prep[jco_l][ico_l] += 2.0 * zeta * pab[o2 + jco][o1 + ico];
+                                }
+                                    break;
+                                case 3:{
+                                    ico_l = coset(lxa, lya, lza);
+                                    jco_l = coset(lxb, max(lyb - 1, 0), (lzb + 1));
+                                    pab_prep[jco_l][ico_l] += lyb * pab[o2 + jco][o1 + ico];
+
+                                    ico_l = coset(lxa, lya, lza);
+                                    jco_l = coset(lxb, (lyb + 1), (lzb + 1));
+                                    pab_prep[jco_l][ico_l] -= 2.0 * zetb * pab[o2 + jco][o1 + ico];
+
+                                    ico_l = coset(lxa, max(lya - 1, 0), lza);
+                                    jco_l = coset(lxb, lyb, (lzb + 1));
+                                    pab_prep[jco_l][ico_l] -= lya * pab[o2 + jco][o1 + ico];
+
+                                    ico_l = coset(lxa, (lya + 1), lza);
+                                    jco_l = coset(lxb, lyb, (lzb + 1));
+                                    pab_prep[jco_l][ico_l] += 2.0 * zeta * pab[o2 + jco][o1 + ico];
+                                }
+                                    break;
+                                default:
+                                    break;
+                                }
+                            }
+                                break;
+                            case 3: {
+                                switch(ir) {
+                                case 1:{
+                                    ico_l = coset(lxa, lya, lza);
+                                    jco_l = coset((lxb + 1), lyb, max(lzb - 1, 0));
+                                    pab_prep[jco_l][ico_l] += lzb * pab[o2 + jco][o1 + ico];
+
+                                    ico_l = coset(lxa, lya, lza);
+                                    jco_l = coset((lxb + 1), lyb, (lzb + 1));
+                                    pab_prep[jco_l][ico_l] -= 2.0 * zetb * pab[o2 + jco][o1 + ico];
+
+                                    ico_l = coset(lxa, lya, max(lza - 1, 0));
+                                    jco_l = coset((lxb + 1), lyb, lzb);
+                                    pab_prep[jco_l][ico_l] -= lza * pab[o2 + jco][o1 + ico];
+
+                                    ico_l = coset(lxa, lya, (lza + 1));
+                                    jco_l = coset((lxb + 1), lyb, lzb);
+                                    pab_prep[jco_l][ico_l] += 2.0 * zeta * pab[o2 + jco][o1 + ico];
+                                }
+                                    break;
+                                case 2: {
+                                    ico_l = coset(lxa, lya, lza);
+                                    jco_l = coset(lxb, (lyb + 1), max(lzb - 1, 0));
+                                    pab_prep[jco_l][ico_l] += +lzb * pab[o2 + jco][o1 + ico];
+
+                                    ico_l = coset(lxa, lya, lza);
+                                    jco_l = coset(lxb, (lyb + 1), (lzb + 1));
+                                    pab_prep[jco_l][ico_l] += -2.0 * zetb * pab[o2 + jco][o1 + ico];
+
+                                    ico_l = coset(lxa, lya, max(lza - 1, 0));
+                                    jco_l = coset(lxb, (lyb + 1), lzb);
+                                    pab_prep[jco_l][ico_l] += -lza * pab[o2 + jco][o1 + ico];
+
+                                    ico_l = coset(lxa, lya, (lza + 1));
+                                    jco_l = coset(lxb, (lyb + 1), lzb);
+                                    pab_prep[jco_l][ico_l] += +2.0 * zeta * pab[o2 + jco][o1 + ico];
+                                }
+                                    break;
+                                case 3: {
+                                    ico_l = coset(lxa, lya, lza);
+                                    jco_l = coset(lxb, lyb, lzb);
+                                    pab_prep[jco_l][ico_l] += +lzb * pab[o2 + jco][o1 + ico];
+
+                                    ico_l = coset(lxa, lya, lza);
+                                    jco_l = coset(lxb, lyb, (lzb + 2));
+                                    pab_prep[jco_l][ico_l] += -2.0 * zetb * pab[o2 + jco][o1 + ico];
+
+                                    ico_l = coset(lxa, lya, max(lza - 1, 0));
+                                    jco_l = coset(lxb, lyb, (lzb + 1));
+                                    pab_prep[jco_l][ico_l] += -lza * pab[o2 + jco][o1 + ico];
+
+                                    ico_l = coset(lxa, lya, (lza + 1));
+                                    jco_l = coset(lxb, lyb, (lzb + 1));
+                                    pab_prep[jco_l][ico_l] += +2.0 * zeta * pab[o2 + jco][o1 + ico];
+                                }
+                                    break;
+                                default:
+                                    break;
+                                }
+                            }
+                                break;
+                            default:
+                                break;
                             }
                         }
                     }
@@ -340,7 +435,6 @@ grid_prepare_pab_ARDBmDARB(const int idir, const int ir, const int o1, const int
         }
     }
 }
-
 // *****************************************************************************
 static void
 grid_prepare_pab_DABpADB(const int idir, const int o1, const int o2, const int la_max, const int la_min,
@@ -370,45 +464,61 @@ grid_prepare_pab_DABpADB(const int idir, const int o1, const int o2, const int l
 
                             // this element of pab results in 4 elements of pab_prep
 
-                            if (idir == 1) { // x
+                            switch (idir) {
+                            case 1: {
                                 ico_l = coset(lxa, lya, lza);
                                 jco_l = coset(max(lxb - 1, 0), lyb, lzb);
-                                pab_prep[jco_l][ico_l] += +lxb * pab[o2 + jco][o1 + ico];
+                                pab_prep[jco_l][ico_l] += lxb * pab[o2 + jco][o1 + ico];
+
                                 ico_l = coset(lxa, lya, lza);
                                 jco_l = coset((lxb + 1), lyb, lzb);
-                                pab_prep[jco_l][ico_l] += -2.0 * zetb * pab[o2 + jco][o1 + ico];
+                                pab_prep[jco_l][ico_l] -= 2.0 * zetb * pab[o2 + jco][o1 + ico];
+
                                 ico_l = coset(max(lxa - 1, 0), lya, lza);
                                 jco_l = coset(lxb, lyb, lzb);
-                                pab_prep[jco_l][ico_l] += +lxa * pab[o2 + jco][o1 + ico];
+                                pab_prep[jco_l][ico_l] += lxa * pab[o2 + jco][o1 + ico];
+
                                 ico_l = coset((lxa + 1), lya, lza);
                                 jco_l = coset(lxb, lyb, lzb);
-                                pab_prep[jco_l][ico_l] += -2.0 * zeta * pab[o2 + jco][o1 + ico];
-                            } else if (idir == 2) { // y
+                                pab_prep[jco_l][ico_l] -= 2.0 * zeta * pab[o2 + jco][o1 + ico];
+                            } break;
+                            case 2: { // y
                                 ico_l = coset(lxa, lya, lza);
                                 jco_l = coset(lxb, max(lyb - 1, 0), lzb);
-                                pab_prep[jco_l][ico_l] += +lyb * pab[o2 + jco][o1 + ico];
+                                pab_prep[jco_l][ico_l] += lyb * pab[o2 + jco][o1 + ico];
+
                                 ico_l = coset(lxa, lya, lza);
                                 jco_l = coset(lxb, (lyb + 1), lzb);
-                                pab_prep[jco_l][ico_l] += -2.0 * zetb * pab[o2 + jco][o1 + ico];
+                                pab_prep[jco_l][ico_l] -= 2.0 * zetb * pab[o2 + jco][o1 + ico];
+
                                 ico_l = coset(lxa, max(lya - 1, 0), lza);
                                 jco_l = coset(lxb, lyb, lzb);
-                                pab_prep[jco_l][ico_l] += +lya * pab[o2 + jco][o1 + ico];
+                                pab_prep[jco_l][ico_l] += lya * pab[o2 + jco][o1 + ico];
+
                                 ico_l = coset(lxa, (lya + 1), lza);
                                 jco_l = coset(lxb, lyb, lzb);
-                                pab_prep[jco_l][ico_l] += -2.0 * zeta * pab[o2 + jco][o1 + ico];
-                            } else { // z
+                                pab_prep[jco_l][ico_l] -= 2.0 * zeta * pab[o2 + jco][o1 + ico];
+                            } break;
+                            case 3: { // z
                                 ico_l = coset(lxa, lya, lza);
                                 jco_l = coset(lxb, lyb, max(lzb - 1, 0));
-                                pab_prep[jco_l][ico_l] += +lzb * pab[o2 + jco][o1 + ico];
+                                pab_prep[jco_l][ico_l] += lzb * pab[o2 + jco][o1 + ico];
+
                                 ico_l = coset(lxa, lya, lza);
                                 jco_l = coset(lxb, lyb, (lzb + 1));
-                                pab_prep[jco_l][ico_l] += -2.0 * zetb * pab[o2 + jco][o1 + ico];
+                                pab_prep[jco_l][ico_l] -= 2.0 * zetb * pab[o2 + jco][o1 + ico];
+
                                 ico_l = coset(lxa, lya, max(lza - 1, 0));
                                 jco_l = coset(lxb, lyb, lzb);
-                                pab_prep[jco_l][ico_l] += +lza * pab[o2 + jco][o1 + ico];
+                                pab_prep[jco_l][ico_l] += lza * pab[o2 + jco][o1 + ico];
+
                                 ico_l = coset(lxa, lya, (lza + 1));
                                 jco_l = coset(lxb, lyb, lzb);
-                                pab_prep[jco_l][ico_l] += -2.0 * zeta * pab[o2 + jco][o1 + ico];
+                                pab_prep[jco_l][ico_l] -= 2.0 * zeta * pab[o2 + jco][o1 + ico];
+                                break;
+                            }
+                            default:
+                                break;
                             }
                         }
                     }
@@ -417,7 +527,6 @@ grid_prepare_pab_DABpADB(const int idir, const int o1, const int o2, const int l
         }
     }
 }
-
 // *****************************************************************************
 static void
 grid_prepare_pab_Di(const int ider, const int o1, const int o2, const int la_max, const int la_min, const int lb_max,
@@ -446,48 +555,64 @@ grid_prepare_pab_Di(const int ider, const int o1, const int o2, const int la_max
                             int ico_l, jco_l;
                             // this element of pab results in 12 elements of pab_prep
 
-                            if (ider == 1) {
+                            switch(ider) {
+                            case 1: {
                                 // x  (all safe if lxa = 0, as the spurious added terms have zero prefactor)
                                 ico_l = coset(max(lxa - 1, 0), lya, lza);
                                 jco_l = coset(max(lxb - 1, 0), lyb, lzb);
-                                pab_prep[jco_l][ico_l] += +lxa * lxb * pab[o2 + jco][o1 + ico];
+                                pab_prep[jco_l][ico_l] += lxa * lxb * pab[o2 + jco][o1 + ico];
+
                                 ico_l = coset(max(lxa - 1, 0), lya, lza);
                                 jco_l = coset((lxb + 1), lyb, lzb);
-                                pab_prep[jco_l][ico_l] += -2.0 * lxa * zetb * pab[o2 + jco][o1 + ico];
+                                pab_prep[jco_l][ico_l] -= 2.0 * lxa * zetb * pab[o2 + jco][o1 + ico];
+
                                 ico_l = coset((lxa + 1), lya, lza);
                                 jco_l = coset(max(lxb - 1, 0), lyb, lzb);
-                                pab_prep[jco_l][ico_l] += -2.0 * zeta * lxb * pab[o2 + jco][o1 + ico];
+                                pab_prep[jco_l][ico_l] -= 2.0 * zeta * lxb * pab[o2 + jco][o1 + ico];
+
                                 ico_l = coset((lxa + 1), lya, lza);
                                 jco_l = coset((lxb + 1), lyb, lzb);
-                                pab_prep[jco_l][ico_l] += +4.0 * zeta * zetb * pab[o2 + jco][o1 + ico];
-                            } else if (ider == 2) {
+                                pab_prep[jco_l][ico_l] += 4.0 * zeta * zetb * pab[o2 + jco][o1 + ico];
+                            } break;
+                            case 2: {
                                 // y
                                 ico_l = coset(lxa, max(lya - 1, 0), lza);
                                 jco_l = coset(lxb, max(lyb - 1, 0), lzb);
-                                pab_prep[jco_l][ico_l] += +lya * lyb * pab[o2 + jco][o1 + ico];
+                                pab_prep[jco_l][ico_l] += lya * lyb * pab[o2 + jco][o1 + ico];
+
                                 ico_l = coset(lxa, max(lya - 1, 0), lza);
                                 jco_l = coset(lxb, (lyb + 1), lzb);
-                                pab_prep[jco_l][ico_l] += -2.0 * lya * zetb * pab[o2 + jco][o1 + ico];
+                                pab_prep[jco_l][ico_l] -= 2.0 * lya * zetb * pab[o2 + jco][o1 + ico];
+
                                 ico_l = coset(lxa, (lya + 1), lza);
                                 jco_l = coset(lxb, max(lyb - 1, 0), lzb);
-                                pab_prep[jco_l][ico_l] += -2.0 * zeta * lyb * pab[o2 + jco][o1 + ico];
+                                pab_prep[jco_l][ico_l] -= 2.0 * zeta * lyb * pab[o2 + jco][o1 + ico];
+
                                 ico_l = coset(lxa, (lya + 1), lza);
                                 jco_l = coset(lxb, (lyb + 1), lzb);
-                                pab_prep[jco_l][ico_l] += +4.0 * zeta * zetb * pab[o2 + jco][o1 + ico];
-                            } else if (ider == 3) {
+                                pab_prep[jco_l][ico_l] += 4.0 * zeta * zetb * pab[o2 + jco][o1 + ico];
+                            } break;
+                            case 3: {
                                 // z
                                 ico_l = coset(lxa, lya, max(lza - 1, 0));
                                 jco_l = coset(lxb, lyb, max(lzb - 1, 0));
-                                pab_prep[jco_l][ico_l] += +lza * lzb * pab[o2 + jco][o1 + ico];
+                                pab_prep[jco_l][ico_l] += lza * lzb * pab[o2 + jco][o1 + ico];
+
                                 ico_l = coset(lxa, lya, max(lza - 1, 0));
                                 jco_l = coset(lxb, lyb, (lzb + 1));
-                                pab_prep[jco_l][ico_l] += -2.0 * lza * zetb * pab[o2 + jco][o1 + ico];
+                                pab_prep[jco_l][ico_l] -= 2.0 * lza * zetb * pab[o2 + jco][o1 + ico];
+
                                 ico_l = coset(lxa, lya, (lza + 1));
                                 jco_l = coset(lxb, lyb, max(lzb - 1, 0));
-                                pab_prep[jco_l][ico_l] += -2.0 * zeta * lzb * pab[o2 + jco][o1 + ico];
+                                pab_prep[jco_l][ico_l] -= 2.0 * zeta * lzb * pab[o2 + jco][o1 + ico];
+
                                 ico_l = coset(lxa, lya, (lza + 1));
                                 jco_l = coset(lxb, lyb, (lzb + 1));
-                                pab_prep[jco_l][ico_l] += +4.0 * zeta * zetb * pab[o2 + jco][o1 + ico];
+                                pab_prep[jco_l][ico_l] += 4.0 * zeta * zetb * pab[o2 + jco][o1 + ico];
+                            }
+                                break;
+                            default:
+                                break;
                             }
                         }
                     }
@@ -507,42 +632,58 @@ oneterm_dijdij(const int idir, const double func_a, const int ico_l, const int l
 
     int jco_l;
 
-    if (idir == 1) {
+    switch (idir) {
+    case 1: {
         const int l1 = lx;
         const int l2 = ly;
         jco_l        = coset(max(lx - 1, 0), max(ly - 1, 0), lz);
-        pab_prep[jco_l][ico_l] += +l1 * l2 * func_a;
+        pab_prep[jco_l][ico_l] += l1 * l2 * func_a;
+
         jco_l = coset(lx + 1, max(ly - 1, 0), lz);
-        pab_prep[jco_l][ico_l] += -2.0 * zet * l2 * func_a;
+        pab_prep[jco_l][ico_l] -= 2.0 * zet * l2 * func_a;
+
         jco_l = coset(max(lx - 1, 0), ly + 1, lz);
-        pab_prep[jco_l][ico_l] += -2.0 * zet * l1 * func_a;
+        pab_prep[jco_l][ico_l] -= 2.0 * zet * l1 * func_a;
+
         jco_l = coset(lx + 1, ly + 1, lz);
-        pab_prep[jco_l][ico_l] += +4.0 * zet * zet * func_a;
-    } else if (idir == 2) {
+        pab_prep[jco_l][ico_l] += 4.0 * zet * zet * func_a;
+    } break;
+    case 2: {
         const int l1 = ly;
         const int l2 = lz;
         jco_l        = coset(lx, max(ly - 1, 0), max(lz - 1, 0));
-        pab_prep[jco_l][ico_l] += +l1 * l2 * func_a;
+        pab_prep[jco_l][ico_l] += l1 * l2 * func_a;
+
         jco_l = coset(lx, ly + 1, max(lz - 1, 0));
-        pab_prep[jco_l][ico_l] += -2.0 * zet * l2 * func_a;
+        pab_prep[jco_l][ico_l] -= 2.0 * zet * l2 * func_a;
+
         jco_l = coset(lx, max(ly - 1, 0), lz + 1);
-        pab_prep[jco_l][ico_l] += -2.0 * zet * l1 * func_a;
+        pab_prep[jco_l][ico_l] -= 2.0 * zet * l1 * func_a;
+
         jco_l = coset(lx, ly + 1, lz + 1);
-        pab_prep[jco_l][ico_l] += +4.0 * zet * zet * func_a;
-    } else if (idir == 3) {
+        pab_prep[jco_l][ico_l] += 4.0 * zet * zet * func_a;
+    }
+        break;
+    case 3: {
         const int l1 = lz;
         const int l2 = lx;
         jco_l        = coset(max(lx - 1, 0), ly, max(lz - 1, 0));
-        pab_prep[jco_l][ico_l] += +l1 * l2 * func_a;
+        pab_prep[jco_l][ico_l] += l1 * l2 * func_a;
+
         jco_l = coset(max(lx - 1, 0), ly, lz + 1);
-        pab_prep[jco_l][ico_l] += -2.0 * zet * l2 * func_a;
+        pab_prep[jco_l][ico_l] -= 2.0 * zet * l2 * func_a;
+
         jco_l = coset(lx + 1, ly, max(lz - 1, 0));
-        pab_prep[jco_l][ico_l] += -2.0 * zet * l1 * func_a;
+        pab_prep[jco_l][ico_l] -= 2.0 * zet * l1 * func_a;
+
         jco_l = coset(lx + 1, ly, lz + 1);
-        pab_prep[jco_l][ico_l] += +4.0 * zet * zet * func_a;
+        pab_prep[jco_l][ico_l] += 4.0 * zet * zet * func_a;
+    }
+        break;
+    default:
+        break;
     }
 }
-
 // *****************************************************************************
 static void
 grid_prepare_pab_DiDj(const int ider1, const int ider2, const int o1, const int o2, const int la_max, const int la_min,
@@ -576,12 +717,15 @@ grid_prepare_pab_DiDj(const int ider1, const int ider2, const int o1, const int 
                                 ico_l  = coset(max(lxa - 1, 0), max(lya - 1, 0), lza);
                                 func_a = lxa * lya * pab[o2 + jco][o1 + ico];
                                 oneterm_dijdij(1, func_a, ico_l, lxb, lyb, lzb, zetb, n1_prep, n2_prep, pab_prep);
+
                                 ico_l  = coset(lxa + 1, max(lya - 1, 0), lza);
                                 func_a = -2.0 * zeta * lya * pab[o2 + jco][o1 + ico];
                                 oneterm_dijdij(1, func_a, ico_l, lxb, lyb, lzb, zetb, n1_prep, n2_prep, pab_prep);
+
                                 ico_l  = coset(max(lxa - 1, 0), lya + 1, lza);
                                 func_a = -2.0 * zeta * lxa * pab[o2 + jco][o1 + ico];
                                 oneterm_dijdij(1, func_a, ico_l, lxb, lyb, lzb, zetb, n1_prep, n2_prep, pab_prep);
+
                                 ico_l  = coset(lxa + 1, lya + 1, lza);
                                 func_a = 4.0 * zeta * zeta * pab[o2 + jco][o1 + ico];
                                 oneterm_dijdij(1, func_a, ico_l, lxb, lyb, lzb, zetb, n1_prep, n2_prep, pab_prep);
@@ -590,12 +734,15 @@ grid_prepare_pab_DiDj(const int ider1, const int ider2, const int o1, const int 
                                 ico_l  = coset(lxa, max(lya - 1, 0), max(lza - 1, 0));
                                 func_a = lya * lza * pab[o2 + jco][o1 + ico];
                                 oneterm_dijdij(2, func_a, ico_l, lxb, lyb, lzb, zetb, n1_prep, n2_prep, pab_prep);
+
                                 ico_l  = coset(lxa, lya + 1, max(lza - 1, 0));
                                 func_a = -2.0 * zeta * lza * pab[o2 + jco][o1 + ico];
                                 oneterm_dijdij(2, func_a, ico_l, lxb, lyb, lzb, zetb, n1_prep, n2_prep, pab_prep);
+
                                 ico_l  = coset(lxa, max(lya - 1, 0), lza + 1);
                                 func_a = -2.0 * zeta * lya * pab[o2 + jco][o1 + ico];
                                 oneterm_dijdij(2, func_a, ico_l, lxb, lyb, lzb, zetb, n1_prep, n2_prep, pab_prep);
+
                                 ico_l  = coset(lxa, lya + 1, lza + 1);
                                 func_a = 4.0 * zeta * zeta * pab[o2 + jco][o1 + ico];
                                 oneterm_dijdij(2, func_a, ico_l, lxb, lyb, lzb, zetb, n1_prep, n2_prep, pab_prep);
@@ -604,12 +751,15 @@ grid_prepare_pab_DiDj(const int ider1, const int ider2, const int o1, const int 
                                 ico_l  = coset(max(lxa - 1, 0), lya, max(lza - 1, 0));
                                 func_a = lza * lxa * pab[o2 + jco][o1 + ico];
                                 oneterm_dijdij(3, func_a, ico_l, lxb, lyb, lzb, zetb, n1_prep, n2_prep, pab_prep);
+
                                 ico_l  = coset(max(lxa - 1, 0), lya, lza + 1);
                                 func_a = -2.0 * zeta * lxa * pab[o2 + jco][o1 + ico];
                                 oneterm_dijdij(3, func_a, ico_l, lxb, lyb, lzb, zetb, n1_prep, n2_prep, pab_prep);
+
                                 ico_l  = coset(lxa + 1, lya, max(lza - 1, 0));
                                 func_a = -2.0 * zeta * lza * pab[o2 + jco][o1 + ico];
                                 oneterm_dijdij(3, func_a, ico_l, lxb, lyb, lzb, zetb, n1_prep, n2_prep, pab_prep);
+
                                 ico_l  = coset(lxa + 1, lya, lza + 1);
                                 func_a = 4.0 * zeta * zeta * pab[o2 + jco][o1 + ico];
                                 oneterm_dijdij(3, func_a, ico_l, lxb, lyb, lzb, zetb, n1_prep, n2_prep, pab_prep);
@@ -627,35 +777,48 @@ static void
 oneterm_diidii(const int idir, const double func_a, const int ico_l, const int lx, const int ly, const int lz,
                const double zet, const int n1_prep, const int n2_prep, double pab_prep[n2_prep][n1_prep])
 {
-
-    assert(1 <= idir && idir <= 3);
-
     int jco_l;
 
-    if (idir == 1) {
+    switch(idir) {
+    case 1: {
         const int l1 = lx;
         jco_l        = coset(max(lx - 2, 0), ly, lz);
-        pab_prep[jco_l][ico_l] += +l1 * (l1 - 1) * func_a;
+        pab_prep[jco_l][ico_l] += l1 * (l1 - 1) * func_a;
+
         jco_l = coset(lx, ly, lz);
-        pab_prep[jco_l][ico_l] += -2.0 * zet * (2 * l1 + 1) * func_a;
+        pab_prep[jco_l][ico_l] -= 2.0 * zet * (2 * l1 + 1) * func_a;
+
         jco_l = coset(lx + 2, ly, lz);
-        pab_prep[jco_l][ico_l] += +4.0 * zet * zet * func_a;
-    } else if (idir == 2) {
+        pab_prep[jco_l][ico_l] += 4.0 * zet * zet * func_a;
+    }
+        break;
+    case 2: {
         const int l1 = ly;
         jco_l        = coset(lx, max(ly - 2, 0), lz);
-        pab_prep[jco_l][ico_l] += +l1 * (l1 - 1) * func_a;
+        pab_prep[jco_l][ico_l] += l1 * (l1 - 1) * func_a;
+
         jco_l = coset(lx, ly, lz);
-        pab_prep[jco_l][ico_l] += -2.0 * zet * (2 * l1 + 1) * func_a;
+        pab_prep[jco_l][ico_l] -= 2.0 * zet * (2 * l1 + 1) * func_a;
+
         jco_l = coset(lx, ly + 2, lz);
-        pab_prep[jco_l][ico_l] += +4.0 * zet * zet * func_a;
-    } else if (idir == 3) {
+        pab_prep[jco_l][ico_l] += 4.0 * zet * zet * func_a;
+    } break;
+    case 3: {
         const int l1 = lz;
         jco_l        = coset(lx, ly, max(lz - 2, 0));
-        pab_prep[jco_l][ico_l] += +l1 * (l1 - 1) * func_a;
+        pab_prep[jco_l][ico_l] += l1 * (l1 - 1) * func_a;
+
         jco_l = coset(lx, ly, lz);
-        pab_prep[jco_l][ico_l] += -2.0 * zet * (2 * l1 + 1) * func_a;
+        pab_prep[jco_l][ico_l] -= 2.0 * zet * (2 * l1 + 1) * func_a;
+
         jco_l = coset(lx, ly, lz + 2);
-        pab_prep[jco_l][ico_l] += +4.0 * zet * zet * func_a;
+        pab_prep[jco_l][ico_l] += 4.0 * zet * zet * func_a;
+    }
+        break;
+    default:
+        printf("Wrong value for ider: should be 1, 2, or 3\n");
+        abort();
+        break;
     }
 }
 
@@ -685,40 +848,56 @@ grid_prepare_pab_Di2(const int ider, const int o1, const int o2, const int la_ma
                             double func_a;
 
                             // this element of pab results in  9 elements of pab_local
-
-                            if (ider == 1) {
+                            switch(ider) {
+                            case 1: {
                                 // x
                                 ico_l  = coset(max(lxa - 2, 0), lya, lza);
                                 func_a = lxa * (lxa - 1) * pab[o2 + jco][o1 + ico];
                                 oneterm_diidii(1, func_a, ico_l, lxb, lyb, lzb, zetb, n1_prep, n2_prep, pab_prep);
+
                                 ico_l  = coset(lxa, lya, lza);
                                 func_a = -2.0 * zeta * (2 * lxa + 1) * pab[o2 + jco][o1 + ico];
                                 oneterm_diidii(1, func_a, ico_l, lxb, lyb, lzb, zetb, n1_prep, n2_prep, pab_prep);
+
                                 ico_l  = coset(lxa + 2, lya, lza);
                                 func_a = 4.0 * zeta * zeta * pab[o2 + jco][o1 + ico];
                                 oneterm_diidii(1, func_a, ico_l, lxb, lyb, lzb, zetb, n1_prep, n2_prep, pab_prep);
-                            } else if (ider == 2) {
+                            }
+                            break;
+                            case 2: {
                                 // y
                                 ico_l  = coset(lxa, max(lya - 2, 0), lza);
                                 func_a = lya * (lya - 1) * pab[o2 + jco][o1 + ico];
                                 oneterm_diidii(2, func_a, ico_l, lxb, lyb, lzb, zetb, n1_prep, n2_prep, pab_prep);
+
                                 ico_l  = coset(lxa, lya, lza);
                                 func_a = -2.0 * zeta * (2 * lya + 1) * pab[o2 + jco][o1 + ico];
                                 oneterm_diidii(2, func_a, ico_l, lxb, lyb, lzb, zetb, n1_prep, n2_prep, pab_prep);
+
                                 ico_l  = coset(lxa, lya + 2, lza);
                                 func_a = 4.0 * zeta * zeta * pab[o2 + jco][o1 + ico];
                                 oneterm_diidii(2, func_a, ico_l, lxb, lyb, lzb, zetb, n1_prep, n2_prep, pab_prep);
-                            } else if (ider == 3) {
+                            }
+                                break;
+                            case 3:  {
                                 // z
                                 ico_l  = coset(lxa, lya, max(lza - 2, 0));
                                 func_a = lza * (lza - 1) * pab[o2 + jco][o1 + ico];
                                 oneterm_diidii(3, func_a, ico_l, lxb, lyb, lzb, zetb, n1_prep, n2_prep, pab_prep);
+
                                 ico_l  = coset(lxa, lya, lza);
                                 func_a = -2.0 * zeta * (2 * lza + 1) * pab[o2 + jco][o1 + ico];
                                 oneterm_diidii(3, func_a, ico_l, lxb, lyb, lzb, zetb, n1_prep, n2_prep, pab_prep);
+
                                 ico_l  = coset(lxa, lya, lza + 2);
                                 func_a = 4.0 * zeta * zeta * pab[o2 + jco][o1 + ico];
                                 oneterm_diidii(3, func_a, ico_l, lxb, lyb, lzb, zetb, n1_prep, n2_prep, pab_prep);
+                            }
+                                break;
+                            default:
+                                printf("Wrong value for ider: should be 1, 2 or 3.\n");
+                                abort();
+                                break;
                             }
                         }
                     }
@@ -746,9 +925,9 @@ grid_prepare_get_ldiffs(const int func, int* lmin_diff, int* lmax_diff)
         case GRID_FUNC_DABpADB_X:
         case GRID_FUNC_DABpADB_Y:
         case GRID_FUNC_DABpADB_Z:
-            lmax_diff[0] = +1;
+            lmax_diff[0] = 1;
             lmin_diff[0] = -1;
-            lmax_diff[1] = +1;
+            lmax_diff[1] = 1;
             lmin_diff[1] = -1;
             break;
         case GRID_FUNC_ARDBmDARB_XX:
@@ -760,17 +939,17 @@ grid_prepare_get_ldiffs(const int func, int* lmin_diff, int* lmax_diff)
         case GRID_FUNC_ARDBmDARB_ZX:
         case GRID_FUNC_ARDBmDARB_ZY:
         case GRID_FUNC_ARDBmDARB_ZZ:
-            lmax_diff[0] = +1; // TODO: mistake???, then we could merge la and lb.
+            lmax_diff[0] = 1; // TODO: mistake???, then we could merge la and lb.
             lmin_diff[0] = -1;
-            lmax_diff[1] = +2;
+            lmax_diff[1] = 2;
             lmin_diff[1] = -1;
             break;
         case GRID_FUNC_DX:
         case GRID_FUNC_DY:
         case GRID_FUNC_DZ:
-            lmax_diff[0] = +1;
+            lmax_diff[0] = 1;
             lmin_diff[0] = -1;
-            lmax_diff[1] = +1;
+            lmax_diff[1] = 1;
             lmin_diff[1] = -1;
             break;
         case GRID_FUNC_DXDY:
@@ -779,9 +958,9 @@ grid_prepare_get_ldiffs(const int func, int* lmin_diff, int* lmax_diff)
         case GRID_FUNC_DXDX:
         case GRID_FUNC_DYDY:
         case GRID_FUNC_DZDZ:
-            lmax_diff[0] = +2;
+            lmax_diff[0] = 2;
             lmin_diff[0] = -2;
-            lmax_diff[1] = +2;
+            lmax_diff[1] = 2;
             lmin_diff[1] = -2;
             break;
         default:
