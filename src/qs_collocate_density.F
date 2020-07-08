@@ -499,6 +499,7 @@ CONTAINS
          DEALLOCATE (pab)
 
       END DO
+      CALL collocate_pgf_synchronize(gaussian_handle)
 
       ! there is a synchronization point inside but we run in sequential mode so
       ! it just release memory
@@ -711,8 +712,8 @@ CONTAINS
                                                    cube_info=cube_info(igrid_level), &
                                                    radius=radius, &
                                                    ga_gb_function=GRID_FUNC_AB)
+                        CALL collocate_pgf_synchronize(gaussian_handle)
                      ENDIF
-                     CALL collocate_pgf_synchronize(gaussian_handle)
                   END DO
                   DEALLOCATE (work)
                END IF
@@ -1308,6 +1309,7 @@ CONTAINS
                                     use_subpatch=.TRUE., subpatch_pattern=subpatch_pattern)
       ENDIF
       DEALLOCATE (pab)
+      CALL collocate_pgf_synchronize(gaussian_handle)
 
       CALL pw_pool_create_pw(auxbas_pw_pool, rhoc_r%pw, &
                              use_data=REALDATA3D, in_space=REALSPACE)
@@ -2342,9 +2344,9 @@ CONTAINS
                   radius=radius, ga_gb_function=dabqadb_func, &
                   use_subpatch=use_subpatch, subpatch_pattern=tasks(itask)%subpatch_pattern)
             END IF
+            CALL collocate_pgf_synchronize(gaussian_handle)
 
          END DO loop_tasks
-         CALL collocate_pgf_synchronize(gaussian_handle)
          CALL density_rs2pw_basic(pw_env, rs_rho, drho(idir), drho_gspace(idir))
 
       END DO loop_xyz

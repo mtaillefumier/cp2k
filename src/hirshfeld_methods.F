@@ -503,11 +503,11 @@ CONTAINS
                                           cell, cube_info, radius=radius, ga_gb_function=GRID_FUNC_AB, &
                                           use_subpatch=.TRUE., subpatch_pattern=subpatch_pattern)
             END DO
+            CALL collocate_pgf_synchronize(gaussian_handle)
          END DO
 
          DEALLOCATE (cores)
       END DO
-      CALL collocate_pgf_synchronize(gaussian_handle)
       DEALLOCATE (pab)
 
       NULLIFY (fnorm)
@@ -639,7 +639,8 @@ CONTAINS
                                           radius=radius, calculate_forces=do_force, &
                                           force_a=force_a, force_b=force_b, use_virial=.FALSE., &
                                           use_subpatch=.TRUE., subpatch_pattern=0_int_8)
-               fval(atom_a) = fval(atom_a) + hab(1, 1)*dvol*coef
+                write(*,*) "Integration: ", coef, hab(1,1)
+                fval(atom_a) = fval(atom_a) + hab(1, 1)*dvol*coef
                IF (do_force) THEN
                   fderiv(:, atom_a) = fderiv(:, atom_a) + force_a(:)*dvol
                END IF

@@ -215,7 +215,7 @@ initialize_grid(collocation_integration* handler, const bool use_ortho, const bo
     // into the original grid is only valid when I do collocate
 
     if ((handler->grid.size[0] != ngrid[2]) || (handler->grid.size[1] != ngrid[1]) ||
-        (handler->grid.size[2] != ngrid[0])) {
+        (handler->grid.size[2] != ngrid[0]) || (handler->grid.data != grid_)) {
 
         // Only test here if I do collocate
         if ((handler->grid.data != NULL) && (!tmpt) && (handler->blocked_grid.blocked_decomposition) && (!integrate)) {
