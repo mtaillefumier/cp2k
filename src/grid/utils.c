@@ -22,6 +22,11 @@ compute_block_dimensions(const int* const grid_size, int* const blockDim)
 {
     int block_size_test[8] = {2, 3, 4, 5, 6, 7, 8, 10};
     bool block_divided[8];
+
+    blockDim[0] = -1;
+    blockDim[1] = -1;
+    blockDim[2] = -1;
+
     for (int d = 0; d < 3; d++) {
         for (int s = 0; s < 8; s++)
             block_divided[s] = (grid_size[d] % block_size_test[s] == 0);

@@ -667,7 +667,7 @@ apply_mapping_cubic(const int* lower_boundaries_cube, const int* cube_center, co
 
 // *****************************************************************************
 void
-grid_collocate(collocation_integration* const handler, const bool blocked_decomposition, const bool use_ortho,
+grid_collocate(collocation_integration* const handler, const bool use_ortho,
                const double zetp, const double rp[3], const int npts[3], const int lb_grid[3], const bool periodic[3],
                const double radius)
 {
@@ -732,7 +732,7 @@ grid_collocate(collocation_integration* const handler, const bool blocked_decomp
     }
 #endif
 
-    if (blocked_decomposition) {
+    if (handler->blocked_grid.blocked_decomposition) {
         compute_block_boundaries(handler->blockDim, lb_grid, handler->grid.size, handler->blocked_grid.size, npts,
                                  cubecenter, cube_size, lb_cube, lower_block_corner, upper_block_corner, pol_offset);
 
@@ -771,7 +771,7 @@ grid_collocate(collocation_integration* const handler, const bool blocked_decomp
         grid_fill_pol(false, 1.0, roffset[2], pol_offset[0], lb_cube[2], ub_cube[2], handler->coef.size[2] - 1, cmax,
                       zetp * handler->dx[2], &idx3(handler->pol, 2, 0, 0)); /* i indice */
 
-        if (blocked_decomposition) {
+        if (handler->blocked_grid.blocked_decomposition) {
             calculate_non_orthorombic_corrections_tensor_blocked(zetp, roffset, handler->dh, lower_block_corner,
                                                                  upper_block_corner, handler->blockDim, pol_offset,
                                                                  lb_cube, ub_cube, handler->orthogonal, &handler->Exp);
@@ -791,7 +791,7 @@ grid_collocate(collocation_integration* const handler, const bool blocked_decomp
 
     initialize_W_and_T(handler, &handler->cube, &handler->coef);
 
-    if (blocked_decomposition) {
+    if (handler->blocked_grid.blocked_decomposition) {
         tensor_reduction_for_collocate_integrate_blocked(handler->scratch, 1.0, lower_block_corner, upper_block_corner,
                                                          handler->orthogonal, &handler->Exp, &handler->coef,
                                                          &handler->pol, &handler->blocked_grid);
@@ -916,5 +916,5 @@ grid_collocate_pgf_product_cpu(void* const handle, const bool use_ortho, const i
     // coef[x][z][y]
     grid_prepare_coef(lmin_prep, lmax_prep, lp, prefactor, &handler->alpha, pab_prep, &handler->coef);
 
-    grid_collocate(handler, use_ortho, use_ortho, zetp, rp, period, lb_grid_bis, periodic_bis, radius);
+    grid_collocate(handler, use_ortho, zetp, rp, period, lb_grid_bis, periodic_bis, radius);
 }

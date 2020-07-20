@@ -245,34 +245,31 @@ initialize_grid(collocation_integration* handler, const bool use_ortho, const bo
         }
 #endif
 
-        /* if (!integrate) { */
-        /*     // i shuffle the grid such that we have the grid stored in the yxz */
-        /*     // form. The reason for that is linked to the way i access the block */
-        /*     // when I collocate. I have three loops and the most outer loop is along y then x then z */
-        /*     grid_reverse[0] = ngrid[1]; */
-        /*     grid_reverse[1] = ngrid[0]; */
-        /*     grid_reverse[2] = ngrid[2]; */
-        /* } */
-
         compute_block_dimensions(grid_reverse, handler->blockDim);
-        initialize_tensor_blocked(&handler->blocked_grid, 3, grid_reverse, handler->blockDim);
 
-        /* if (!integrate) { */
-        /*     assert(handler->grid.size[0] % handler->blockDim[2] == 0); */
-        /*     assert(handler->grid.size[1] % handler->blockDim[0] == 0); */
-        /*     assert(handler->grid.size[2] % handler->blockDim[1] == 0); */
-        /* } else { */
-        assert(handler->grid.size[0] % handler->blockDim[0] == 0);
-        assert(handler->grid.size[1] % handler->blockDim[1] == 0);
-        assert(handler->grid.size[2] % handler->blockDim[2] == 0);
-        /* } */
+        if ((handler->blockDim[0] != -1) && (handler->blockDim[1] != -1) && (handler->blockDim[2] != -1) && use_ortho) {
+            assert(handler->grid.size[0] % handler->blockDim[0] == 0);
+            assert(handler->grid.size[1] % handler->blockDim[1] == 0);
+            assert(handler->grid.size[2] % handler->blockDim[2] == 0);
 
-        realloc_tensor(&handler->blocked_grid);
+            initialize_tensor_blocked(&handler->blocked_grid, 3, grid_reverse, handler->blockDim);
 
-        if (integrate) {
-            decompose_grid_to_blocked_grid(&handler->grid, &handler->blocked_grid);
+            /* if (!integrate) { */
+            /*     assert(handler->grid.size[0] % handler->blockDim[2] == 0); */
+            /*     assert(handler->grid.size[1] % handler->blockDim[0] == 0); */
+            /*     assert(handler->grid.size[2] % handler->blockDim[1] == 0); */
+            /* } else { */
+            /* } */
+
+            realloc_tensor(&handler->blocked_grid);
+
+            if (integrate) {
+                decompose_grid_to_blocked_grid(&handler->grid, &handler->blocked_grid);
+            } else {
+                memset(handler->blocked_grid.data, 0, sizeof(double) * handler->blocked_grid.alloc_size_);
+            }
         } else {
-            memset(handler->blocked_grid.data, 0, sizeof(double) * handler->blocked_grid.alloc_size_);
+            handler->blocked_grid.blocked_decomposition = false;
         }
     }
 }
@@ -286,7 +283,7 @@ reset_list_gpu(pgf_list_gpu* handler)
     handler->list_length                  = 0;
     handler->coef_dynamic_alloc_size_gpu_ = 0;
 }
-
+``
 void
 apply_reduction_worker_list(collocation_integration* handler)
 {
