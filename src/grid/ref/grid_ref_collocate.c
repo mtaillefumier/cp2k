@@ -10,10 +10,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../common/grid_common.h"
+#include "../common/utils.h"
 #include "../common/grid_library.h"
-#include "grid_ref_collocate.h"
-#include "grid_ref_prepare_pab.h"
+#include "grid_collocate_ref.h"
+#include "grid_prepare_pab_ref.h"
 
 //******************************************************************************
 // \brief Computes the polynomial expansion coefficients:
@@ -738,7 +738,7 @@ grid_ref_collocate_pgf_product(const bool orthorhombic, const int border_mask, c
     const int n2_prep = ncoset[lb_max_prep];
     double pab_prep_mutable[n2_prep][n1_prep];
     memset(pab_prep_mutable, 0, n2_prep * n1_prep * sizeof(double));
-    grid_ref_prepare_pab(func, o1, o2, la_max, la_min, lb_max, lb_min, zeta, zetb, n1, n2, pab, n1_prep, n2_prep,
+    grid_prepare_pab(func, o1, o2, la_max, la_min, lb_max, lb_min, zeta, zetb, n1, n2, pab, n1_prep, n2_prep,
                          pab_prep_mutable);
     const double(*pab_prep)[n1_prep] = (const double(*)[n1_prep])pab_prep_mutable;
 

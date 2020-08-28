@@ -9,10 +9,16 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "common/grid_common.h"
+#include "common/utils.h"
 #include "common/grid_constants.h"
 #include "common/grid_library.h"
 #include "grid_task_list.h"
+#include "ref/grid_task_list_ref.h"
+#include "dgemm/grid_collocate_dgemm.h"
+
+#ifdef COLLOCATE_GPU
+#include "gpu/grid_collocate_gpu.h"
+#endif
 
 //******************************************************************************
 // \brief Allocates a task list which can be passed to grid_collocate_task_list.
@@ -32,38 +38,42 @@ grid_create_task_list(const int ntasks, const int nlevels, const int natoms, con
 
     if (*task_list == NULL) {
         *task_list                       = malloc(sizeof(grid_task_list));
-        (*task_list)->ref                = NULL;
-        (*task_list)->cpu                = NULL;
+        memset(*task_list, 0, sizeof(grid_task_list));
+
         const grid_library_config config = grid_library_get_config();
+
         (*task_list)->validate           = config.validate;
-        if (config.backend == GRID_BACKEND_AUTO) {
-            (*task_list)->backend = GRID_BACKEND_CPU;
-        } else {
-            (*task_list)->backend = config.backend;
-        }
+        (*task_list)->backend = config.backend;
     }
 
     // Uncomment the following line to validate every task list:
     // (*task_list)->validate = true;
-
-    if ((*task_list)->backend == GRID_BACKEND_CPU) {
-        grid_cpu_create_task_list(ntasks, nlevels, natoms, nkinds, nblocks, buffer_size, block_offsets, atom_positions,
+    switch((*task_list)->backend) {
+    case GRID_BACKEND_GPU:
+        grid_create_task_list_ref(ntasks, nlevels, natoms, nkinds, nblocks, buffer_size, block_offsets, atom_positions,
                                   atom_kinds, basis_sets, level_list, iatom_list, jatom_list, iset_list, jset_list,
                                   ipgf_list, jpgf_list, border_mask_list, block_num_list, radius_list, rab_list,
-                                  blocks_buffer, &(*task_list)->cpu);
-    } else if ((*task_list)->backend == GRID_BACKEND_REF) {
-        grid_ref_create_task_list(ntasks, nlevels, natoms, nkinds, nblocks, buffer_size, block_offsets, atom_positions,
+                                  blocks_buffer, &(*task_list)->gpu);
+    case GRID_BACKEND_DGEMM:
+        grid_create_task_list_ref(ntasks, nlevels, natoms, nkinds, nblocks, buffer_size, block_offsets, atom_positions,
+                                  atom_kinds, basis_sets, level_list, iatom_list, jatom_list, iset_list, jset_list,
+                                  ipgf_list, jpgf_list, border_mask_list, block_num_list, radius_list, rab_list,
+                                  blocks_buffer, &(*task_list)->dgemm);
+    case GRID_BACKEND_AUTO:
+    case GRID_BACKEND_REF:
+        grid_create_task_list_ref(ntasks, nlevels, natoms, nkinds, nblocks, buffer_size, block_offsets, atom_positions,
                                   atom_kinds, basis_sets, level_list, iatom_list, jatom_list, iset_list, jset_list,
                                   ipgf_list, jpgf_list, border_mask_list, block_num_list, radius_list, rab_list,
                                   blocks_buffer, &(*task_list)->ref);
-    } else {
-        printf("Error: Unknown grid backend: %i.\n", (*task_list)->backend);
+        break;
+    default:
+        printf("unknown backend");
         abort();
     }
 
     if ((*task_list)->validate && (*task_list)->backend != GRID_BACKEND_REF) {
         double* dummy;
-        grid_ref_create_task_list(ntasks, nlevels, natoms, nkinds, nblocks, buffer_size, block_offsets, atom_positions,
+        grid_create_task_list_ref(ntasks, nlevels, natoms, nkinds, nblocks, buffer_size, block_offsets, atom_positions,
                                   atom_kinds, basis_sets, level_list, iatom_list, jatom_list, iset_list, jset_list,
                                   ipgf_list, jpgf_list, border_mask_list, block_num_list, radius_list, rab_list, &dummy,
                                   &(*task_list)->ref);
@@ -78,10 +88,7 @@ void
 grid_free_task_list(grid_task_list* task_list)
 {
     if (task_list->ref != NULL) {
-        grid_ref_free_task_list(task_list->ref);
-    }
-    if (task_list->cpu != NULL) {
-        grid_cpu_free_task_list(task_list->cpu);
+        grid_free_task_list_ref(task_list->ref);
     }
     free(task_list);
 }
@@ -92,15 +99,18 @@ grid_free_task_list(grid_task_list* task_list)
 // \author Ole Schuett
 //******************************************************************************
 void
-grid_collocate_task_list(const grid_task_list* task_list, const bool orthorhombic, const int func, const int nlevels,
-                         const int npts_global[nlevels][3], const int npts_local[nlevels][3],
-                         const int shift_local[nlevels][3], const int border_width[nlevels][3],
-                         const double dh[nlevels][3][3], const double dh_inv[nlevels][3][3], double* grid[nlevels])
+    grid_collocate_task_list(const int device_id, const grid_task_list* task_list, const bool orthorhombic, const int func, const int nlevels,
+                             const int npts_global[nlevels][3], const int npts_local[nlevels][3],
+                             const int shift_local[nlevels][3], const int border_width[nlevels][3],
+                             const double dh[nlevels][3][3], const double dh_inv[nlevels][3][3], double* grid[nlevels])
 {
 
     // If validation is enabled, make a backup copy of the original grid.
-    double* grid_before[nlevels]; // Only used for validation.
+
+    double** grid_before = NULL; // Only used for validation.
     if (task_list->validate) {
+        grid_before = (double **) malloc(sizeof(double *) * (nlevels + 1));
+        memset(grid_before, 0, sizeof(double) * (nlevels + 1));
         for (int level = 0; level < nlevels; level++) {
             const size_t sizeof_grid =
                 sizeof(double) * npts_local[level][0] * npts_local[level][1] * npts_local[level][2];
@@ -111,15 +121,27 @@ grid_collocate_task_list(const grid_task_list* task_list, const bool orthorhombi
     }
 
     // Call selected backend to perform the actual work.
-    if (task_list->backend == GRID_BACKEND_REF) {
-        grid_ref_collocate_task_list(task_list->ref, orthorhombic, func, nlevels, npts_global, npts_local, shift_local,
+    switch(task_list->backend)
+    {
+    case GRID_BACKEND_AUTO:
+    case GRID_BACKEND_REF:
+        grid_collocate_task_list_ref(task_list->ref, orthorhombic, func, nlevels, npts_global, npts_local, shift_local,
                                      border_width, dh, dh_inv, grid);
-    } else if (task_list->backend == GRID_BACKEND_CPU) {
-        grid_cpu_collocate_task_list(task_list->cpu, orthorhombic, func, nlevels, npts_global, npts_local, shift_local,
+        break;
+    case  GRID_BACKEND_DGEMM:
+        grid_collocate_task_list_dgemm(task_list->dgemm, orthorhombic, func, nlevels, npts_global, npts_local, shift_local,
+                                       border_width, dh, dh_inv, grid);
+        break;
+#ifdef COLLOCATE_GPU
+    case GRID_BACKEND_GPU:
+        grid_collocate_task_list_gpu(device_id, task_list->gpu, orthorhombic, func, nlevels, npts_global, npts_local, shift_local,
                                      border_width, dh, dh_inv, grid);
-    } else {
+        break;
+#endif
+    default:
         printf("Error: Unknown grid backend: %i.\n", task_list->backend);
         abort();
+        break;
     }
 
     // Perform validation if enabled.
@@ -133,15 +155,15 @@ grid_collocate_task_list(const grid_task_list* task_list, const bool orthorhombi
             memset(grid_ref[level], 0, sizeof_grid);
         }
         // Copy blocks if nessecary (by slightly violating the Law of Demeter).
-        if (task_list->backend == GRID_BACKEND_CPU) {
-            memcpy(task_list->ref->blocks_buffer, task_list->cpu->crutch->blocks_buffer,
+        if (task_list->backend == GRID_BACKEND_DGEMM) {
+            memcpy(task_list->ref->blocks_buffer, task_list->dgemm->blocks_buffer,
                    task_list->ref->buffer_size * sizeof(double));
         } else if (task_list->backend != GRID_BACKEND_REF) {
             printf("Error: Unknown grid backend: %i.\n", task_list->backend);
             abort();
         }
         // Call reference implementation.
-        grid_ref_collocate_task_list(task_list->ref, orthorhombic, func, nlevels, npts_global, npts_local, shift_local,
+        grid_collocate_task_list_ref(task_list->ref, orthorhombic, func, nlevels, npts_global, npts_local, shift_local,
                                      border_width, dh, dh_inv, grid_ref);
 
         // Compare results.
@@ -169,6 +191,7 @@ grid_collocate_task_list(const grid_task_list* task_list, const bool orthorhombi
             }
             free(grid_before[level]);
             free(grid_ref[level]);
+            free(grid_before);
         }
     }
 }

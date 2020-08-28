@@ -7,24 +7,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "../common/grid_common.h"
+#include "../common/utils.h"
 #include "../common/grid_constants.h"
-#include "grid_ref_prepare_pab.h"
+#include "grid_prepare_pab_ref.h"
 
-//******************************************************************************
-// \brief Returns block size changes due to transformation grid_ref_prepare_pab.
-// \author Ole Schuett
-//******************************************************************************
-int
-coset(int lx, int ly, int lz)
-{
-    const int l = lx + ly + lz;
-    if (l == 0) {
-        return 0;
-    } else {
-        return ncoset[l - 1] + ((l - lx) * (l - lx + 1)) / 2 + lz;
-    }
-}
 
 //******************************************************************************
 // \brief Implementation of function GRID_FUNC_AB, ie. identity transformation.
@@ -849,9 +835,9 @@ grid_ref_prepare_get_ldiffs(const int func, int* la_min_diff, int* la_max_diff, 
 // \author Ole Schuett
 //******************************************************************************
 void
-grid_ref_prepare_pab(const int func, const int o1, const int o2, const int la_max, const int la_min, const int lb_max,
-                     const int lb_min, const double zeta, const double zetb, const int n1, const int n2,
-                     const double pab[n2][n1], const int n1_prep, const int n2_prep, double pab_prep[n2_prep][n1_prep])
+grid_prepare_pab(const int func, const int o1, const int o2, const int la_max, const int la_min, const int lb_max,
+                 const int lb_min, const double zeta, const double zetb, const int n1, const int n2,
+                 const double pab[n2][n1], const int n1_prep, const int n2_prep, double pab_prep[n2_prep][n1_prep])
 {
 
     switch (func) {

@@ -8,9 +8,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../common/grid_common.h"
-#include "grid_ref_collocate.h"
-#include "grid_ref_task_list.h"
+#include "../common/utils.h"
+#include "grid_collocate_ref.h"
+#include "grid_task_list_ref.h"
 
 //******************************************************************************
 // \brief Allocates a task list which can be passed to grid_collocate_task_list.
@@ -18,7 +18,7 @@
 // \author Ole Schuett
 //******************************************************************************
 void
-grid_ref_create_task_list(const int ntasks, const int nlevels, const int natoms, const int nkinds, const int nblocks,
+grid_create_task_list_ref(const int ntasks, const int nlevels, const int natoms, const int nkinds, const int nblocks,
                           const int buffer_size, const int block_offsets[nblocks],
                           const double atom_positions[natoms][3], const int atom_kinds[natoms],
                           const grid_basis_set* basis_sets[nkinds], const int level_list[ntasks],
@@ -26,15 +26,15 @@ grid_ref_create_task_list(const int ntasks, const int nlevels, const int natoms,
                           const int jset_list[ntasks], const int ipgf_list[ntasks], const int jpgf_list[ntasks],
                           const int border_mask_list[ntasks], const int block_num_list[ntasks],
                           const double radius_list[ntasks], const double rab_list[ntasks][3], double** blocks_buffer,
-                          grid_ref_task_list** task_list_out)
+                          grid_task_list_private** task_list_out)
 {
 
     if (*task_list_out != NULL) {
         // This is actually an opportunity to reuse some buffers.
-        grid_ref_free_task_list(*task_list_out);
+        grid_free_task_list_ref(*task_list_out);
     }
 
-    grid_ref_task_list* task_list = malloc(sizeof(grid_ref_task_list));
+    grid_task_list_private* task_list = malloc(sizeof(grid_task_list_private));
 
     task_list->ntasks      = ntasks;
     task_list->nlevels     = nlevels;
@@ -62,7 +62,7 @@ grid_ref_create_task_list(const int ntasks, const int nlevels, const int natoms,
     task_list->basis_sets = malloc(size);
     memcpy(task_list->basis_sets, basis_sets, size);
 
-    size             = ntasks * sizeof(grid_ref_task);
+    size             = ntasks * sizeof(grid_task_list_private);
     task_list->tasks = malloc(size);
     for (int i = 0; i < ntasks; i++) {
         task_list->tasks[i].level       = level_list[i];
@@ -104,7 +104,7 @@ grid_ref_create_task_list(const int ntasks, const int nlevels, const int natoms,
 // \author Ole Schuett
 //******************************************************************************
 void
-grid_ref_free_task_list(grid_ref_task_list* task_list)
+grid_free_task_list_ref(grid_task_list_private* task_list)
 {
     free(task_list->blocks_buffer);
     free(task_list->block_offsets);
@@ -121,7 +121,7 @@ grid_ref_free_task_list(grid_ref_task_list* task_list)
 // \author Ole Schuett
 //******************************************************************************
 static void
-collocate_one_grid_level(const grid_ref_task_list* task_list, const int first_task, const int last_task,
+collocate_one_grid_level(const grid_task_list_private* task_list, const int first_task, const int last_task,
                          const bool orthorhombic, const int func, const int npts_global[3], const int npts_local[3],
                          const int shift_local[3], const int border_width[3], const double dh[3][3],
                          const double dh_inv[3][3], double* grid)
@@ -148,7 +148,7 @@ collocate_one_grid_level(const grid_ref_task_list* task_list, const int first_ta
 #pragma omp for schedule(static)
         for (int itask = first_task; itask <= last_task; itask++) {
             // Define some convenient aliases.
-            const grid_ref_task* task    = &task_list->tasks[itask];
+            const grid_task* task    = &task_list->tasks[itask];
             const int iatom              = task->iatom - 1;
             const int jatom              = task->jatom - 1;
             const int iset               = task->iset - 1;
@@ -270,7 +270,7 @@ collocate_one_grid_level(const grid_ref_task_list* task_list, const int first_ta
 // \author Ole Schuett
 //******************************************************************************
 void
-grid_ref_collocate_task_list(const grid_ref_task_list* task_list, const bool orthorhombic, const int func,
+grid_collocate_task_list_ref(const grid_task_list_private* task_list, const bool orthorhombic, const int func,
                              const int nlevels, const int npts_global[nlevels][3], const int npts_local[nlevels][3],
                              const int shift_local[nlevels][3], const int border_width[nlevels][3],
                              const double dh[nlevels][3][3], const double dh_inv[nlevels][3][3], double* grid[nlevels])

@@ -9,7 +9,7 @@
 
 #include "grid_collocate.h"
 #include "grid_collocate_replay.h"
-#include "ref/grid_ref_collocate.h"
+#include "ref/grid_collocate_ref.h"
 
 //******************************************************************************
 // \brief Public entry point. A thin wrapper with the only purpose of calling

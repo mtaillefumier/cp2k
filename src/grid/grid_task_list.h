@@ -8,8 +8,7 @@
 #include <stdbool.h>
 
 #include "common/grid_basis_set.h"
-#include "cpu/grid_cpu_task_list.h"
-#include "ref/grid_ref_task_list.h"
+#include "common/grid_tasklist_private.h"
 
 //******************************************************************************
 // \brief Internal representation of a task list, abstracting various backends.
@@ -19,8 +18,9 @@ typedef struct
 {
     int backend;
     bool validate;
-    grid_ref_task_list* ref;
-    grid_cpu_task_list* cpu;
+    grid_task_list_private* ref;
+    grid_task_list_private* dgemm;
+    grid_task_list_private* gpu;
     // more backends to be added here
 } grid_task_list;
 
@@ -76,6 +76,7 @@ void grid_free_task_list(grid_task_list* task_list);
 //******************************************************************************
 // \brief Collocate all tasks of in given list onto given grids.
 //
+// \param device_id       GPU id ignored when running on cpu only
 // \param task_list       Task list to collocate.
 // \param orthorhombic    Whether simulation box is orthorhombic.
 // \param func            Function to be collocated, see grid_prepare_pab.h
@@ -93,7 +94,7 @@ void grid_free_task_list(grid_task_list* task_list);
 //
 // \author Ole Schuett
 //******************************************************************************
-void grid_collocate_task_list(const grid_task_list* task_list, const bool orthorhombic, const int func,
+void grid_collocate_task_list(const int device_id, const grid_task_list* task_list, const bool orthorhombic, const int func,
                               const int nlevels, const int npts_global[nlevels][3], const int npts_local[nlevels][3],
                               const int shift_local[nlevels][3], const int border_width[nlevels][3],
                               const double dh[nlevels][3][3], const double dh_inv[nlevels][3][3],

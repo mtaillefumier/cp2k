@@ -33,10 +33,10 @@ void grid_ref_prepare_get_ldiffs(const int func, int* la_min_diff, int* la_max_d
 //
 // \author Ole Schuett
 //******************************************************************************
-void grid_ref_prepare_pab(const int func, const int o1, const int o2, const int la_max, const int la_min,
-                          const int lb_max, const int lb_min, const double zeta, const double zetb, const int n1,
-                          const int n2, const double pab[n2][n1], const int n1_prep, const int n2_prep,
-                          double pab_prep[n2_prep][n1_prep]);
+void grid_prepare_pab(const int func, const int o1, const int o2, const int la_max, const int la_min,
+                      const int lb_max, const int lb_min, const double zeta, const double zetb, const int n1,
+                      const int n2, const double pab[n2][n1], const int n1_prep, const int n2_prep,
+                      double pab_prep[n2_prep][n1_prep]);
 
 #endif
 

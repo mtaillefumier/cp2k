@@ -16,7 +16,7 @@
 #include <string.h>
 #include <time.h>
 
-#include "common/grid_common.h"
+#include "common/utils.h"
 #include "grid_collocate.h"
 #include "grid_collocate_replay.h"
 #include "grid_task_list.h"
@@ -412,7 +412,7 @@ grid_collocate_replay(const char* filename, const int cycles, const bool batch, 
         clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start_time);
         double* grids_array[1] = {grid_test};
         const int nlevels      = 1;
-        grid_collocate_task_list(task_list, orthorhombic, func, nlevels, (const int(*)[3])npts_global,
+        grid_collocate_task_list(-1, task_list, orthorhombic, func, nlevels, (const int(*)[3])npts_global,
                                  (const int(*)[3])npts_local, (const int(*)[3])shift_local,
                                  (const int(*)[3])border_width, (const double(*)[3][3])dh,
                                  (const double(*)[3][3])dh_inv, grids_array);

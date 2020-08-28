@@ -9,7 +9,7 @@
         "../mpiwrap",
         "./common",
         "./ref",
-        "./cpu",
+        "./dgemm",
     ],
     "public": ["grid_api.F"],
 }

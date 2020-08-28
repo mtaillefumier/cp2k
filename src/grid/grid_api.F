@@ -27,7 +27,8 @@ MODULE grid_api
    USE kinds,                           ONLY: dp
    USE message_passing,                 ONLY: mp_sum
    USE realspace_grid_types,            ONLY: realspace_grid_p_type,&
-                                              realspace_grid_type
+      realspace_grid_type
+      USE dbcsr_config,                    ONLY: get_accdrv_active_device_id
 #include "../base/base_uses.f90"
 
    IMPLICIT NONE
@@ -713,11 +714,12 @@ CONTAINS
       TYPE(C_PTR), ALLOCATABLE, DIMENSION(:), TARGET     :: grid_pointers
       TYPE(realspace_grid_type), POINTER                 :: rsgrid
       INTERFACE
-         SUBROUTINE grid_collocate_task_list_c(task_list, orthorhombic, func, nlevels, &
+         SUBROUTINE grid_collocate_task_list_c(device_id, task_list, orthorhombic, func, nlevels, &
                                                npts_global, npts_local, shift_local, &
                                                border_width, dh, dh_inv, grid) &
             BIND(C, name="grid_collocate_task_list")
             IMPORT :: C_PTR, C_INT, C_BOOL
+            INTEGER(KIND=C_INT), VALUE                :: device_id
             TYPE(C_PTR), VALUE                        :: task_list
             LOGICAL(KIND=C_BOOL), VALUE               :: orthorhombic
             INTEGER(KIND=C_INT), VALUE                :: func
@@ -770,7 +772,9 @@ CONTAINS
 
       CPASSERT(C_ASSOCIATED(task_list%c_ptr))
 
-      CALL grid_collocate_task_list_c(task_list=task_list%c_ptr, &
+
+      CALL grid_collocate_task_list_c(device_id = get_accdrv_active_device_id(), &
+      task_list=task_list%c_ptr, &
                                       orthorhombic=orthorhombic, &
                                       func=ga_gb_function, &
                                       nlevels=nlevels, &
