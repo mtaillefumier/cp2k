@@ -1,0 +1,4 @@
+{
+     "description" : "GPU implementation of collocate and integrate",
+    "requires" : ["../common", "../ref", "../dgemm"]
+}

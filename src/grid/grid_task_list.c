@@ -35,7 +35,6 @@ grid_create_task_list(const int ntasks, const int nlevels, const int natoms, con
                       const double radius_list[ntasks], const double rab_list[ntasks][3], double** blocks_buffer,
                       grid_task_list** task_list)
 {
-
     if (*task_list == NULL) {
         *task_list                       = malloc(sizeof(grid_task_list));
         memset(*task_list, 0, sizeof(grid_task_list));
@@ -46,25 +45,33 @@ grid_create_task_list(const int ntasks, const int nlevels, const int natoms, con
         (*task_list)->backend = config.backend;
     }
 
-    // Uncomment the following line to validate every task list:
-    // (*task_list)->validate = true;
     switch((*task_list)->backend) {
+#ifdef COLLOCATE_GPU
     case GRID_BACKEND_GPU:
+    {
         grid_create_task_list_ref(ntasks, nlevels, natoms, nkinds, nblocks, buffer_size, block_offsets, atom_positions,
                                   atom_kinds, basis_sets, level_list, iatom_list, jatom_list, iset_list, jset_list,
                                   ipgf_list, jpgf_list, border_mask_list, block_num_list, radius_list, rab_list,
                                   blocks_buffer, &(*task_list)->gpu);
-    case GRID_BACKEND_DGEMM:
+        break;
+    }
+#endif
+    case GRID_BACKEND_AUTO:
+    case GRID_BACKEND_DGEMM:{
         grid_create_task_list_ref(ntasks, nlevels, natoms, nkinds, nblocks, buffer_size, block_offsets, atom_positions,
                                   atom_kinds, basis_sets, level_list, iatom_list, jatom_list, iset_list, jset_list,
                                   ipgf_list, jpgf_list, border_mask_list, block_num_list, radius_list, rab_list,
                                   blocks_buffer, &(*task_list)->dgemm);
-    case GRID_BACKEND_AUTO:
-    case GRID_BACKEND_REF:
+        (*task_list)->backend = GRID_BACKEND_DGEMM;
+    }
+        break;
+    case GRID_BACKEND_REF: {
         grid_create_task_list_ref(ntasks, nlevels, natoms, nkinds, nblocks, buffer_size, block_offsets, atom_positions,
                                   atom_kinds, basis_sets, level_list, iatom_list, jatom_list, iset_list, jset_list,
                                   ipgf_list, jpgf_list, border_mask_list, block_num_list, radius_list, rab_list,
                                   blocks_buffer, &(*task_list)->ref);
+        (*task_list)->backend = GRID_BACKEND_REF;
+    }
         break;
     default:
         printf("unknown backend");
@@ -124,13 +131,14 @@ void
     switch(task_list->backend)
     {
     case GRID_BACKEND_AUTO:
+    case  GRID_BACKEND_DGEMM: {
+        grid_collocate_task_list_dgemm(task_list->dgemm, orthorhombic, func, nlevels, npts_global, npts_local, shift_local,
+                                       border_width, dh, dh_inv, grid);
+    }
+        break;
     case GRID_BACKEND_REF:
         grid_collocate_task_list_ref(task_list->ref, orthorhombic, func, nlevels, npts_global, npts_local, shift_local,
                                      border_width, dh, dh_inv, grid);
-        break;
-    case  GRID_BACKEND_DGEMM:
-        grid_collocate_task_list_dgemm(task_list->dgemm, orthorhombic, func, nlevels, npts_global, npts_local, shift_local,
-                                       border_width, dh, dh_inv, grid);
         break;
 #ifdef COLLOCATE_GPU
     case GRID_BACKEND_GPU:
@@ -155,14 +163,17 @@ void
             memset(grid_ref[level], 0, sizeof_grid);
         }
         // Copy blocks if nessecary (by slightly violating the Law of Demeter).
-        if (task_list->backend == GRID_BACKEND_DGEMM) {
+        switch(task_list->backend) {
+        case GRID_BACKEND_DGEMM:
             memcpy(task_list->ref->blocks_buffer, task_list->dgemm->blocks_buffer,
                    task_list->ref->buffer_size * sizeof(double));
-        } else if (task_list->backend != GRID_BACKEND_REF) {
+            break;
+        default:
             printf("Error: Unknown grid backend: %i.\n", task_list->backend);
             abort();
+            break;
         }
-        // Call reference implementation.
+            // Call reference implementation.
         grid_collocate_task_list_ref(task_list->ref, orthorhombic, func, nlevels, npts_global, npts_local, shift_local,
                                      border_width, dh, dh_inv, grid_ref);
 

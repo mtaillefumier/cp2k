@@ -566,9 +566,7 @@ grid_collocate(collocation_integration* const handler, const bool use_ortho, con
                                              1.0, 0.0, handler->orthogonal, &handler->Exp, &handler->coef,
                                              &handler->pol, &handler->cube);
 
-    /* if (handler->apply_spherical_cutoff) { */
-    /*     apply_spherical_cutoff(handler); */
-    /* } */
+
 
     apply_mapping_cubic(handler, lb_cube, cubecenter);
 }
