@@ -9,18 +9,19 @@
 // \brief Internal representation of a basis set.
 // \author Ole Schuett
 //******************************************************************************
-typedef struct {
-  int nset;
-  int nsgf;
-  int maxco;
-  int maxpgf;
-  int *lmin;
-  int *lmax;
-  int *npgf;
-  int *nsgf_set;
-  int *first_sgf;
-  double *sphi;
-  double *zet;
+typedef struct
+{
+    int nset;
+    int nsgf;
+    int maxco;
+    int maxpgf;
+    int* lmin;
+    int* lmax;
+    int* npgf;
+    int* nsgf_set;
+    int* first_sgf;
+    double* sphi;
+    double* zet;
 } grid_basis_set;
 
 //******************************************************************************
@@ -45,19 +46,16 @@ typedef struct {
 //
 // \author Ole Schuett
 //******************************************************************************
-void grid_create_basis_set(const int nset, const int nsgf, const int maxco,
-                           const int maxpgf, const int lmin[nset],
-                           const int lmax[nset], const int npgf[nset],
-                           const int nsgf_set[nset], const int first_sgf[nset],
-                           const double sphi[nsgf][maxco],
-                           const double zet[nset][maxpgf],
-                           grid_basis_set **basis_set);
+void grid_create_basis_set(const int nset, const int nsgf, const int maxco, const int maxpgf, const int lmin[nset],
+                           const int lmax[nset], const int npgf[nset], const int nsgf_set[nset],
+                           const int first_sgf[nset], const double sphi[nsgf][maxco], const double zet[nset][maxpgf],
+                           grid_basis_set** basis_set);
 
 //******************************************************************************
 // \brief Deallocates given basis set.
 // \author Ole Schuett
 //******************************************************************************
-void grid_free_basis_set(grid_basis_set *basis_set);
+void grid_free_basis_set(grid_basis_set* basis_set);
 
 #endif
 

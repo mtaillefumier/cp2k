@@ -23,9 +23,10 @@ void grid_library_finalize();
 // \brief Configuration of the grid library.
 // \author Ole Schuett
 //******************************************************************************
-typedef struct {
-  int backend;   // Selectes the backend to be used by the grid library.
-  bool validate; // When true the reference backend runs in shadow mode.
+typedef struct
+{
+    int backend;   // Selectes the backend to be used by the grid library.
+    bool validate; // When true the reference backend runs in shadow mode.
 } grid_library_config;
 
 //******************************************************************************
@@ -44,17 +45,17 @@ grid_library_config grid_library_get_config();
 // \brief Prints statistics gathered by the grid library.
 // \author Ole Schuett
 //******************************************************************************
-void grid_library_print_stats(void (*mpi_sum_func)(long *),
-                              void (*print_func)(char *));
+void grid_library_print_stats(void (*mpi_sum_func)(long*), void (*print_func)(char*));
 
 //******************************************************************************
 // \brief All exiting counters. When adding a counter also update functions
 //        internal_add_stats() and grid_library_print_counters().
 // \author Ole Schuett
 //******************************************************************************
-typedef struct {
-  long ref_collocate_ortho;
-  long ref_collocate_general;
+typedef struct
+{
+    long ref_collocate_ortho;
+    long ref_collocate_general;
 } grid_library_stats;
 
 //******************************************************************************

@@ -15,12 +15,13 @@
 // \brief Internal representation of a task list, abstracting various backends.
 // \author Ole Schuett
 //******************************************************************************
-typedef struct {
-  int backend;
-  bool validate;
-  grid_ref_task_list *ref;
-  grid_cpu_task_list *cpu;
-  // more backends to be added here
+typedef struct
+{
+    int backend;
+    bool validate;
+    grid_ref_task_list* ref;
+    grid_cpu_task_list* cpu;
+    // more backends to be added here
 } grid_task_list;
 
 //******************************************************************************
@@ -56,23 +57,21 @@ typedef struct {
 //
 // \author Ole Schuett
 //******************************************************************************
-void grid_create_task_list(
-    const int ntasks, const int nlevels, const int natoms, const int nkinds,
-    const int nblocks, const int buffer_size, const int block_offsets[nblocks],
-    const double atom_positions[natoms][3], const int atom_kinds[natoms],
-    const grid_basis_set *basis_sets[nkinds], const int level_list[ntasks],
-    const int iatom_list[ntasks], const int jatom_list[ntasks],
-    const int iset_list[ntasks], const int jset_list[ntasks],
-    const int ipgf_list[ntasks], const int jpgf_list[ntasks],
-    const int border_mask_list[ntasks], const int block_num_list[ntasks],
-    const double radius_list[ntasks], const double rab_list[ntasks][3],
-    double **blocks_buffer, grid_task_list **task_list);
+void grid_create_task_list(const int ntasks, const int nlevels, const int natoms, const int nkinds, const int nblocks,
+                           const int buffer_size, const int block_offsets[nblocks],
+                           const double atom_positions[natoms][3], const int atom_kinds[natoms],
+                           const grid_basis_set* basis_sets[nkinds], const int level_list[ntasks],
+                           const int iatom_list[ntasks], const int jatom_list[ntasks], const int iset_list[ntasks],
+                           const int jset_list[ntasks], const int ipgf_list[ntasks], const int jpgf_list[ntasks],
+                           const int border_mask_list[ntasks], const int block_num_list[ntasks],
+                           const double radius_list[ntasks], const double rab_list[ntasks][3], double** blocks_buffer,
+                           grid_task_list** task_list);
 
 //******************************************************************************
 // \brief Deallocates given task list, basis_sets have to be freed separately.
 // \author Ole Schuett
 //******************************************************************************
-void grid_free_task_list(grid_task_list *task_list);
+void grid_free_task_list(grid_task_list* task_list);
 
 //******************************************************************************
 // \brief Collocate all tasks of in given list onto given grids.
@@ -94,12 +93,11 @@ void grid_free_task_list(grid_task_list *task_list);
 //
 // \author Ole Schuett
 //******************************************************************************
-void grid_collocate_task_list(
-    const grid_task_list *task_list, const bool orthorhombic, const int func,
-    const int nlevels, const int npts_global[nlevels][3],
-    const int npts_local[nlevels][3], const int shift_local[nlevels][3],
-    const int border_width[nlevels][3], const double dh[nlevels][3][3],
-    const double dh_inv[nlevels][3][3], double *grid[nlevels]);
+void grid_collocate_task_list(const grid_task_list* task_list, const bool orthorhombic, const int func,
+                              const int nlevels, const int npts_global[nlevels][3], const int npts_local[nlevels][3],
+                              const int shift_local[nlevels][3], const int border_width[nlevels][3],
+                              const double dh[nlevels][3][3], const double dh_inv[nlevels][3][3],
+                              double* grid[nlevels]);
 
 #endif
 
