@@ -3,7 +3,7 @@
 #include <cuda.h>
 #include <cooperative_groups.h>
 
-#include "../cpu/collocation_integration.h"
+#include "../dgemm/collocation_integration.h"
 extern "C" void reset_list_gpu(pgf_list_gpu *lst);
 namespace cg = cooperative_groups;
 
@@ -51,7 +51,7 @@ __inline__ __device__ void convert_to_lattice_coordinates(const double3 *__restr
     rp_c->x = dh_inv_[0] * rp->x + dh_inv_[3] * rp->y + dh_inv_[6] * rp->z;
     rp_c->y = dh_inv_[1] * rp->x + dh_inv_[4] * rp->y + dh_inv_[7] * rp->z;
     rp_c->z = dh_inv_[2] * rp->x + dh_inv_[5] * rp->y + dh_inv_[8] * rp->z;
- }
+}
 
 __inline__ __device__ void convert_from_lattice_coordinates_to_cartesian(const double3 *__restrict__ const rp, double3 *__restrict__ rp_c)
 {
@@ -74,15 +74,6 @@ __device__ void compute_cube_properties(const double radius,
     double3 rp1;
 
     /* it is in the lattice vector frame */
-    // for (int i = 0; i < 3; i++) {
-    //     double dh_inv_rp = 0.0;
-    //     for (int j = 0; j < 3; j++) {
-    //         dh_inv_rp += dh_inv_[3 * j + i] * rp[j];
-    //     }
-    //     rp1[2 - i]        = dh_inv_rp;
-    //     cubecenter[2 - i] = floor(dh_inv_rp);
-    // }
-
     convert_to_lattice_coordinates(rp, &rp1);
 
     cubecenter->x = floor(rp1.x);
@@ -118,9 +109,9 @@ __device__ void compute_cube_properties(const double radius,
         roffset->z /= dr.z;
 
         // Symetric interval
-        ub_cube.x = -lb_cube->x;
-        ub_cube.y = -lb_cube->y;
-        ub_cube.z = -lb_cube->z;
+        ub_cube.x = 1 - lb_cube->x;
+        ub_cube.y = 1 - lb_cube->y;
+        ub_cube.z = 1 - lb_cube->z;
 
     } else {
 
@@ -134,33 +125,28 @@ __device__ void compute_cube_properties(const double radius,
         for (int i = -1; i <= 1; i++) {
             for (int j = -1; j <= 1; j++) {
                 for (int k = -1; k <= 1; k++) {
-                    const double x = /* rp[0] + */ ((double)i) * radius;
-                    const double y = /* rp[1] + */ ((double)j) * radius;
-                    const double z = /* rp[2] + */ ((double)k) * radius;
-                    double3 r = make_double3(x,y,z);
+                    double3 r = make_double3(((double)i) * radius, ((double)j) * radius, ((double)k) * radius);
                     convert_to_lattice_coordinates(&r, roffset);
 
-                    lb_cube->x     = min(lb_cube->x, (int)lrint(roffset->x));
-                    ub_cube.x     = max(ub_cube.x, (int)lrint(roffset->x));
+                    lb_cube->x     = min(lb_cube->x, floor(roffset->x));
+                    ub_cube.x     = max(ub_cube.x, ceil(roffset->x));
 
-                    lb_cube->y     = min(lb_cube->y, (int)lrint(roffset->y));
-                    ub_cube.y     = max(ub_cube.y, (int)lrint(roffset->y));
+                    lb_cube->y     = min(lb_cube->y, floor(roffset->y));
+                    ub_cube.y     = max(ub_cube.y, ceil(roffset->y));
 
-                    lb_cube->z     = min(lb_cube->z, (int)lrint(roffset->z));
-                    ub_cube.z     = max(ub_cube.z, (int)lrint(roffset->z));
-
-                    // for (int idir = 0; idir < 3; idir++) {
-                    //     const double resc = dh_inv_[idir] * x + dh_inv_[3 + idir] * y + dh_inv_[6 + idir] * z;
-                    //     lb_cube[idir]     = min(lb_cube[idir], (int)lrint(resc));
-                    //     ub_cube[idir]     = max(ub_cube[idir], (int)lrint(resc));
-                    // }
+                    lb_cube->z     = min(lb_cube->z, floor(roffset->z));
+                    ub_cube.z     = max(ub_cube.z, ceil(roffset->z));
                 }
             }
         }
 
-        lb_cube->x = -(ub_cube.x - lb_cube->x) / 2;
-        lb_cube->y = -(ub_cube.y - lb_cube->y) / 2;
-        lb_cube->z = -(ub_cube.z - lb_cube->z) / 2;
+        lb_cube->x -= 1;
+        lb_cube->y -= 1;
+        lb_cube->z -= 1;
+
+        ub_cube->x += 1;
+        ub_cube->y += 1;
+        ub_cube->z += 1;
 
         /* compute the offset in lattice coordinates */
 
@@ -170,9 +156,9 @@ __device__ void compute_cube_properties(const double radius,
     }
 
     /* compute the cube size ignoring periodicity */
-    cube_size->x = ub_cube.x - lb_cube->x + 1;
-    cube_size->y = ub_cube.y - lb_cube->y + 1;
-    cube_size->z = ub_cube.z - lb_cube->z + 1;
+    cube_size->x = ub_cube.x - lb_cube->x;
+    cube_size->y = ub_cube.y - lb_cube->y;
+    cube_size->z = ub_cube.z - lb_cube->z;
 }
 
 
@@ -284,11 +270,11 @@ __global__ void compute_collocation_gpu_spherical(const int3 grid_size_,
                     dx *= r3.x;
                 }
 
-                if (r3.x * r3.x + r3.y * r3.y + r3.z * r3.z <= radius * radius) {
+                // if (r3.x * r3.x + r3.y * r3.y + r3.z * r3.z <= radius * radius) {
                     res *= exp_factor;
-                } else {
-                    res = 0.0;
-                }
+                // } else {
+                //     res = 0.0;
+                // }
 
 #if __CUDA_ARCH__ < 600
                 atomicAdd1(&grid_gpu_[(z2 * grid_size_.y + y2) * grid_size_.x + x2], res);

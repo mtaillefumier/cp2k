@@ -42,6 +42,7 @@ typedef struct
     grid_task* tasks;
     int* tasks_per_level;
     int maxco;
+    int lmax;
 } grid_task_list_private;
 
 #endif

@@ -91,8 +91,11 @@ grid_create_task_list_ref(const int ntasks, const int nlevels, const int natoms,
 
     // Find largest Cartesian subblock size.
     task_list->maxco = 0;
+    task_list->lmax = -1;
     for (int i = 0; i < nkinds; i++) {
         task_list->maxco = max(task_list->maxco, task_list->basis_sets[i]->maxco);
+        for (int set = 0; set < task_list->basis_sets[i]->nset; set++)
+            task_list->lmax = max(task_list->lmax, task_list->basis_sets[i]->lmax[set]);
     }
 
     *blocks_buffer = task_list->blocks_buffer;

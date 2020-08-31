@@ -39,6 +39,121 @@ extern void grid_prepare_pab(const int func, const int o1, const int o2, const i
                              const int n2, const double pab[n2][n1], const int n1_prep, const int n2_prep,
                              double pab_prep[n2_prep][n1_prep]);
 
+void collocate_l0(double* scratch, const double alpha, const double beta, const bool orthogonal,
+                  const struct tensor_* exp_xy, const struct tensor_* p_alpha_beta_reduced_, struct tensor_* cube);
+
+void tensor_reduction_for_collocate_integrate(double* scratch, const double alpha, const double beta,
+                                              const bool* const orthogonal, const struct tensor_* Exp,
+                                              const struct tensor_* co, const struct tensor_* p_alpha_beta_reduced_,
+                                              struct tensor_* cube);
+
+
+void apply_sphere_bound_cutoff(struct collocation_integration_ *const handler,
+                               const double disr_radius,
+                               const int cmax,
+                               const int* const lb_cube,
+                               const int *const ub_cube,
+                               const int* const cube_center)
+{
+    // a mapping so that the ig corresponds to the right grid point
+    int **map = (int **)malloc(3 * sizeof(int*));
+    map[0] = (int *) malloc(sizeof(int) * (2 * cmax + 1) * 3);
+    map[1] = map[0] + 2 * cmax + 1;
+    map[2] = map[1] + 2 * cmax + 1;
+    memset(map[0], 0xff, sizeof(int) * 3 * (2 * cmax + 1));
+
+    for (int i = 0; i < 3; i++) {
+        for (int ig = lb_cube[i]; ig <= ub_cube[i]; ig++) {
+            map[i][ig - lb_cube[i]] = (cube_center[i] + ig - handler->grid.window_shift[i] + 32
+                                       * handler->grid.full_size[i]) % handler->grid.full_size[i];
+        }
+    }
+
+    const int kgmin = ceil(-1e-8 - disr_radius * handler->dh_inv[2][2]);
+
+    for (int kg=kgmin; kg <= 0; kg++) {
+        const int kg2 = 1 - kg;
+        const int k = map[0][kg - lb_cube[0]];
+        const int k2 = map[0][kg2 - lb_cube[0]];
+        const int kd = (2 * kg - 1) / 2;     // distance from center in grid points
+        const double kr = kd * handler->dh[2][2];   // distance from center in a.u.
+        const double kremain = disr_radius * disr_radius - kr * kr;
+        const int jgmin = ceil(-1e-8 - sqrt(max(0.0, kremain)) * handler->dh_inv[1][1]);
+        for (int jg=jgmin; jg <= 0; jg++) {
+            const int jg2 = 1 - jg;
+            const int j = map[1][jg - lb_cube[1]];
+            const int j2 = map[1][jg2 - lb_cube[1]];
+
+            /* const int jd = (2 * jg - 1) / 2;    // distance from center in grid points */
+            const double jr = jg * handler->dh[1][1];  // distance from center in a.u.
+            const double jremain = kremain - jr * jr;
+            const int igmin = ceil(-1e-8 - sqrt(max(0.0, jremain)) * handler->dh_inv[0][0]);
+            for (int ig=igmin; ig<=0; ig++) {
+                const int ig2 = 1 - ig;
+                const int i = map[2][ig - lb_cube[2]];
+                const int i2 = map[2][ig2 - lb_cube[2]];
+
+                idx3(handler->grid, k, j, i) += idx3(handler->cube, kg - lb_cube[0], jg - lb_cube[1], ig - lb_cube[2]);
+                idx3(handler->grid, k2, j, i) += idx3(handler->cube, kg2 - lb_cube[0], jg - lb_cube[1], ig - lb_cube[2]);
+                idx3(handler->grid, k, j2, i) += idx3(handler->cube, kg - lb_cube[0], jg2 - lb_cube[1], ig - lb_cube[2]);
+                idx3(handler->grid, k2, j2, i) += idx3(handler->cube, kg2 - lb_cube[0], jg2 - lb_cube[1], ig - lb_cube[2]);
+                idx3(handler->grid, k, j, i2) += idx3(handler->cube, kg - lb_cube[0], jg - lb_cube[1], ig2 - lb_cube[2]);
+                idx3(handler->grid, k2, j, i2) += idx3(handler->cube, kg2 - lb_cube[0], jg - lb_cube[1], ig2 - lb_cube[2]);
+                idx3(handler->grid, k, j2, i2) += idx3(handler->cube, kg - lb_cube[0], jg2 - lb_cube[1], ig2 - lb_cube[2]);
+                idx3(handler->grid, k2, j2, i2) += idx3(handler->cube, kg2 - lb_cube[0], jg2 - lb_cube[1], ig2 - lb_cube[2]);
+            }
+        }
+    }
+    free(map[0]);
+    free(map);
+}
+
+void apply_spherical_cutoff_generic(struct collocation_integration_ *const handler,
+                                    const double disr_radius,
+                                    const int* const lb_cube,
+                                    const int *const ub_cube,
+                                    const double *const roffset,
+                                    const int* const cube_center)
+{
+    for (int k = lb_cube[0]; k <= ub_cube[0]; k++) {
+        for (int j = lb_cube[1]; j <= ub_cube[1]; j++) {
+            for (int i = lb_cube[2]; i <= ub_cube[2]; i++) {
+                double x[3];
+                x[0] = (k - roffset[0]) * handler->dh[2][0] +
+                    (j - roffset[1]) * handler->dh[1][0] +
+                    (i - roffset[2]) * handler->dh[0][0];
+                x[1] = (k - roffset[0]) * handler->dh[2][1] +
+                    (j - roffset[1]) * handler->dh[1][1] +
+                    (i - roffset[2]) * handler->dh[0][1];
+                x[2] = (k - roffset[0]) * handler->dh[2][2] +
+                    (j - roffset[1]) * handler->dh[1][2] +
+                    (i - roffset[2]) * handler->dh[0][2];
+                idx3(handler->cube, k - lb_cube[0], j - lb_cube[1], i  - lb_cube[2]) *= ((x[0] * x[0] + x[1] * x[1] + x[2] * x[2]) <= disr_radius * disr_radius);
+            }
+        }
+    }
+}
+
+void apply_spherical_cutoff_ortho(struct collocation_integration_ *const handler,
+                                  const double disr_radius,
+                                  const int* const lb_cube,
+                                  const int *const ub_cube,
+                                  const double *const roffset,
+                                  const int* const cube_center)
+{
+    for (int k = lb_cube[0]; k <= ub_cube[0]; k++) {
+        const double z = k * handler->dh[2][2] - roffset[0];
+        for (int j = lb_cube[1]; j <= ub_cube[1]; j++) {
+            const double y = j * handler->dh[1][1] - roffset[1];
+            for (int i = lb_cube[2]; i <= ub_cube[2]; i++) {
+                const double x = i * handler->dh[0][0] - roffset[2];
+                idx3(handler->cube, k - lb_cube[0], j - lb_cube[1], i  - lb_cube[2]) *= (x * x + y * y + z * z <= disr_radius * disr_radius);
+            }
+        }
+    }
+}
+
+
 /* compute the functions (x - x_i)^l exp (-eta (x - x_i)^2) for l = 0..lp using
  * a recursive relation to avoid computing the exponential on each grid point. I
  * think it is not really necessary anymore since it is *not* the dominating
@@ -154,53 +269,6 @@ grid_fill_pol(const bool transpose, const double dr, const double roffset, const
         }
     }
 }
-
-bool
-fold_polynomial(double* scratch, tensor* pol, const int axis, const int center, const int cube_size, const int lb_cube,
-                const int lb_grid, const int grid_size, const int period, int* const pivot)
-{
-    const int position      = (lb_grid + center + lb_cube + 32 * period) % period;
-    const int offset_x      = min(grid_size - position, cube_size);
-    const int loop_number_x = (cube_size - offset_x) / period;
-    const int reminder_x    = min(grid_size, cube_size - offset_x - loop_number_x * period);
-    *pivot                  = 0;
-    if (grid_size < cube_size) {
-        for (int l = 0; l < pol->size[1]; l++) {
-            memset(scratch, 0, sizeof(double) * grid_size);
-            const double* __restrict src = &idx3(pol[0], axis, l, 0);
-            // the tail of the queue.
-            //            LIBXSMM_PRAGMA_SIMD
-            for (int x = 0; x < offset_x; x++)
-                scratch[x + position] = src[x];
-
-            int shift = offset_x;
-
-            if (loop_number_x) {
-                for (int li = 0; li < loop_number_x; li++) {
-                    //                    LIBXSMM_PRAGMA_SIMD
-                    for (int x = 0; x < grid_size; x++)
-                        scratch[x] += src[shift + x];
-
-                    shift = offset_x + (li + 1) * period;
-                }
-            }
-            //            LIBXSMM_PRAGMA_SIMD
-            for (int x = 0; x < reminder_x; x++)
-                scratch[x] += src[shift + x];
-            memcpy(&idx3(pol[0], axis, l, 0), scratch, sizeof(double) * grid_size);
-        }
-        return true;
-    }
-    return false;
-}
-
-void collocate_l0(double* scratch, const double alpha, const double beta, const bool orthogonal,
-                  const struct tensor_* exp_xy, const struct tensor_* p_alpha_beta_reduced_, struct tensor_* cube);
-
-void tensor_reduction_for_collocate_integrate(double* scratch, const double alpha, const double beta,
-                                              const bool* const orthogonal, const struct tensor_* Exp,
-                                              const struct tensor_* co, const struct tensor_* p_alpha_beta_reduced_,
-                                              struct tensor_* cube);
 
 void
 collocate_l0(double* scratch, const double alpha, const double beta, const bool orthogonal_xy,
@@ -394,8 +462,12 @@ apply_mapping_cubic(struct collocation_integration_* handler, const int* lower_b
     int position[3];
     /* return the cube position in global coordinates */
 
-    return_cube_position(handler->grid.size, handler->grid.window_shift, cube_center, lower_boundaries_cube,
-                         handler->grid.full_size, position);
+    return_cube_position(handler->grid.size,
+                         handler->grid.window_shift,
+                         cube_center,
+                         lower_boundaries_cube,
+                         handler->grid.full_size,
+                         position);
 
     int z1       = position[0];
     int z_offset = 0;
@@ -559,16 +631,37 @@ grid_collocate(collocation_integration* const handler, const bool use_ortho, con
     initialize_tensor_3(&handler->cube, cube_size[0], cube_size[1], cube_size[2]);
 
     realloc_tensor(&handler->cube);
-
+    memset(handler->cube.data, 0, sizeof(double) * handler->cube.alloc_size_);
     initialize_W_and_T(handler, &handler->cube, &handler->coef);
 
     tensor_reduction_for_collocate_integrate(handler->scratch, // pointer to scratch memory
                                              1.0, 0.0, handler->orthogonal, &handler->Exp, &handler->coef,
                                              &handler->pol, &handler->cube);
 
-
-
-    apply_mapping_cubic(handler, lb_cube, cubecenter);
+    if (use_ortho) {
+        apply_sphere_bound_cutoff(handler,
+                                  disr_radius,
+                                  cmax,
+                                  lb_cube,
+                                  ub_cube,
+                                  cubecenter);
+        /* apply_spherical_cutoff_ortho(handler, */
+        /*                              disr_radius, */
+        /*                              lb_cube, */
+        /*                              ub_cube, */
+        /*                              roffset, */
+        /*                              cubecenter); */
+    } else {
+        apply_spherical_cutoff_generic(handler,
+                                       radius,
+                                       lb_cube,
+                                       ub_cube,
+                                       roffset,
+                                       cubecenter);
+        apply_mapping_cubic(handler,
+                            lb_cube,
+                            cubecenter);
+    }
 }
 
 //******************************************************************************
@@ -645,16 +738,7 @@ grid_collocate_pgf_product_cpu_dgemm(const bool use_ortho, const int border_mask
     alloc_tensor(&pab_prep);
     memset(pab_prep.data, 0, pab_prep.alloc_size_ * sizeof(double));
 
-    grid_prepare_pab(func, offset[0], offset[1], lmax[0], lmin[0], lmax[1], lmin[1], zeta_pair[0], zeta_pair[1], n1, n2,
-                     (double(*)[n1])pab.data, n1_prep, n2_prep, (double(*)[n1_prep])pab_prep.data);
-
-    /* grid_prepare_pab_dgemm(func, */
-    /*                        offset, */
-    /*                        lmax, */
-    /*                        lmin, */
-    /*                        zeta_pair, */
-    /*                        &pab, */
-    /*                        &pab_prep); */
+    grid_prepare_pab_dgemm(func, offset, lmax, lmin, &zeta_pair[0], &pab, &pab_prep);
 
     //   *** initialise the coefficient matrix, we transform the sum
     //
@@ -707,15 +791,14 @@ grid_collocate_pgf_product_cpu_dgemm(const bool use_ortho, const int border_mask
 // \author Ole Schuett
 //******************************************************************************
 void
-collocate_one_grid_level_dgemm(
-    const grid_task_list_private* task_list, const int first_task, const int last_task, const bool orthorhombic,
-    const int func, const int grid_full_size[3], /* size of the full grid */
-    const int grid_local_size[3],                /* size of the local grid block */
-    const int shift_local[3],                    /* coordinates of the lower coordinates of the local grid window */
-    const int border_width[3],                   /* width of the borders */
-    const double dh[3][3],                       /* displacement vectors of the grid (cartesian) -> (ijk) */
-    const double dh_inv[3][3],                   /* (ijk) -> (x,y,z) */
-    double* grid_)
+collocate_one_grid_level_dgemm(const grid_task_list_private* task_list, const int first_task, const int last_task, const bool orthorhombic,
+                               const int func, const int grid_full_size[3], /* size of the full grid */
+                               const int grid_local_size[3],                /* size of the local grid block */
+                               const int shift_local[3],                    /* coordinates of the lower coordinates of the local grid window */
+                               const int border_width[3],                   /* width of the borders */
+                               const double dh[3][3],                       /* displacement vectors of the grid (cartesian) -> (ijk) */
+                               const double dh_inv[3][3],                   /* (ijk) -> (x,y,z) */
+                               double* grid_)
 {
     tensor grid;
     initialize_tensor_3(&grid, grid_local_size[2], grid_local_size[1], grid_local_size[0]);
@@ -765,7 +848,18 @@ collocate_one_grid_level_dgemm(
         alloc_tensor(&handler->grid);
 #endif
         memset(handler->grid.data, 0, sizeof(double) * handler->grid.alloc_size_);
-        setup_grid_window(&handler->grid, shift_local, border_width, task_list->tasks[first_task].border_mask);
+        if ((grid_local_size[0] != grid_full_size[0]) || (grid_local_size[1] != grid_full_size[1]) || (grid_local_size[2] != grid_full_size[2])) {
+            setup_grid_window(&handler->grid, shift_local, border_width, task_list->tasks[first_task].border_mask);
+        } else {
+            handler->grid.window_shift[0] = 0;
+            handler->grid.window_shift[1] = 0;
+            handler->grid.window_shift[2] = 0;
+
+            handler->grid.window_size[0] = handler->grid.size[0];
+            handler->grid.window_size[1] = handler->grid.size[1];
+            handler->grid.window_size[2] = handler->grid.size[2];
+        }
+
 
         // Initialize variables to detect when a new subblock has to be fetched.
         int prev_block_num = -1, prev_iset = -1, prev_jset = -1;
@@ -917,7 +1011,7 @@ collocate_one_grid_level_dgemm(
             /*                  pab.size[1], pab.size[0], (double (*)[pab.size[1]])pab.data, */
             /*                  n1_prep, n2_prep, (double (*)[n1_prep])pab_prep.data); */
 
-            grid_prepare_pab_dgemm(func, offset, lmax, lmin, &zeta[0], &pab, &pab_prep);
+            grid_prepare_pab_dgemm(func, offset, lmin, lmax, &zeta[0], &pab, &pab_prep);
 
             //   *** initialise the coefficient matrix, we transform the sum
             //

@@ -16,7 +16,7 @@
 #include "ref/grid_task_list_ref.h"
 #include "dgemm/grid_collocate_dgemm.h"
 
-#ifdef COLLOCATE_GPU
+#ifdef __COLLOCATE_GPU
 #include "gpu/grid_collocate_gpu.h"
 #endif
 
@@ -46,13 +46,14 @@ grid_create_task_list(const int ntasks, const int nlevels, const int natoms, con
     }
 
     switch((*task_list)->backend) {
-#ifdef COLLOCATE_GPU
+#ifdef __COLLOCATE_GPU
     case GRID_BACKEND_GPU:
     {
         grid_create_task_list_ref(ntasks, nlevels, natoms, nkinds, nblocks, buffer_size, block_offsets, atom_positions,
                                   atom_kinds, basis_sets, level_list, iatom_list, jatom_list, iset_list, jset_list,
                                   ipgf_list, jpgf_list, border_mask_list, block_num_list, radius_list, rab_list,
                                   blocks_buffer, &(*task_list)->gpu);
+        (*task_list)->backend = GRID_BACKEND_GPU;
         break;
     }
 #endif
@@ -140,7 +141,7 @@ void
         grid_collocate_task_list_ref(task_list->ref, orthorhombic, func, nlevels, npts_global, npts_local, shift_local,
                                      border_width, dh, dh_inv, grid);
         break;
-#ifdef COLLOCATE_GPU
+#ifdef __COLLOCATE_GPU
     case GRID_BACKEND_GPU:
         grid_collocate_task_list_gpu(device_id, task_list->gpu, orthorhombic, func, nlevels, npts_global, npts_local, shift_local,
                                      border_width, dh, dh_inv, grid);

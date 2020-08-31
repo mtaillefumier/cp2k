@@ -66,55 +66,55 @@ grid_prepare_pab_DADB(struct pab_computation_struct_* const tp)
 
                             ico_l = coset(max(lxa - 1, 0), lya, lza);
                             jco_l = coset(max(lxb - 1, 0), lyb, lzb);
-                            idx2(tp->pab_prep[0], jco_l, ico_l) += /* 0.5 * */ lxa * lxb * pab;
+                            idx2(tp->pab_prep[0], jco_l, ico_l) += 0.5 * lxa * lxb * pab;
 
                             ico_l = coset(max(lxa - 1, 0), lya, lza);
                             jco_l = coset((lxb + 1), lyb, lzb);
-                            idx2(tp->pab_prep[0], jco_l, ico_l) -= 2.0 * lxa * tp->zeta[1] * pab;
+                            idx2(tp->pab_prep[0], jco_l, ico_l) -= lxa * tp->zeta[1] * pab;
 
                             ico_l = coset((lxa + 1), lya, lza);
                             jco_l = coset(max(lxb - 1, 0), lyb, lzb);
-                            idx2(tp->pab_prep[0], jco_l, ico_l) -= 2.0 * tp->zeta[0] * lxb * pab;
+                            idx2(tp->pab_prep[0], jco_l, ico_l) -= tp->zeta[0] * lxb * pab;
 
                             ico_l = coset((lxa + 1), lya, lza);
                             jco_l = coset((lxb + 1), lyb, lzb);
-                            idx2(tp->pab_prep[0], jco_l, ico_l) += 4.0 * tp->zeta[0] * tp->zeta[1] * pab;
+                            idx2(tp->pab_prep[0], jco_l, ico_l) += 2.0 * tp->zeta[0] * tp->zeta[1] * pab;
 
                             // y
 
                             ico_l = coset(lxa, max(lya - 1, 0), lza);
                             jco_l = coset(lxb, max(lyb - 1, 0), lzb);
-                            idx2(tp->pab_prep[0], jco_l, ico_l) += /* 0.5 * */ lya * lyb * pab;
+                            idx2(tp->pab_prep[0], jco_l, ico_l) += 0.5 * lya * lyb * pab;
 
                             ico_l = coset(lxa, max(lya - 1, 0), lza);
                             jco_l = coset(lxb, (lyb + 1), lzb);
-                            idx2(tp->pab_prep[0], jco_l, ico_l) -= 2.0 * lya * tp->zeta[1] * pab;
+                            idx2(tp->pab_prep[0], jco_l, ico_l) -= lya * tp->zeta[1] * pab;
 
                             ico_l = coset(lxa, (lya + 1), lza);
                             jco_l = coset(lxb, max(lyb - 1, 0), lzb);
-                            idx2(tp->pab_prep[0], jco_l, ico_l) -= 2.0 * tp->zeta[0] * lyb * pab;
+                            idx2(tp->pab_prep[0], jco_l, ico_l) -= tp->zeta[0] * lyb * pab;
 
                             ico_l = coset(lxa, (lya + 1), lza);
                             jco_l = coset(lxb, (lyb + 1), lzb);
-                            idx2(tp->pab_prep[0], jco_l, ico_l) += 4.0 * tp->zeta[0] * tp->zeta[1] * pab;
+                            idx2(tp->pab_prep[0], jco_l, ico_l) += 2.0 * tp->zeta[0] * tp->zeta[1] * pab;
 
                             // z
 
                             ico_l = coset(lxa, lya, max(lza - 1, 0));
                             jco_l = coset(lxb, lyb, max(lzb - 1, 0));
-                            idx2(tp->pab_prep[0], jco_l, ico_l) += /* 0.5 * */ lza * lzb * pab;
+                            idx2(tp->pab_prep[0], jco_l, ico_l) += 0.5 * lza * lzb * pab;
 
                             ico_l = coset(lxa, lya, max(lza - 1, 0));
                             jco_l = coset(lxb, lyb, (lzb + 1));
-                            idx2(tp->pab_prep[0], jco_l, ico_l) -= 2.0 * lza * tp->zeta[1] * pab;
+                            idx2(tp->pab_prep[0], jco_l, ico_l) -= lza * tp->zeta[1] * pab;
 
                             ico_l = coset(lxa, lya, (lza + 1));
                             jco_l = coset(lxb, lyb, max(lzb - 1, 0));
-                            idx2(tp->pab_prep[0], jco_l, ico_l) -= 2.0 * tp->zeta[0] * lzb * pab;
+                            idx2(tp->pab_prep[0], jco_l, ico_l) -= tp->zeta[0] * lzb * pab;
 
                             ico_l = coset(lxa, lya, (lza + 1));
                             jco_l = coset(lxb, lyb, (lzb + 1));
-                            idx2(tp->pab_prep[0], jco_l, ico_l) += 4.0 * tp->zeta[0] * tp->zeta[1] * pab;
+                            idx2(tp->pab_prep[0], jco_l, ico_l) += 2.0 * tp->zeta[0] * tp->zeta[1] * pab;
                         }
                     }
                 }
@@ -930,8 +930,8 @@ grid_prepare_get_ldiffs_dgemm(const int func, int* const lmin_diff, int* const l
 
 // *****************************************************************************
 void
-grid_prepare_pab_dgemm(const int func, const int* const offset, const int* const lmax, const int* const lmin,
-                       const double* const zeta, tensor* const pab, tensor* const pab_prep)
+grid_prepare_pab_dgemm(const int func, const int* const offset, const int* const lmin, const int* const lmax,
+                       const double *const zeta, tensor* const pab, tensor* const pab_prep)
 {
     struct pab_computation_struct_ tmp;
 

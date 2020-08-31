@@ -14,10 +14,10 @@
 
 #include "../common/utils.h"
 #include "../common/grid_tasklist_private.h"
-#include "../cpu/collocation_integration.h"
-#include "../cpu/private_header.h"
-#include "../cpu/coefficients.h"
-#include "../cpu/grid_prepare_pab_dgemm.h"
+#include "../dgemm/collocation_integration.h"
+#include "../dgemm/private_header.h"
+#include "../dgemm/coefficients.h"
+#include "../dgemm/grid_prepare_pab_dgemm.h"
 
 void compute_collocation_gpu(pgf_list_gpu* handler);
 
@@ -186,7 +186,7 @@ initialize_worker_list_on_gpu(collocation_integration* handle, const int number_
 //******************************************************************************
 void
 collocate_one_grid_level_gpu(
-    struct collocation_integration_* handler, const intl_task_list_t* task_list, const int first_task,
+    struct collocation_integration_* handler, const grid_task_list_private* task_list, const int first_task,
     const int last_task, const int func,
     /* const int grid_full_size[3], /\* size of the full grid *\/ */
     /* const int grid_local_size[3], /\* size of the local grid block *\/ */
@@ -258,7 +258,7 @@ collocate_one_grid_level_gpu(
 #pragma omp for schedule(static)
         for (int itask = first_task; itask <= last_task; itask++) {
             // Define some convenient aliases.
-            const intl_task_t* task        = &task_list->tasks[itask];
+            const grid_task* task        = &task_list->tasks[itask];
             const int iatom                = task->iatom - 1;
             const int jatom                = task->jatom - 1;
             const int iset                 = task->iset - 1;
@@ -267,8 +267,8 @@ collocate_one_grid_level_gpu(
             const int jpgf                 = task->jpgf - 1;
             const int ikind                = task_list->atom_kinds[iatom] - 1;
             const int jkind                = task_list->atom_kinds[jatom] - 1;
-            const intl_basis_set_t* ibasis = task_list->basis_sets[ikind];
-            const intl_basis_set_t* jbasis = task_list->basis_sets[jkind];
+            const grid_basis_set* ibasis = task_list->basis_sets[ikind];
+            const grid_basis_set* jbasis = task_list->basis_sets[jkind];
             const int ncoseta              = ncoset[ibasis->lmax[iset]];
             const int ncosetb              = ncoset[jbasis->lmax[jset]];
             const int ncoa                 = ibasis->npgf[iset] * ncoseta; // size of carthesian set
@@ -517,7 +517,7 @@ collocate_one_grid_level_gpu(
 }
 
 void
-grid_collocate_task_list_gpu(const int device_id, const intl_task_list_t* task_list, const bool orthorhombic, const int func,
+grid_collocate_task_list_gpu(const int device_id, const grid_task_list_private* task_list, const bool orthorhombic, const int func,
                              const int nlevels, const int npts_global[nlevels][3], const int npts_local[nlevels][3],
                              const int shift_local[nlevels][3], const int border_width[nlevels][3],
                              const double dh[nlevels][3][3], const double dh_inv[nlevels][3][3], double* grid[nlevels])

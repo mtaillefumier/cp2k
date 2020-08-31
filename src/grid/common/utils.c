@@ -17,6 +17,13 @@
 #include "utils.h"
 #include "tensor_local.h"
 
+void convert_to_lattice_coordinates(const double dh_inv_[3][3], const double *__restrict__ const rp, double *__restrict__ rp_c)
+{
+    rp_c[0] = dh_inv_[0][0] * rp[0] + dh_inv_[1][0] * rp[1] + dh_inv_[0][0] * rp[2];
+    rp_c[1] = dh_inv_[0][1] * rp[0] + dh_inv_[1][1] * rp[1] + dh_inv_[1][1] * rp[2];
+    rp_c[2] = dh_inv_[0][2] * rp[0] + dh_inv_[1][2] * rp[1] + dh_inv_[2][2] * rp[2];
+}
+
 void
 dgemm_simplified(dgemm_params* const m, const bool use_libxsmm)
 {
@@ -399,6 +406,7 @@ compute_cube_properties(const bool ortho, const double radius, const double dh[3
     /* center of the gaussian in the lattice coordinates */
     double rp1[3];
 
+
     /* it is in the lattice vector frame */
     for (int i = 0; i < 3; i++) {
         double dh_inv_rp = 0.0;
@@ -429,9 +437,9 @@ compute_cube_properties(const bool ortho, const double radius, const double dh[3
             lb_cube[i] = ceil(-1e-8 - *disr_radius * dx_inv[i]);
         }
 
-        // Symetric interval
+        // Symmetric interval
         for (int i = 0; i < 3; i++) {
-            ub_cube[i] = -lb_cube[i];
+            ub_cube[i] = 1 - lb_cube[i];
         }
 
     } else {
@@ -439,23 +447,31 @@ compute_cube_properties(const bool ortho, const double radius, const double dh[3
             lb_cube[idir] = INT_MAX;
             ub_cube[idir] = INT_MIN;
         }
+
+        /* compute the size of the box. It is a fairly trivial way to compute
+         * the box and it may have far more point than needed */
         for (int i = -1; i <= 1; i++) {
             for (int j = -1; j <= 1; j++) {
                 for (int k = -1; k <= 1; k++) {
-                    const double x = /* rp[0] + */ ((double)i) * radius;
-                    const double y = /* rp[1] + */ ((double)j) * radius;
-                    const double z = /* rp[2] + */ ((double)k) * radius;
+                    double x[3] = {
+                        /* rp[0] + */ ((double)i) * radius,
+                        /* rp[1] + */ ((double)j) * radius,
+                        /* rp[2] + */ ((double)k) * radius
+                    };
+                    double y[3];
+                    convert_to_lattice_coordinates(dh_inv, x, y);
                     for (int idir = 0; idir < 3; idir++) {
-                        const double resc = dh_inv[0][idir] * x + dh_inv[1][idir] * y + dh_inv[2][idir] * z;
-                        lb_cube[idir]     = min(lb_cube[idir], lrint(resc));
-                        ub_cube[idir]     = max(ub_cube[idir], lrint(resc));
+                        lb_cube[idir]     = min(lb_cube[idir], floor(y[2 - idir]));
+                        ub_cube[idir]     = max(ub_cube[idir], ceil(y[2 - idir]));
                     }
                 }
             }
         }
 
-        for (int i = 0; i < 3; i++) {
-            lb_cube[i] = -(ub_cube[i] - lb_cube[i]) / 2;
+
+        for (int idir = 0; idir < 3; idir++) {
+            lb_cube[idir] -= 1;
+            ub_cube[idir] += 1;
         }
 
         /* compute the offset in lattice coordinates */
@@ -474,16 +490,20 @@ compute_cube_properties(const bool ortho, const double radius, const double dh[3
         cmax = max(cmax, cube_size[i]);
     }
 
-    return cmax + 1;
+    return cmax;
 }
 
 void
-return_cube_position(const int* grid_size, const int* lb_grid, const int* cube_center, const int* lower_boundaries_cube,
-                     const int* period, int* const position)
+return_cube_position(const int* grid_size,
+                     const int* lb_grid,
+                     const int* cube_center,
+                     const int* lower_boundaries_cube,
+                     const int* period,
+                     int* const position)
 {
-    position[0] = (lb_grid[0] + cube_center[0] + lower_boundaries_cube[0] + 32 * period[0]) % period[0];
-    position[1] = (lb_grid[1] + cube_center[1] + lower_boundaries_cube[1] + 32 * period[1]) % period[1];
-    position[2] = (lb_grid[2] + cube_center[2] + lower_boundaries_cube[2] + 32 * period[2]) % period[2];
+    position[0] = (lb_grid[0] + cube_center[0] + lower_boundaries_cube[0] + 1024 * period[0]) % period[0];
+    position[1] = (lb_grid[1] + cube_center[1] + lower_boundaries_cube[1] + 1024 * period[1]) % period[1];
+    position[2] = (lb_grid[2] + cube_center[2] + lower_boundaries_cube[2] + 1024 * period[2]) % period[2];
 
     if ((position[0] >= grid_size[0]) || (position[1] >= grid_size[1]) || (position[2] >= grid_size[2])) {
         printf("the lower corner of the cube is outside the grid\n");
