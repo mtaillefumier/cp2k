@@ -68,7 +68,8 @@ MODULE grid_api
 
    INTEGER, PARAMETER, PUBLIC :: GRID_BACKEND_AUTO = 10
    INTEGER, PARAMETER, PUBLIC :: GRID_BACKEND_REF = 11
-   INTEGER, PARAMETER, PUBLIC :: GRID_BACKEND_CPU = 12
+   INTEGER, PARAMETER, PUBLIC :: GRID_BACKEND_DGEMM = 12
+   INTEGER, PARAMETER, PUBLIC :: GRID_BACKEND_GPU = 13
 
    PUBLIC :: grid_library_init, grid_library_finalize
    PUBLIC :: grid_library_set_config, grid_library_print_stats
@@ -822,20 +823,24 @@ CONTAINS
 !> \param validate ...
 !> \author Ole Schuett
 ! **************************************************************************************************
-   SUBROUTINE grid_library_set_config(backend, validate)
+   SUBROUTINE grid_library_set_config(backend, validate, apply_cutoff)
       INTEGER, INTENT(IN)                                :: backend
       LOGICAL, INTENT(IN)                                :: validate
+      LOGICAL, INTENT(IN)                                :: apply_cutoff
 
       INTERFACE
-         SUBROUTINE grid_library_set_config_c(backend, validate) &
+         SUBROUTINE grid_library_set_config_c(backend, validate, apply_cutoff) &
             BIND(C, name="grid_library_set_config")
             IMPORT :: C_INT, C_BOOL
             INTEGER(KIND=C_INT), VALUE                :: backend
             LOGICAL(KIND=C_BOOL), VALUE               :: validate
+            LOGICAL(KIND=C_BOOL), VALUE               :: apply_cutoff
          END SUBROUTINE grid_library_set_config_c
       END INTERFACE
 
-      CALL grid_library_set_config_c(backend=backend, validate=LOGICAL(validate, C_BOOL))
+      CALL grid_library_set_config_c(backend=backend, &
+      validate=LOGICAL(validate, C_BOOL), &
+      apply_cutoff=LOGICAL(apply_cutoff, C_BOOL))
 
    END SUBROUTINE grid_library_set_config
 

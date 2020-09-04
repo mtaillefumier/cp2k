@@ -638,30 +638,27 @@ grid_collocate(collocation_integration* const handler, const bool use_ortho, con
                                              1.0, 0.0, handler->orthogonal, &handler->Exp, &handler->coef,
                                              &handler->pol, &handler->cube);
 
-    if (use_ortho) {
-        apply_sphere_bound_cutoff(handler,
-                                  disr_radius,
-                                  cmax,
-                                  lb_cube,
-                                  ub_cube,
-                                  cubecenter);
-        /* apply_spherical_cutoff_ortho(handler, */
-        /*                              disr_radius, */
-        /*                              lb_cube, */
-        /*                              ub_cube, */
-        /*                              roffset, */
-        /*                              cubecenter); */
-    } else {
-        apply_spherical_cutoff_generic(handler,
-                                       radius,
-                                       lb_cube,
-                                       ub_cube,
-                                       roffset,
-                                       cubecenter);
-        apply_mapping_cubic(handler,
-                            lb_cube,
-                            cubecenter);
+    if (handler->apply_cutoff) {
+        if (use_ortho) {
+            apply_sphere_bound_cutoff(handler,
+                                      disr_radius,
+                                      cmax,
+                                      lb_cube,
+                                      ub_cube,
+                                      cubecenter);
+            return;
+        } else {
+            apply_spherical_cutoff_generic(handler,
+                                           radius,
+                                           lb_cube,
+                                           ub_cube,
+                                           roffset,
+                                           cubecenter);
+        }
     }
+    apply_mapping_cubic(handler,
+                        lb_cube,
+                        cubecenter);
 }
 
 //******************************************************************************
@@ -820,6 +817,7 @@ collocate_one_grid_level_dgemm(const grid_task_list_private* task_list, const in
         struct collocation_integration_* handler = collocate_create_handle();
         memset(handler, 0, sizeof(struct collocation_integration_));
 
+        handler->apply_cutoff = task_list->apply_cutoff;
         tensor work, subblock, pab, pab_prep;
 
         // Allocate pab matrix for re-use across tasks.
@@ -848,7 +846,9 @@ collocate_one_grid_level_dgemm(const grid_task_list_private* task_list, const in
         alloc_tensor(&handler->grid);
 #endif
         memset(handler->grid.data, 0, sizeof(double) * handler->grid.alloc_size_);
-        if ((grid_local_size[0] != grid_full_size[0]) || (grid_local_size[1] != grid_full_size[1]) || (grid_local_size[2] != grid_full_size[2])) {
+        if ((grid_local_size[0] != grid_full_size[0]) ||
+            (grid_local_size[1] != grid_full_size[1]) ||
+            (grid_local_size[2] != grid_full_size[2])) {
             setup_grid_window(&handler->grid, shift_local, border_width, task_list->tasks[first_task].border_mask);
         } else {
             handler->grid.window_shift[0] = 0;
@@ -1061,7 +1061,7 @@ collocate_one_grid_level_dgemm(const grid_task_list_private* task_list, const in
 
 #ifdef _OPENMP
         const int num_threads = omp_get_num_threads();
-        if (grid.size[0] > num_threads) {
+        if ((grid.size[0] / num_threads) >= 2) {
             const int block_size = grid.size[0] / num_threads + 1;
             const int thread_id  = omp_get_thread_num();
             for (int bk = 0; bk < num_threads; bk++) {
@@ -1097,11 +1097,9 @@ grid_collocate_task_list_dgemm(const grid_task_list_private* task_list, const bo
 
     for (int level = 0; level < task_list->nlevels; level++) {
         const int last_task = first_task + task_list->tasks_per_level[level] - 1;
-
         collocate_one_grid_level_dgemm(task_list, first_task, last_task, orthorhombic, func, npts_global[level],
                                        npts_local[level], shift_local[level], border_width[level], dh[level],
                                        dh_inv[level], grid[level]);
-
         first_task = last_task + 1;
     }
 }

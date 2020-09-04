@@ -18,6 +18,7 @@ typedef struct
 {
     int backend;
     bool validate;
+    bool apply_cutoff;
     grid_task_list_private* ref;
     grid_task_list_private* dgemm;
     grid_task_list_private* gpu;

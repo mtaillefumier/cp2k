@@ -27,13 +27,14 @@ typedef struct
 {
     int backend;   // Selectes the backend to be used by the grid library.
     bool validate; // When true the reference backend runs in shadow mode.
+    bool apply_cutoff;
 } grid_library_config;
 
 //******************************************************************************
 // \brief Configures the grid library.
 // \author Ole Schuett
 //******************************************************************************
-void grid_library_set_config(int backend, bool validate);
+void grid_library_set_config(int backend, bool validate, bool apply_cutoff);
 
 //******************************************************************************
 // \brief Returns the library config.

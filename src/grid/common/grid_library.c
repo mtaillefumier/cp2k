@@ -15,7 +15,7 @@
 
 static grid_library_stats** per_thread_stats = NULL;
 static bool library_initialized              = false;
-static grid_library_config config            = {.backend = GRID_BACKEND_AUTO, .validate = false};
+static grid_library_config config            = {.backend = GRID_BACKEND_AUTO, .validate = false, .apply_cutoff = false};
 
 //******************************************************************************
 // \brief Initializes the grid library.
@@ -28,6 +28,8 @@ grid_library_init()
         printf("Error: Grid library was already initialized.\n");
         abort();
     }
+
+    /* IT IS NOT THREAD SAFE. use context if you want to do that */
 
     per_thread_stats = malloc(sizeof(grid_library_stats*) * omp_get_max_threads());
 
@@ -67,10 +69,11 @@ grid_library_finalize()
 // \author Ole Schuett
 //******************************************************************************
 void
-grid_library_set_config(const int backend, const bool validate)
+grid_library_set_config(const int backend, const bool validate, const bool apply_cutoff)
 {
     config.backend  = backend;
     config.validate = validate;
+    config.apply_cutoff = apply_cutoff;
 }
 
 //******************************************************************************

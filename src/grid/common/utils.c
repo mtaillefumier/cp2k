@@ -269,6 +269,7 @@ add_sub_grid(const int* lower_corner, const int* upper_corner, const int* positi
                   lower_corner[2] - grid->lower_corner[2]);
         double* __restrict__ src = &idx3(subgrid[0], position1[0] + z, position1[1], position1[2]);
         for (int y = 0; y < sizey; y++) {
+            /* memcpy(dst, src, sizeof(double) * sizex); */
             LIBXSMM_PRAGMA_SIMD
             for (int x = 0; x < sizex; x++) {
                 dst[x] += src[x];

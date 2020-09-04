@@ -136,7 +136,7 @@ typedef struct collocation_integration_
     bool durty;
     bool orthogonal[3];
     bool integrate;
-
+    bool apply_cutoff;
     /* bool sequential_mode; */
 } collocation_integration;
 

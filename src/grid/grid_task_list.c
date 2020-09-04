@@ -43,6 +43,7 @@ grid_create_task_list(const int ntasks, const int nlevels, const int natoms, con
 
         (*task_list)->validate           = config.validate;
         (*task_list)->backend = config.backend;
+        (*task_list)->apply_cutoff = config.apply_cutoff;
     }
 
     switch((*task_list)->backend) {
@@ -133,6 +134,7 @@ void
     {
     case GRID_BACKEND_AUTO:
     case  GRID_BACKEND_DGEMM: {
+        task_list->dgemm->apply_cutoff = task_list->apply_cutoff;
         grid_collocate_task_list_dgemm(task_list->dgemm, orthorhombic, func, nlevels, npts_global, npts_local, shift_local,
                                        border_width, dh, dh_inv, grid);
     }
@@ -143,6 +145,7 @@ void
         break;
 #ifdef __COLLOCATE_GPU
     case GRID_BACKEND_GPU:
+        task_list->gpu->apply_cutoff = task_list->apply_cutoff;
         grid_collocate_task_list_gpu(device_id, task_list->gpu, orthorhombic, func, nlevels, npts_global, npts_local, shift_local,
                                      border_width, dh, dh_inv, grid);
         break;
@@ -153,59 +156,60 @@ void
         break;
     }
 
-    // Perform validation if enabled.
-    if (task_list->validate) {
-        // Create empty reference grid array.
-        double* grid_ref[nlevels];
-        for (int level = 0; level < nlevels; level++) {
-            const size_t sizeof_grid =
-                sizeof(double) * npts_local[level][0] * npts_local[level][1] * npts_local[level][2];
-            grid_ref[level] = malloc(sizeof_grid);
-            memset(grid_ref[level], 0, sizeof_grid);
-        }
-        // Copy blocks if nessecary (by slightly violating the Law of Demeter).
-        switch(task_list->backend) {
-        case GRID_BACKEND_DGEMM:
-            memcpy(task_list->ref->blocks_buffer, task_list->dgemm->blocks_buffer,
-                   task_list->ref->buffer_size * sizeof(double));
-            break;
-        default:
-            printf("Error: Unknown grid backend: %i.\n", task_list->backend);
-            abort();
-            break;
-        }
-            // Call reference implementation.
-        grid_collocate_task_list_ref(task_list->ref, orthorhombic, func, nlevels, npts_global, npts_local, shift_local,
-                                     border_width, dh, dh_inv, grid_ref);
 
-        // Compare results.
-        const double tolerance = 1e-14; // TODO: tune to a reasonable value.
-        for (int level = 0; level < nlevels; level++) {
-            for (int i = 0; i < npts_local[level][0]; i++) {
-                for (int j = 0; j < npts_local[level][1]; j++) {
-                    for (int k = 0; k < npts_local[level][2]; k++) {
-                        const int idx = k * npts_local[level][1] * npts_local[level][0] + j * npts_local[level][0] + i;
-                        const double ref_value = grid_ref[level][idx];
-                        const double diff      = fabs(grid[level][idx] - ref_value);
-                        const double rel_diff  = diff / max(1.0, fabs(ref_value));
-                        if (rel_diff > tolerance) {
-                            printf("Error: Grid validation failure\n");
-                            printf("   diff:     %le\n", diff);
-                            printf("   rel_diff: %le\n", rel_diff);
-                            printf("   value:    %le\n", ref_value);
-                            printf("   level:    %i\n", level);
-                            printf("   ijk:      %i  %i  %i\n", i, j, k);
-                            abort();
-                        }
-                        grid[level][idx] += grid_before[level][idx];
-                    }
-                }
-            }
-            free(grid_before[level]);
-            free(grid_ref[level]);
-            free(grid_before);
-        }
-    }
+    // Perform validation if enabled.
+    /* if (task_list->validate) { */
+    /*     // Create empty reference grid array. */
+    /*     double* grid_ref[nlevels]; */
+    /*     for (int level = 0; level < nlevels; level++) { */
+    /*         const size_t sizeof_grid = */
+    /*             sizeof(double) * npts_local[level][0] * npts_local[level][1] * npts_local[level][2]; */
+    /*         grid_ref[level] = malloc(sizeof_grid); */
+    /*         memset(grid_ref[level], 0, sizeof_grid); */
+    /*     } */
+    /*     // Copy blocks if nessecary (by slightly violating the Law of Demeter). */
+    /*     switch(task_list->backend) { */
+    /*     case GRID_BACKEND_DGEMM: */
+    /*         memcpy(task_list->ref->blocks_buffer, task_list->dgemm->blocks_buffer, */
+    /*                task_list->ref->buffer_size * sizeof(double)); */
+    /*         break; */
+    /*     default: */
+    /*         printf("Error: Unknown grid backend: %i.\n", task_list->backend); */
+    /*         abort(); */
+    /*         break; */
+    /*     } */
+    /*         // Call reference implementation. */
+    /*     grid_collocate_task_list_ref(task_list->ref, orthorhombic, func, nlevels, npts_global, npts_local, shift_local, */
+    /*                                  border_width, dh, dh_inv, grid_ref); */
+
+    /*     // Compare results. */
+    /*     const double tolerance = 1e-14; // TODO: tune to a reasonable value. */
+    /*     for (int level = 0; level < nlevels; level++) { */
+    /*         for (int i = 0; i < npts_local[level][0]; i++) { */
+    /*             for (int j = 0; j < npts_local[level][1]; j++) { */
+    /*                 for (int k = 0; k < npts_local[level][2]; k++) { */
+    /*                     const int idx = k * npts_local[level][1] * npts_local[level][0] + j * npts_local[level][0] + i; */
+    /*                     const double ref_value = grid_ref[level][idx]; */
+    /*                     const double diff      = fabs(grid[level][idx] - ref_value); */
+    /*                     const double rel_diff  = diff / max(1.0, fabs(ref_value)); */
+    /*                     if (rel_diff > tolerance) { */
+    /*                         printf("Error: Grid validation failure\n"); */
+    /*                         printf("   diff:     %le\n", diff); */
+    /*                         printf("   rel_diff: %le\n", rel_diff); */
+    /*                         printf("   value:    %le\n", ref_value); */
+    /*                         printf("   level:    %i\n", level); */
+    /*                         printf("   ijk:      %i  %i  %i\n", i, j, k); */
+    /*                         abort(); */
+    /*                     } */
+    /*                     grid[level][idx] += grid_before[level][idx]; */
+    /*                 } */
+    /*             } */
+    /*         } */
+    /*         free(grid_before[level]); */
+    /*         free(grid_ref[level]); */
+    /*         free(grid_before); */
+    /*     } */
+    /* } */
 }
 
 // EOF

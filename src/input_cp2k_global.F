@@ -32,7 +32,7 @@ MODULE input_cp2k_global
                                               medium_print_level,&
                                               silent_print_level
    USE grid_api,                        ONLY: GRID_BACKEND_AUTO,&
-                                              GRID_BACKEND_CPU,&
+                                              GRID_BACKEND_DGEMM,&
                                               GRID_BACKEND_REF
    USE input_constants,                 ONLY: &
         bsse_run, callgraph_all, callgraph_master, callgraph_none, cell_opt_run, debug_run, &
@@ -710,8 +710,8 @@ CONTAINS
       CALL keyword_create(keyword, __LOCATION__, name="BACKEND", &
                           description="Selects the backed used by the grid library.", &
                           default_i_val=GRID_BACKEND_AUTO, &
-                          enum_i_vals=(/GRID_BACKEND_AUTO, GRID_BACKEND_REF, GRID_BACKEND_CPU/), &
-                          enum_c_vals=s2a("AUTO", "REF", "CPU"), &
+                          enum_i_vals=(/GRID_BACKEND_AUTO, GRID_BACKEND_REF, GRID_BACKEND_DGEMM/), &
+                          enum_c_vals=s2a("AUTO", "REF", "DGEMM"), &
                           enum_desc=s2a("Let the grid library pick the backend automatically", &
                                         "Reference backend implementation", &
                                         "Optimized CPU backend"))
@@ -723,6 +723,14 @@ CONTAINS
                           "and its results are compared with those from the selected backend. "// &
                           "If the two results differ by too much then the calculation is aborted.", &
                           default_l_val=.FALSE., lone_keyword_l_val=.TRUE.)
+      CALL section_add_keyword(section, keyword)
+      CALL keyword_release(keyword)
+
+      CALL keyword_create(keyword, __LOCATION__, name="APPLY_CUTOFF", &
+      description="This option only has effect when the DGEMM or GPU backend are activated. "// &
+      "When enabled a spherical cutoff is applied such that the numerical results match "// &
+      "the original implementation at a cost of being a bit slower.", &
+      default_l_val=.FALSE., lone_keyword_l_val=.TRUE.)
       CALL section_add_keyword(section, keyword)
       CALL keyword_release(keyword)
 
