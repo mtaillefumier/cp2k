@@ -58,19 +58,19 @@ grid_prepare_pab_DADB(const int o1, const int o2, const int la_max, const int la
 
                             ico_l = coset(max(lxa - 1, 0), lya, lza);
                             jco_l = coset(max(lxb - 1, 0), lyb, lzb);
-                            pab_prep[jco_l][ico_l] += /* 0.5 * */ lxa * lxb * pab[o2 + jco][o1 + ico];
+                            pab_prep[jco_l][ico_l] += 0.5 * lxa * lxb * pab[o2 + jco][o1 + ico];
 
                             ico_l = coset(max(lxa - 1, 0), lya, lza);
                             jco_l = coset((lxb + 1), lyb, lzb);
-                            pab_prep[jco_l][ico_l] -= 2.0 * lxa * zetb * pab[o2 + jco][o1 + ico];
+                            pab_prep[jco_l][ico_l] -= lxa * zetb * pab[o2 + jco][o1 + ico];
 
                             ico_l = coset((lxa + 1), lya, lza);
                             jco_l = coset(max(lxb - 1, 0), lyb, lzb);
-                            pab_prep[jco_l][ico_l] -= 2.0 * zeta * lxb * pab[o2 + jco][o1 + ico];
+                            pab_prep[jco_l][ico_l] -= zeta * lxb * pab[o2 + jco][o1 + ico];
 
                             ico_l = coset((lxa + 1), lya, lza);
                             jco_l = coset((lxb + 1), lyb, lzb);
-                            pab_prep[jco_l][ico_l] += 4.0 * zeta * zetb * pab[o2 + jco][o1 + ico];
+                            pab_prep[jco_l][ico_l] += 2.0 * zeta * zetb * pab[o2 + jco][o1 + ico];
 
                             // y
 
@@ -94,19 +94,19 @@ grid_prepare_pab_DADB(const int o1, const int o2, const int la_max, const int la
 
                             ico_l = coset(lxa, lya, max(lza - 1, 0));
                             jco_l = coset(lxb, lyb, max(lzb - 1, 0));
-                            pab_prep[jco_l][ico_l] += /* 0.5 * */ lza * lzb * pab[o2 + jco][o1 + ico];
+                            pab_prep[jco_l][ico_l] += 0.5 * lza * lzb * pab[o2 + jco][o1 + ico];
 
                             ico_l = coset(lxa, lya, max(lza - 1, 0));
                             jco_l = coset(lxb, lyb, (lzb + 1));
-                            pab_prep[jco_l][ico_l] -= 2.0 * lza * zetb * pab[o2 + jco][o1 + ico];
+                            pab_prep[jco_l][ico_l] -= lza * zetb * pab[o2 + jco][o1 + ico];
 
                             ico_l = coset(lxa, lya, (lza + 1));
                             jco_l = coset(lxb, lyb, max(lzb - 1, 0));
-                            pab_prep[jco_l][ico_l] -= 2.0 * zeta * lzb * pab[o2 + jco][o1 + ico];
+                            pab_prep[jco_l][ico_l] -= zeta * lzb * pab[o2 + jco][o1 + ico];
 
                             ico_l = coset(lxa, lya, (lza + 1));
                             jco_l = coset(lxb, lyb, (lzb + 1));
-                            pab_prep[jco_l][ico_l] += 4.0 * zeta * zetb * pab[o2 + jco][o1 + ico];
+                            pab_prep[jco_l][ico_l] += 2.0 * zeta * zetb * pab[o2 + jco][o1 + ico];
                         }
                     }
                 }

@@ -876,6 +876,12 @@ compute_cube_properties(const bool ortho, const double radius, const double dh[3
         for (int i = 0; i < 3; i++) {
             lb_cube[i] = ceil(-1e-8 - *disr_radius * dx_inv[i]);
         }
+
+        // Symetric interval
+        for (int i = 0; i < 3; i++) {
+            ub_cube[i] = 1 - lb_cube[i];
+        }
+
     } else {
         for (int idir = 0; idir < 3; idir++) {
             lb_cube[idir] = INT_MAX;
@@ -889,15 +895,11 @@ compute_cube_properties(const bool ortho, const double radius, const double dh[3
                     const double z = /* rp[2] + */ ((double)k) * radius;
                     for (int idir = 0; idir < 3; idir++) {
                         const double resc = dh_inv[0][idir] * x + dh_inv[1][idir] * y + dh_inv[2][idir] * z;
-                        lb_cube[idir]     = min(lb_cube[idir], lrint(resc));
-                        ub_cube[idir]     = max(ub_cube[idir], lrint(resc));
+                        lb_cube[2 - idir]     = min(lb_cube[2 - idir], floor(resc));
+                        ub_cube[2 - idir]     = max(ub_cube[2 - idir], ceil(resc));
                     }
                 }
             }
-        }
-
-        for (int i = 0; i < 3; i++) {
-            lb_cube[i] = -(ub_cube[i] - lb_cube[i]) / 2;
         }
 
         /* compute the offset in lattice coordinates */
@@ -905,11 +907,6 @@ compute_cube_properties(const bool ortho, const double radius, const double dh[3
         for (int i = 0; i < 3; i++) {
             roffset[i] = rp1[i] - cubecenter[i];
         }
-    }
-
-    // Symetric interval
-    for (int i = 0; i < 3; i++) {
-        ub_cube[i] = -lb_cube[i];
     }
 
     /* compute the cube size ignoring periodicity */
