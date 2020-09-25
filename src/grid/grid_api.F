@@ -73,7 +73,7 @@ MODULE grid_api
 
    PUBLIC :: grid_library_init, grid_library_finalize
    PUBLIC :: grid_library_set_config, grid_library_print_stats
-   PUBLIC :: collocate_pgf_product, integrate_pgf_product
+   PUBLIC :: collocate_pgf_product, integrate_pgf_product, collocate_pgf_create_handle, collocate_pgf_finalize
    PUBLIC :: grid_basis_set_type, grid_create_basis_set, grid_free_basis_set
    PUBLIC :: grid_task_list_type, grid_create_task_list, grid_free_task_list
    PUBLIC :: grid_collocate_task_list
@@ -897,4 +897,34 @@ CONTAINS
 
    END SUBROUTINE grid_library_print_stats
 
+      function collocate_pgf_create_handle() result(gaussian_handle)
+      USE ISO_C_BINDING, ONLY: C_LOC,&
+      C_PTR
+      TYPE(C_PTR)                       :: gaussian_handle
+
+      INTERFACE
+         function collocate_pgf_create_handle_aux() result(gaussian_handle)&
+         &BIND(C, name="collocate_create_handle")
+         IMPORT C_PTR
+         TYPE(C_PTR) :: gaussian_handle
+         END function
+      END INTERFACE
+
+      gaussian_handle = collocate_pgf_create_handle_aux()
+      END function
+
+      SUBROUTINE collocate_pgf_finalize(gaussian_handle)
+      USE ISO_C_BINDING, ONLY: C_PTR
+      TYPE(C_PTR), INTENT(INOUT)                       :: gaussian_handle
+
+      INTERFACE
+         SUBROUTINE collocate_pgf_finalize_aux(gaussian_handle)&
+         &BIND(C, name="collocate_destroy_handle")
+         IMPORT C_PTR
+         TYPE(C_PTR), VALUE                           :: gaussian_handle
+         END SUBROUTINE
+      END INTERFACE
+
+      CALL collocate_pgf_finalize_aux(gaussian_handle)
+      END SUBROUTINE
 END MODULE grid_api

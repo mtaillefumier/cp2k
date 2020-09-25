@@ -95,6 +95,9 @@ MODULE mp2_ri_grad
    USE task_list_types,                 ONLY: task_list_type
    USE util,                            ONLY: get_limit
    USE virial_types,                    ONLY: virial_type
+   USE grid_api,                        ONLY: collocate_pgf_create_handle,&
+        collocate_pgf_finalize
+   USE iso_c_binding,                  ONLY: C_PTR, C_NULL_PTR
 #include "./base/base_uses.f90"
 
    IMPLICIT NONE
@@ -205,8 +208,10 @@ CONTAINS
       TYPE(realspace_grid_p_type), DIMENSION(:), POINTER :: rs_v
       TYPE(task_list_type), POINTER                      :: task_list_sub
       TYPE(virial_type), POINTER                         :: virial
-
+      TYPE(C_PTR)                                        :: gaussian_handle
       CALL timeset(routineN, handle)
+
+      gaussian_handle = collocate_pgf_create_handle()
 
       eri_method = mp2_env%eri_method
       eri_param => mp2_env%eri_mme_param
@@ -576,7 +581,8 @@ CONTAINS
                                                           eps=dft_control%qs_control%eps_gvg_rspace, &
                                                           prefactor=1.0_dp, cutoff=1.0_dp)
 
-                        CALL integrate_pgf_product(la_max=la_max(iset), zeta=zeta(ipgf, iset)/2.0_dp, la_min=la_min(iset), &
+                        CALL integrate_pgf_product(gaussian_handle, &
+                             la_max=la_max(iset), zeta=zeta(ipgf, iset)/2.0_dp, la_min=la_min(iset), &
                                                    lb_max=0, zetb=zeta(ipgf, iset)/2.0_dp, lb_min=0, &
                                                    ra=ra, rab=(/0.0_dp, 0.0_dp, 0.0_dp/), &
                                                    rsgrid=rs_v(igrid_level)%rs_grid, &
@@ -830,7 +836,8 @@ CONTAINS
                                                           eps=dft_control%qs_control%eps_gvg_rspace, &
                                                           prefactor=1.0_dp, cutoff=1.0_dp)
 
-                        CALL integrate_pgf_product(la_max=la_max(iset), zeta=zeta(ipgf, iset)/2.0_dp, la_min=la_min(iset), &
+                        CALL integrate_pgf_product(gaussian_handle, &
+                             la_max=la_max(iset), zeta=zeta(ipgf, iset)/2.0_dp, la_min=la_min(iset), &
                                                    lb_max=0, zetb=zeta(ipgf, iset)/2.0_dp, lb_min=0, &
                                                    ra=ra, rab=(/0.0_dp, 0.0_dp, 0.0_dp/), &
                                                    rsgrid=rs_v(igrid_level)%rs_grid, &
@@ -990,7 +997,7 @@ CONTAINS
                          para_env_sub, Eigenval_beta, L1_mu_i_beta, L2_nu_a_beta, &
                          factor, .TRUE.)
       ENDIF
-
+      CALL collocate_pgf_finalize(gaussian_handle)
       CALL timestop(handle)
 
    END SUBROUTINE calc_ri_mp2_nonsep

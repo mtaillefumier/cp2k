@@ -298,19 +298,20 @@ setup_grid_window(tensor* const grid, const int* const shift_local, const int* c
         grid->window_size[d]  = grid->size[d];
     }
 
-    if (border_mask & (1 << 0))
-        grid->window_shift[2] += border_width[0];
-    if (border_mask & (1 << 1))
-        grid->window_size[2] -= border_width[0];
-    if (border_mask & (1 << 2))
-        grid->window_shift[1] += border_width[1];
-    if (border_mask & (1 << 3))
-        grid->window_size[1] -= border_width[1];
-    if (border_mask & (1 << 4))
-        grid->window_shift[0] += border_width[2];
-    if (border_mask & (1 << 5))
-        grid->window_size[0] -= border_width[2];
-
+    if (border_width) {
+        if (border_mask & (1 << 0))
+            grid->window_shift[2] += border_width[0];
+        if (border_mask & (1 << 1))
+            grid->window_size[2] -= border_width[0];
+        if (border_mask & (1 << 2))
+            grid->window_shift[1] += border_width[1];
+        if (border_mask & (1 << 3))
+            grid->window_size[1] -= border_width[1];
+        if (border_mask & (1 << 4))
+            grid->window_shift[0] += border_width[2];
+        if (border_mask & (1 << 5))
+            grid->window_size[0] -= border_width[2];
+    }
     for (int d = 0; d < grid->dim_; d++) {
         grid->window_size[d] -= grid->window_shift[d];
     }

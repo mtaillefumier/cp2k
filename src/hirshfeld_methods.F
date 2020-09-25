@@ -21,8 +21,9 @@ MODULE hirshfeld_methods
    USE cp_units,                        ONLY: cp_unit_to_cp2k
    USE cube_utils,                      ONLY: cube_info_type
    USE grid_api,                        ONLY: GRID_FUNC_AB,&
-                                              collocate_pgf_product,&
-                                              integrate_pgf_product
+        collocate_pgf_product,&
+        integrate_pgf_product, collocate_pgf_create_handle,&
+        collocate_pgf_finalize
    USE hirshfeld_types,                 ONLY: get_hirshfeld_info,&
                                               hirshfeld_type,&
                                               set_hirshfeld_info
@@ -62,6 +63,7 @@ MODULE hirshfeld_methods
                                               rs_grid_retain,&
                                               rs_grid_zero,&
                                               rs_pw_transfer
+   USE iso_c_binding,                  ONLY: C_PTR, C_NULL_PTR
 #include "./base/base_uses.f90"
 
    IMPLICIT NONE
@@ -538,8 +540,11 @@ CONTAINS
       TYPE(pw_env_type), POINTER                         :: pw_env
       TYPE(realspace_grid_desc_type), POINTER            :: auxbas_rs_desc
       TYPE(realspace_grid_type), POINTER                 :: rs_v
+      TYPE(C_PTR)                                        :: gaussian_handle
 
       CALL timeset(routineN, handle)
+
+      gaussian_handle = collocate_pgf_create_handle()
 
       do_force = PRESENT(fderiv)
       fval = 0.0_dp
@@ -601,7 +606,7 @@ CONTAINS
                                                  pab=pab, o1=0, o2=0, &  ! without map_consistent
                                                  prefactor=1.0_dp, cutoff=1.0_dp)
 
-               CALL integrate_pgf_product(0, alpha, 0, &
+               CALL integrate_pgf_product(gaussian_handle, 0, alpha, 0, &
                                           0, 0.0_dp, 0, ra, (/0.0_dp, 0.0_dp, 0.0_dp/), &
                                           rs_v, cell, pw_env%cube_info(1), hab, pab=pab, o1=0, o2=0, &
                                           radius=radius, calculate_forces=do_force, &
@@ -625,7 +630,8 @@ CONTAINS
       CALL mp_sum(fval, para_env%group)
 
       CALL timestop(handle)
-
+! release memory
+      CALL collocate_pgf_finalize(gaussian_handle)
    END SUBROUTINE hirshfeld_integration
 
 END MODULE hirshfeld_methods

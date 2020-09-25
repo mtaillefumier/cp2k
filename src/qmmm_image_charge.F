@@ -72,6 +72,10 @@ MODULE qmmm_image_charge
                                               rs_pw_transfer
    USE util,                            ONLY: get_limit
    USE virial_types,                    ONLY: virial_type
+   USE iso_c_binding,                  ONLY: C_PTR, C_NULL_PTR
+   USE grid_api,                        ONLY: integrate_pgf_product,&
+        collocate_pgf_create_handle,&
+        collocate_pgf_finalize
 #include "./base/base_uses.f90"
 
    IMPLICIT NONE
@@ -359,8 +363,11 @@ CONTAINS
       TYPE(pw_env_type), POINTER                         :: pw_env
       TYPE(realspace_grid_desc_type), POINTER            :: auxbas_rs_desc
       TYPE(realspace_grid_type), POINTER                 :: rs_v
+      TYPE(C_PTR)                                        :: gaussian_handle
 
       CALL timeset(routineN, handle)
+
+      gaussian_handle = collocate_pgf_create_handle()
 
       NULLIFY (cores, hab, cell, auxbas_rs_desc, pw_env, para_env, &
                dft_control, rs_v)
@@ -425,7 +432,7 @@ CONTAINS
                                            zetp=qmmm_env%image_charge_pot%eta, eps=eps_rho_rspace, &
                                            prefactor=1.0_dp, cutoff=1.0_dp)
 
-         CALL integrate_pgf_product(0, qmmm_env%image_charge_pot%eta, 0, &
+         CALL integrate_pgf_product(gaussian_handle, 0, qmmm_env%image_charge_pot%eta, 0, &
                                     0, 0.0_dp, 0, ra, (/0.0_dp, 0.0_dp, 0.0_dp/), &
                                     rs_v, cell, pw_env%cube_info(1), hab, o1=0, o2=0, &
                                     radius=radius, calculate_forces=.FALSE., &
@@ -479,8 +486,10 @@ CONTAINS
       TYPE(realspace_grid_desc_type), POINTER            :: auxbas_rs_desc
       TYPE(realspace_grid_type), POINTER                 :: rs_v
       TYPE(virial_type), POINTER                         :: virial
-
+      TYPE(C_PTR)                                        :: gaussian_handle
       CALL timeset(routineN, handle)
+
+      gaussian_handle = collocate_pgf_create_handle()
 
       NULLIFY (cores, hab, pab, cell, auxbas_rs_desc, pw_env, para_env, &
                dft_control, rs_v, virial)
@@ -550,7 +559,7 @@ CONTAINS
                                            pab=pab, o1=0, o2=0, &  ! without map_consistent
                                            prefactor=1.0_dp, cutoff=1.0_dp)
 
-         CALL integrate_pgf_product(0, qmmm_env%image_charge_pot%eta, 0, &
+         CALL integrate_pgf_product(gaussian_handle, 0, qmmm_env%image_charge_pot%eta, 0, &
                                     0, 0.0_dp, 0, ra, (/0.0_dp, 0.0_dp, 0.0_dp/), &
                                     rs_v, cell, pw_env%cube_info(1), hab, pab, o1=0, o2=0, &
                                     radius=radius, calculate_forces=.TRUE., &
@@ -570,7 +579,7 @@ CONTAINS
 
       ! print info on gradients if wanted
       CALL print_gradients_image_atoms(forces, qs_env)
-
+      CALL collocate_pgf_finalize(gaussian_handle)
       CALL timestop(handle)
 
    END SUBROUTINE integrate_potential_devga_rspace

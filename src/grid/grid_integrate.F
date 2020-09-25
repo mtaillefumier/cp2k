@@ -16,6 +16,12 @@ MODULE grid_integrate
                                               current_maxl,&
                                               ncoset
    USE realspace_grid_types,            ONLY: realspace_grid_type
+   USE iso_c_binding,                   ONLY: C_PTR, &
+        C_NULL_PTR, &
+        C_INT, &
+        C_DOUBLE, &
+        C_BOOL, &
+        C_LOC
 #include "../base/base_uses.f90"
 
    IMPLICIT NONE
@@ -83,7 +89,7 @@ CONTAINS
 !> \param use_subpatch ...
 !> \param subpatch_pattern ...
 ! **************************************************************************************************
-   SUBROUTINE integrate_pgf_product(la_max, zeta, la_min, &
+   SUBROUTINE integrate_pgf_product(collocation_handle, la_max, zeta, la_min, &
                                     lb_max, zetb, lb_min, &
                                     ra, rab, rsgrid, cell, &
                                     cube_info, hab, pab, o1, o2, &
@@ -93,12 +99,13 @@ CONTAINS
                                     use_virial, my_virial_a, &
                                     my_virial_b, a_hdab, use_subpatch, subpatch_pattern)
 
+     TYPE(C_PTR), INTENT(INOUT)                :: collocation_handle
       INTEGER, INTENT(IN)                      :: la_max
       REAL(KIND=dp), INTENT(IN)                :: zeta
       INTEGER, INTENT(IN)                      :: la_min, lb_max
       REAL(KIND=dp), INTENT(IN)                :: zetb
       INTEGER, INTENT(IN)                      :: lb_min
-      REAL(KIND=dp), DIMENSION(3), INTENT(IN)  :: ra, rab
+      REAL(KIND=dp), DIMENSION(3), INTENT(IN), TARGET  :: ra, rab
       TYPE(realspace_grid_type), POINTER       :: rsgrid
       TYPE(cell_type), POINTER                 :: cell
       TYPE(cube_info_type), INTENT(IN)         :: cube_info
@@ -119,6 +126,32 @@ CONTAINS
       LOGICAL, OPTIONAL                        :: use_subpatch
       INTEGER, INTENT(IN), OPTIONAL            :: subpatch_pattern
 
+      INTERFACE
+       SUBROUTINE grid_integrate_pgf_product_cpu(gaussian_handle, &
+            use_ortho, lp, zeta, zetb, &
+            dh, dh_inv, ra, rab, npts, ngrid, lb_grid, &
+            periodic, radius, grid, coef_xyz) &
+            BIND(C, name="grid_integrate_pgf_product_dgemm")
+         IMPORT :: C_PTR, C_INT, C_DOUBLE, C_BOOL
+         TYPE(C_PTR), VALUE                        :: gaussian_handle
+         LOGICAL(KIND=C_BOOL), VALUE               :: use_ortho
+         INTEGER(KIND=C_INT), VALUE                :: lp
+         REAL(KIND=C_DOUBLE), VALUE                :: zeta
+         REAL(KIND=C_DOUBLE), VALUE                :: zetb
+         TYPE(C_PTR), VALUE                        :: dh
+         TYPE(C_PTR), VALUE                        :: dh_inv
+         TYPE(C_PTR), VALUE                        :: ra
+         TYPE(C_PTR), VALUE                        :: rab
+         TYPE(C_PTR), VALUE                        :: npts
+         TYPE(C_PTR), VALUE                        :: ngrid
+         TYPE(C_PTR), VALUE                        :: lb_grid
+         TYPE(C_PTR), VALUE                        :: periodic
+         REAL(KIND=C_DOUBLE), VALUE                :: radius
+         TYPE(C_PTR), VALUE                        :: grid
+         TYPE(C_PTR), VALUE                        :: coef_xyz
+       END SUBROUTINE grid_integrate_pgf_product_cpu
+    END INTERFACE
+
       INTEGER :: ax, ay, az, bx, by, bz, cmax, coef_max, gridbounds(2, 3), i, &
                  ico, icoef, ig, j, jco, la, la_max_local, la_min_local, lb, &
                  lb_cube_min, lb_max_local, lb_min_local, length, lxa, lxb, lxy, &
@@ -127,22 +160,24 @@ CONTAINS
                                                   ub_cube
       INTEGER, DIMENSION(:), POINTER           :: sphere_bounds
       LOGICAL                                  :: my_compute_tau, &
-                                                  my_use_virial, &
-                                                  subpatch_integrate
+           my_use_virial, &
+           subpatch_integrate,  use_ortho
       REAL(KIND=dp) :: axpm0, der_a(3), der_b(3), f, ftza, ftzb, pabval, pg, prefactor, rpg, zetp
       REAL(KIND=dp), DIMENSION(3)              :: dr, rap, rb, roffset, rp
       REAL(KIND=dp), DIMENSION(:, :, :), &
          POINTER                                :: grid
-
+      INTEGER, DIMENSION(3), TARGET                      :: lb_grid, ngrid
+      LOGICAL(KIND=C_BOOL), DIMENSION(3), TARGET         :: periodic
       INTEGER :: lxp, lyp, lzp, lp, iaxis
       INTEGER, ALLOCATABLE, DIMENSION(:, :) :: map
-      REAL(kind=dp), ALLOCATABLE, DIMENSION(:) :: coef_xyz
+      REAL(kind=dp), ALLOCATABLE, DIMENSION(:), TARGET :: coef_xyz
       REAL(kind=dp), ALLOCATABLE, DIMENSION(:) :: coef_xyt
       REAL(kind=dp), ALLOCATABLE, DIMENSION(:) :: coef_xtt
       REAL(kind=dp), ALLOCATABLE, DIMENSION(:, :, :) :: pol_z
       REAL(kind=dp), ALLOCATABLE, DIMENSION(:, :, :) :: pol_y
       REAL(kind=dp), ALLOCATABLE, DIMENSION(:, :) :: pol_x
       REAL(kind=dp), ALLOCATABLE, DIMENSION(:, :) :: vab
+
 
       REAL(KIND=dp) :: t_exp_1, t_exp_2, t_exp_min_1, t_exp_min_2, t_exp_plus_1, t_exp_plus_2
 
@@ -209,14 +244,64 @@ CONTAINS
       grid => rsgrid%r(:, :, :)
       ALLOCATE (vab(ncoset(la_max_local), ncoset(lb_max_local)))
       vab = 0.0_dp
+      use_ortho = rsgrid%desc%orthorhombic
 
       ! the likely call is integrate_ortho
       IF (.NOT. subpatch_integrate) THEN
-         IF (rsgrid%desc%orthorhombic) THEN
-            CALL integrate_ortho()
-         ELSE
-            CALL integrate_general_wings()
-         END IF
+         lp = la_max_local + lb_max_local
+         ALLOCATE (coef_xyz(((lp + 1)*(lp + 2)*(lp + 3))/6))
+         !We absorb the local lower bounds into lb_grid.
+
+         CPASSERT(LBOUND(rsgrid%r, 1) == rsgrid%lb_local(1))
+         CPASSERT(LBOUND(rsgrid%r, 2) == rsgrid%lb_local(2))
+         CPASSERT(LBOUND(rsgrid%r, 3) == rsgrid%lb_local(3))
+
+         lb_grid = rsgrid%desc%lb - rsgrid%lb_local
+         ngrid = (/SIZE(grid, 1), SIZE(grid, 2), SIZE(grid, 3)/)
+
+         periodic = (rsgrid%desc%perd == 1)
+
+         CALL grid_integrate_pgf_product_cpu(collocation_handle, &
+         use_ortho=LOGICAL(use_ortho, KIND=C_BOOL), &
+         lp=lp, &
+         zeta=zeta, &
+         zetb=zetb, &
+         dh=C_LOC(rsgrid%desc%dh(1, 1)), &
+         dh_inv=C_LOC(rsgrid%desc%dh_inv(1, 1)), &
+         ra=C_LOC(ra(1)), &
+         rab=C_LOC(rab(1)), &
+         npts=C_LOC(rsgrid%desc%npts(1)), &
+         ngrid=C_LOC(ngrid(1)), &
+         lb_grid=C_LOC(lb_grid(1)), &
+         periodic=C_LOC(periodic(1)), &
+         radius=radius, &
+         grid=C_LOC(grid(1, 1, 1)),&
+         coef_xyz=C_LOC(coef_xyz(1)))
+
+         ! if ((dabs(coef_xyz1(1) - coef_xyz(1)) .GT. 0.01)) then
+         !    write(*, *) coef_xyz1(:)
+         !    write(*, *) coef_xyz(:)
+         !    write(*, *) coef_xyz(:) / coef_xyz1(:)
+         !    write(*,*) "-------"
+         !    write(*, *) coef_xyz1(1), coef_xyz(1)
+         !    write(300, *) grid(:,:,:)
+         !    write(*, *) roffset(:)
+         !    write(*, *) cubecenter(:)
+         !    write(*, *) lb_cube(:), ub_cube(:)
+         !    write(*, *) "--------"
+         !    write(*, *) prefactor, zetp, rp(:)
+         !    write(*, *) lp, ra(:), rab(:), zeta, zetb, radius
+         !    write(*, *) rsgrid%desc%npts(:), lb_grid(:), ngrid(:)
+         !    write(*, *) rsgrid%desc%dh(:,:)
+         !    write(*, *) rsgrid%desc%dh_inv(:,:)
+         !    CPABORT("Test case")
+         ! end if
+
+         CALL call_to_xyz_to_vab(prefactor, coef_xyz, lp, la_max_local, lb_max_local, &
+         rp, ra, rab, vab, coset, la_min_local, &
+         lb_min_local, current_maxl, ncoset(la_max_local), ncoset(lb_max_local))
+
+         DEALLOCATE (coef_xyz)
       ELSE
          CALL integrate_general_subpatch()
       END IF

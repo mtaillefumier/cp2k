@@ -69,7 +69,11 @@ MODULE qs_integrate_potential_product
                                               task_list_type,&
                                               task_type
    USE virial_types,                    ONLY: virial_type
+   USE grid_api,                        ONLY: integrate_pgf_product,&
+        collocate_pgf_create_handle,&
+        collocate_pgf_finalize
 
+   USE iso_c_binding,                  ONLY: C_PTR, C_NULL_PTR
 !$ USE OMP_LIB, ONLY: omp_get_max_threads, omp_get_thread_num, omp_get_num_threads
 
 #include "./base/base_uses.f90"
@@ -241,9 +245,10 @@ CONTAINS
       TYPE(task_list_type), POINTER                      :: task_list, task_list_soft
       TYPE(task_type), DIMENSION(:), POINTER             :: tasks
       TYPE(virial_type), POINTER                         :: virial
+      TYPE(C_PTR)                                        :: gaussian_handle
 
       CALL timeset(routineN, handle)
-
+      gaussian_handle = C_NULL_PTR
       ! we test here if the provided operator matrices are consistent
       CPASSERT(PRESENT(hmat) .OR. PRESENT(hmat_kp))
       do_kp = .FALSE.
@@ -471,11 +476,13 @@ CONTAINS
 !$OMP PRIVATE(p_block,ncoa,sgfa,ncob,sgfb,rab,ra,rb,rp,zetp,f,prefactor,radius,igrid_level), &
 !$OMP PRIVATE(na1,na2,nb1,nb2,use_subpatch,rab_inv,new_set_pair_coming,atom_pair_done), &
 !$OMP PRIVATE(iset_new,jset_new,ipgf_new,jpgf_new,scalef), &
-!$OMP PRIVATE(itask,dist,has_threads) &
+!$OMP PRIVATE(itask,dist,has_threads, gaussian_handle) &
 !$OMP REDUCTION (+ : pv_thread, force_thread )
 
       ithread = 0
-!$    ithread = omp_get_thread_num()
+      !$    ithread = omp_get_thread_num()
+      gaussian_handle = collocate_pgf_create_handle()
+
       work => workt(:, :, ithread)
       hab => habt(:, :, ithread)
       IF (pab_required) THEN
@@ -674,7 +681,7 @@ CONTAINS
 
             IF (pab_required) THEN
                IF (iatom <= jatom) THEN
-                  CALL integrate_pgf_product( &
+                  CALL integrate_pgf_product(gaussian_handle, &
                      la_max(iset), zeta(ipgf, iset), la_min(iset), &
                      lb_max(jset), zetb(jpgf, jset), lb_min(jset), &
                      ra, rab, rs_v(igrid_level)%rs_grid, cell, &
@@ -688,7 +695,7 @@ CONTAINS
                      my_virial_b=my_virial_b, use_subpatch=use_subpatch, subpatch_pattern=tasks(itask)%subpatch_pattern)
                ELSE
                   rab_inv = -rab
-                  CALL integrate_pgf_product( &
+                  CALL integrate_pgf_product(gaussian_handle,  &
                      lb_max(jset), zetb(jpgf, jset), lb_min(jset), &
                      la_max(iset), zeta(ipgf, iset), la_min(iset), &
                      rb, rab_inv, rs_v(igrid_level)%rs_grid, cell, &
@@ -703,7 +710,7 @@ CONTAINS
                END IF
             ELSE
                IF (iatom <= jatom) THEN
-                  CALL integrate_pgf_product( &
+                  CALL integrate_pgf_product(gaussian_handle,  &
                      la_max(iset), zeta(ipgf, iset), la_min(iset), &
                      lb_max(jset), zetb(jpgf, jset), lb_min(jset), &
                      ra, rab, rs_v(igrid_level)%rs_grid, cell, &
@@ -716,7 +723,7 @@ CONTAINS
                      use_subpatch=use_subpatch, subpatch_pattern=tasks(itask)%subpatch_pattern)
                ELSE
                   rab_inv = -rab
-                  CALL integrate_pgf_product( &
+                  CALL integrate_pgf_product(gaussian_handle,  &
                      lb_max(jset), zetb(jpgf, jset), lb_min(jset), &
                      la_max(iset), zeta(ipgf, iset), la_min(iset), &
                      rb, rab_inv, rs_v(igrid_level)%rs_grid, cell, &
@@ -791,7 +798,8 @@ CONTAINS
          END DO
 
       END DO loop_gridlevels
-
+      ! release memory
+      CALL collocate_pgf_finalize(gaussian_handle)
 !$OMP END PARALLEL
 
       IF (debug_this_module) THEN
@@ -865,7 +873,6 @@ CONTAINS
             CALL rs_grid_release(rs_v(i)%rs_grid)
          END DO
       END IF
-
       CALL timestop(handle)
 
    END SUBROUTINE integrate_v_rspace_low

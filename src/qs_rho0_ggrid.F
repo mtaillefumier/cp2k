@@ -15,7 +15,10 @@ MODULE qs_rho0_ggrid
    USE cube_utils,                      ONLY: cube_info_type
    USE gaussian_gridlevels,             ONLY: gaussian_gridlevel
    USE grid_api,                        ONLY: GRID_FUNC_AB,&
-                                              collocate_pgf_product
+        integrate_pgf_product,&
+        collocate_pgf_create_handle,&
+        collocate_pgf_finalize, &
+   collocate_pgf_product
    USE kinds,                           ONLY: dp
    USE mathconstants,                   ONLY: dfac,&
                                               fourpi
@@ -65,7 +68,8 @@ MODULE qs_rho0_ggrid
         realspace_grid_type, rs2pw, rs_grid_create, rs_grid_release, rs_grid_retain, rs_grid_zero, &
         rs_pw_transfer
    USE util,                            ONLY: get_limit
-   USE virial_types,                    ONLY: virial_type
+      USE virial_types,                    ONLY: virial_type
+      USE iso_c_binding,                  ONLY: C_PTR, C_NULL_PTR
 #include "./base/base_uses.f90"
 
    IMPLICIT NONE
@@ -218,7 +222,7 @@ CONTAINS
 
             ra(:) = pbc(particle_set(iatom)%r, cell)
 
-            CALL collocate_pgf_product( &
+            CALL collocate_pgf_product(&
                l0_ikind, zet0, 0, 0, 0.0_dp, 0, &
                ra, (/0.0_dp, 0.0_dp, 0.0_dp/), 1.0_dp, pab, 0, 0, &
                rs_grid, cell, cube_info(igrid), ga_gb_function=GRID_FUNC_AB, radius=rpgf0, &
@@ -382,11 +386,12 @@ CONTAINS
       TYPE(rho_atom_type), DIMENSION(:), POINTER         :: rho_atom_set
       TYPE(rho_atom_type), POINTER                       :: rho_atom
       TYPE(virial_type), POINTER                         :: virial
+      TYPE(C_PTR)                                        :: gaussian_handle
 
       c4pi = fourpi
 
       CALL timeset(routineN, handle)
-
+      gaussian_handle = collocate_pgf_create_handle()
       ! In case of the external density computed forces probably also
       ! need to be stored outside qs_env. We can then remove the
       ! attribute 'OPTIONAL' from the argument 'local_rho_set'.
@@ -566,7 +571,7 @@ CONTAINS
                   a_hdab = 0.0_dp
                END IF
 
-               CALL integrate_pgf_product( &
+               CALL integrate_pgf_product(gaussian_handle, &
                   l0_ikind, zet0, 0, 0, 0.0_dp, 0, &
                   ra, (/0.0_dp, 0.0_dp, 0.0_dp/), rs_v, cell, &
                   cube_info(igrid), hab, pab, o1=0, o2=0, &
@@ -695,6 +700,7 @@ CONTAINS
       CALL rs_grid_release(rs_v)
 
       DEALLOCATE (hab, hdab, hadb, hab_sph, hdab_sph, pab, a_hdab, a_hdab_sph)
+      CALL collocate_pgf_finalize(gaussian_handle)
 
       CALL timestop(handle)
 
