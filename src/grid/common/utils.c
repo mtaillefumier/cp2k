@@ -460,20 +460,21 @@ compute_cube_properties(const bool ortho, const double radius, const double dh[3
                         /* rp[2] + */ ((double)k) * radius
                     };
                     double y[3];
-                    convert_to_lattice_coordinates(dh_inv, x, y);
+                    /* convert_to_lattice_coordinates(dh_inv, x, y); */
                     for (int idir = 0; idir < 3; idir++) {
-                        lb_cube[idir]     = min(lb_cube[idir], floor(y[2 - idir]));
-                        ub_cube[idir]     = max(ub_cube[idir], ceil(y[2 - idir]));
+                        const double resc = dh_inv[0][idir] * x[0] + dh_inv[1][idir] * x[1] + dh_inv[2][idir] * x[2];
+                        lb_cube[2 - idir]     = min(lb_cube[2 - idir], floor(resc));
+                        ub_cube[2 - idir]     = max(ub_cube[2 - idir], ceil(resc));
                     }
                 }
             }
         }
 
 
-        for (int idir = 0; idir < 3; idir++) {
-            lb_cube[idir] -= 1;
-            ub_cube[idir] += 1;
-        }
+        /* for (int idir = 0; idir < 3; idir++) { */
+        /*     lb_cube[idir] -= 1; */
+        /*     ub_cube[idir] += 1; */
+        /* } */
 
         /* compute the offset in lattice coordinates */
 
