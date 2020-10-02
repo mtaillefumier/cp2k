@@ -42,7 +42,7 @@ grid_create_task_list(const int ntasks, const int nlevels, const int natoms, con
         const grid_library_config config = grid_library_get_config();
 
         (*task_list)->validate           = config.validate;
-        (*task_list)->backend = config.backend;
+        (*task_list)->backend = GRID_BACKEND_GPU;
         (*task_list)->apply_cutoff = config.apply_cutoff;
     }
 
@@ -50,6 +50,7 @@ grid_create_task_list(const int ntasks, const int nlevels, const int natoms, con
 #ifdef __COLLOCATE_GPU
     case GRID_BACKEND_GPU:
     {
+        printf("test\n");
         grid_create_task_list_ref(ntasks, nlevels, natoms, nkinds, nblocks, buffer_size, block_offsets, atom_positions,
                                   atom_kinds, basis_sets, level_list, iatom_list, jatom_list, iset_list, jset_list,
                                   ipgf_list, jpgf_list, border_mask_list, block_num_list, radius_list, rab_list,
@@ -108,7 +109,7 @@ grid_free_task_list(grid_task_list* task_list)
 // \author Ole Schuett
 //******************************************************************************
 void
-    grid_collocate_task_list(const int device_id, const grid_task_list* task_list, const bool orthorhombic, const int func, const int nlevels,
+    grid_collocate_task_list(const int device_id, const grid_task_list* task_list, const bool orthorhombic, const enum func_ func, const int nlevels,
                              const int npts_global[nlevels][3], const int npts_local[nlevels][3],
                              const int shift_local[nlevels][3], const int border_width[nlevels][3],
                              const double dh[nlevels][3][3], const double dh_inv[nlevels][3][3], double* grid[nlevels])
@@ -116,18 +117,18 @@ void
 
     // If validation is enabled, make a backup copy of the original grid.
 
-    double** grid_before = NULL; // Only used for validation.
-    if (task_list->validate) {
-        grid_before = (double **) malloc(sizeof(double *) * (nlevels + 1));
-        memset(grid_before, 0, sizeof(double) * (nlevels + 1));
-        for (int level = 0; level < nlevels; level++) {
-            const size_t sizeof_grid =
-                sizeof(double) * npts_local[level][0] * npts_local[level][1] * npts_local[level][2];
-            grid_before[level] = malloc(sizeof_grid);
-            memcpy(grid_before[level], grid[level], sizeof_grid);
-            memset(grid[level], 0, sizeof_grid);
-        }
-    }
+    /* double** grid_before = NULL; // Only used for validation. */
+    /* if (task_list->validate) { */
+    /*     grid_before = (double **) malloc(sizeof(double *) * (nlevels + 1)); */
+    /*     memset(grid_before, 0, sizeof(double) * (nlevels + 1)); */
+    /*     for (int level = 0; level < nlevels; level++) { */
+    /*         const size_t sizeof_grid = */
+    /*             sizeof(double) * npts_local[level][0] * npts_local[level][1] * npts_local[level][2]; */
+    /*         grid_before[level] = malloc(sizeof_grid); */
+    /*         memcpy(grid_before[level], grid[level], sizeof_grid); */
+    /*         memset(grid[level], 0, sizeof_grid); */
+    /*     } */
+    /* } */
 
     // Call selected backend to perform the actual work.
     switch(task_list->backend)

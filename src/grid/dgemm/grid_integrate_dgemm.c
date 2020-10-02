@@ -35,24 +35,10 @@
 #include "grid_collocate_dgemm.h"
 #include "collocation_integration.h"
 
-extern void collocate_l0(double* scratch, const double alpha, const double beta, const bool orthogonal,
-                         const struct tensor_* exp_xy, const struct tensor_* p_alpha_beta_reduced_,
-                         struct tensor_* cube);
-
-extern void collocate_l0_blocked_xy(double* scratch, const double alpha, const int sizex, const int sizey, const int x0,
-                                    const int y0, const int ld, const struct tensor_* p_alpha_beta_reduced_);
-
-extern void collocate_l0_blocked_xy_add(double* scratch, const double alpha, const int sizex, const int sizey,
-                                        const int x0, const int y0, const int ld,
-                                        const struct tensor_* p_alpha_beta_reduced_);
 
 extern void grid_fill_pol(const bool transpose, const double dr, const double roffset, const int pol_offset,
                           const int xmin, const int xmax, const int lp, const int cmax, const double zetp,
                           double* pol_);
-
-extern void compute_blocks(collocation_integration* const handler, const int* lower_boundaries_cube,
-                           const int* cube_size, const int* cube_center, const int* period, const tensor* Exp,
-                           const int* lb_grid, tensor* grid);
 
 extern void tensor_reduction_for_collocate_integrate(double* scratch, const double alpha, const double beta,
                                                      const bool* const orthogonal, const struct tensor_* Exp,
@@ -81,6 +67,8 @@ void extract_cube(struct collocation_integration_* handler, const int* lower_bou
     int lower_corner[3];
     int upper_corner[3];
     int diff[3];
+
+    memset(handler->cube.data, 0, sizeof(double) * handler->cube.alloc_size_);
 
     for (int z = 0; (z < handler->cube.size[0]); z++, z1++) {
         /* lower boundary is within the window */
@@ -303,16 +291,61 @@ grid_integrate(collocation_integration* const handler, const bool use_ortho, con
                                                  1.0, 0.0, handler->orthogonal, NULL, &handler->cube, &handler->pol,
                                                  &handler->coef);
     } else {
-        /* it is very specific to integrate because we might end up with a single
-         * element after the tensor product. In that case, I call the specific case
-         * with l = 0 and then do a scalar product between the two. We can not get
-         * one of the dimensions at 1 and all the other above. It is physics non
-         * sense */
+        /* it is very specific to integrate because we might end up with a
+         * single element after the tensor product/contraction. In that case, I
+         * compute the cube and then do a scalar product between the two. */
+
+        /* we could also do this with 2 matrix-vector multiplications and a scalar product
+         *
+         * H_{jk} = C_{ijk} . P_i (along x) C_{ijk} is *stored C[k][j][i]* !!!!!!
+         * L_{k} = H_{jk} . P_j (along y)
+         * v_{ab} = L_k . P_k (along z)
+         */
+
         tensor cube_tmp;
-        initialize_tensor_3(&cube_tmp, cube_size[0], cube_size[1], cube_size[2]);
-        cube_tmp.data = handler->scratch;
-        collocate_l0(handler->scratch, 1.0, 0.0, true, NULL, &handler->pol, &cube_tmp);
-        handler->coef.data[0] = cblas_ddot(cube_tmp.alloc_size_, cube_tmp.data, 1, handler->cube.data, 1);
+        initialize_tensor_2(&cube_tmp, cube_size[0], cube_size[1]);
+        alloc_tensor(&cube_tmp);
+
+        /* first along x */
+        cblas_dgemv(CblasRowMajor,
+                    CblasNoTrans,
+                    handler->cube.size[0] * handler->cube.size[1],
+                    handler->cube.size[2],
+                    1.0,
+                    handler->cube.data,
+                    handler->cube.ld_,
+                    &idx3(handler->pol, 2, 0, 0),
+                    1,
+                    0.0,
+                    cube_tmp.data,
+                    1);
+
+        /* second along j */
+        cblas_dgemv(CblasRowMajor,
+                    CblasNoTrans,
+                    handler->cube.size[0],
+                    handler->cube.size[1],
+                    1.0,
+                    cube_tmp.data,
+                    cube_tmp.ld_,
+                    &idx3(handler->pol, 1, 0, 0),
+                    1,
+                    0.0,
+                    handler->scratch,
+                    1);
+
+        /* finally along k, it is a scalar product.... */
+        handler->coef.data[0] = cblas_ddot(handler->cube.size[0],
+                                           handler->scratch,
+                                           1,
+                                           &idx3(handler->pol, 0, 0, 0),
+                                           1);
+
+        /* initialize_tensor_3(&cube_tmp, cube_size[0], cube_size[1], cube_size[2]); */
+        /* cube_tmp.data = handler->scratch; */
+        /* collocate_l0(handler->scratch, 1.0, 0.0, true, NULL, &handler->pol, &cube_tmp); */
+        /* handler->coef.data[0] = cblas_ddot(cube_tmp.alloc_size_, cube_tmp.data, 1, handler->cube.data, 1); */
+        free(cube_tmp.data);
     }
 
     /* go from ijk -> xyz */

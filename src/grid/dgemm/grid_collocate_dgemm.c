@@ -24,6 +24,8 @@
 #ifdef __LIBXSMM
 #include <libxsmm.h>
 #endif
+
+#include "../common/grid_constants.h"
 #include "../common/tensor_local.h"
 #include "../common/utils.h"
 #include "../common/grid_tasklist_private.h"
@@ -33,11 +35,6 @@
 #include "grid_collocate_dgemm.h"
 #include "grid_prepare_pab_dgemm.h"
 #include "collocation_integration.h"
-
-extern void grid_prepare_pab(const int func, const int o1, const int o2, const int la_max, const int la_min,
-                             const int lb_max, const int lb_min, const double zeta, const double zetb, const int n1,
-                             const int n2, const double pab[n2][n1], const int n1_prep, const int n2_prep,
-                             double pab_prep[n2_prep][n1_prep]);
 
 void collocate_l0(double* scratch, const double alpha, const double beta, const bool orthogonal,
                   const struct tensor_* exp_xy, const struct tensor_* p_alpha_beta_reduced_, struct tensor_* cube);
@@ -663,7 +660,7 @@ grid_collocate(collocation_integration* const handler, const bool use_ortho, con
 
 //******************************************************************************
 void
-grid_collocate_pgf_product_cpu_dgemm(const bool use_ortho, const int border_mask, const int func, const int la_max,
+grid_collocate_pgf_product_cpu_dgemm(const bool use_ortho, const int border_mask, const enum func_ func, const int la_max,
                                      const int la_min, const int lb_max, const int lb_min, const double zeta,
                                      const double zetb, const double rscale, const double dh[3][3],
                                      const double dh_inv[3][3], const double ra[3], const double rab[3],
@@ -789,7 +786,7 @@ grid_collocate_pgf_product_cpu_dgemm(const bool use_ortho, const int border_mask
 //******************************************************************************
 void
 collocate_one_grid_level_dgemm(const grid_task_list_private* task_list, const int first_task, const int last_task, const bool orthorhombic,
-                               const int func, const int grid_full_size[3], /* size of the full grid */
+                               const enum func_ func, const int grid_full_size[3], /* size of the full grid */
                                const int grid_local_size[3],                /* size of the local grid block */
                                const int shift_local[3],                    /* coordinates of the lower coordinates of the local grid window */
                                const int border_width[3],                   /* width of the borders */
@@ -846,6 +843,8 @@ collocate_one_grid_level_dgemm(const grid_task_list_private* task_list, const in
         alloc_tensor(&handler->grid);
 #endif
         memset(handler->grid.data, 0, sizeof(double) * handler->grid.alloc_size_);
+        /* setup the grid parameters, window parameters (if the grid is split), etc */
+
         if ((grid_local_size[0] != grid_full_size[0]) ||
             (grid_local_size[1] != grid_full_size[1]) ||
             (grid_local_size[2] != grid_full_size[2])) {
@@ -901,10 +900,16 @@ collocate_one_grid_level_dgemm(const grid_task_list_private* task_list, const in
                 const int maxcoa    = ibasis->maxco;
                 const int maxcob    = jbasis->maxco;
 
-                // Locate current matrix block within the buffer.
+                // Locate current matrix block within the buffer. This block
+                // contains the weights of the gaussian pairs in the spherical
+                // harmonic basis, but we do computation in the cartesian
+                // harmonic basis so we have to rotate the coefficients. It is nothing else than a basis change and it done with two dgemm.
+
                 const int block_offset = task_list->block_offsets[block_num]; // zero based
                 double* const block    = &task_list->blocks_buffer[block_offset];
 
+                // extract the block of interest. Actually not even used
+                // anymore. I directly extract the info from the block.
                 initialize_tensor_2(&subblock, nsgf_setb, nsgf_seta);
                 realloc_tensor(&subblock);
 
@@ -914,6 +919,7 @@ collocate_one_grid_level_dgemm(const grid_task_list_private* task_list, const in
                 initialize_tensor_2(&pab, ncob, ncoa);
                 realloc_tensor(&pab);
 
+                // the rotations happen here.
                 if (iatom <= jatom) {
                     m1.op1   = 'N';
                     m1.op2   = 'N';
@@ -961,7 +967,6 @@ collocate_one_grid_level_dgemm(const grid_task_list_private* task_list, const in
                 m2.ldc   = pab.ld_;
 
                 dgemm_simplified(&m2, false);
-
             } // end of block loading
 
             const double zeta[2] = {ibasis->zet[iset * ibasis->maxpgf + ipgf],
@@ -1002,15 +1007,6 @@ collocate_one_grid_level_dgemm(const grid_task_list_private* task_list, const in
             realloc_tensor(&pab_prep);
             memset(pab_prep.data, 0, pab_prep.alloc_size_ * sizeof(double));
 
-            /* grid_prepare_pab(func, */
-            /*                  offset[0], offset[1], */
-            /*                  lmax[0], lmin[0], */
-            /*                  lmax[1], lmin[1], */
-            /*                  zeta[0], */
-            /*                  zeta[1], */
-            /*                  pab.size[1], pab.size[0], (double (*)[pab.size[1]])pab.data, */
-            /*                  n1_prep, n2_prep, (double (*)[n1_prep])pab_prep.data); */
-
             grid_prepare_pab_dgemm(func, offset, lmin, lmax, &zeta[0], &pab, &pab_prep);
 
             //   *** initialise the coefficient matrix, we transform the sum
@@ -1039,25 +1035,21 @@ collocate_one_grid_level_dgemm(const grid_task_list_private* task_list, const in
             initialize_tensor_3(&handler->coef, lp + 1, lp + 1, lp + 1);
             realloc_tensor(&handler->coef);
 
+
+            // trese two functions can be done with dgemm again....
+
             // initialy cp2k stores coef_xyz as coef[z][y][x]. this is fine but I
             // need them to be stored as
 
             grid_prepare_alpha_dgemm(ra, rb, rp, lmax_prep, &handler->alpha);
 
-            //
-            //   compute P_{lxp,lyp,lzp} given P_{lxa,lya,lza,lxb,lyb,lzb} and alpha(ls,lxa,lxb,1)
-            //   use a three step procedure
-            //   we don't store zeros, so counting is done using lxyz,lxy in order to have
-            //   contiguous memory access in collocate_fast.F
-            //
-
-            // coef[x][z][y]
+            // compute the coefficients after applying the function of interest coef[x][z][y]
             grid_prepare_coef_dgemm(lmin_prep, lmax_prep, lp, prefactor, &handler->alpha, &pab_prep, &handler->coef);
 
             grid_collocate(handler, orthorhombic, zetp, rp, task->radius);
         }
 
-        // Merge thread local grids into shared grid.
+        // Merge thread local grids into shared grid. Could be improved though....
 
 #ifdef _OPENMP
         const int num_threads = omp_get_num_threads();
@@ -1085,6 +1077,10 @@ collocate_one_grid_level_dgemm(const grid_task_list_private* task_list, const in
         free(subblock.data);
     }
 }
+
+/* this will have to be revised when the internal module interface is clean from
+ * the mess. We should have one task_list associated to one grid, have the grid
+ * informations available there, etc.... */
 
 void
 grid_collocate_task_list_dgemm(const grid_task_list_private* task_list, const bool orthorhombic, const int func,

@@ -5,6 +5,7 @@
 #ifndef GRID_COLLOCATE_CPU_H
 #define GRID_COLLOCATE_CPU_H
 
+#include "../common/grid_constants.h"
 #include "../common/grid_tasklist_private.h"
 #ifdef __cplusplus
 extern "C" {
@@ -38,7 +39,7 @@ extern "C" {
 //
 // \param grid The output grid array to collocate into.
 //******************************************************************************
-    void grid_collocate_pgf_product_cpu_dgemm(const bool orthorhombic, const int border_mask, const int func,
+    void grid_collocate_pgf_product_cpu_dgemm(const bool orthorhombic, const int border_mask, const enum func_ func,
                                               const int la_max, const int la_min, const int lb_max, const int lb_min,
                                               const double zeta, const double zetb, const double rscale,
                                               const double dh[3][3], const double dh_inv[3][3], const double ra[3],

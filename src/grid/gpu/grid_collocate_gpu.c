@@ -41,7 +41,8 @@ my_worker_is_running(pgf_list_gpu* const my_worker)
 {
     if (my_worker->running) {
         cudaSetDevice(my_worker->device_id);
-        cudaEventSynchronize(my_worker->event);
+        //cudaEventSynchronize(my_worker->event);
+        cudaStreamSynchronize(my_worker->stream);
         reset_list_gpu(my_worker);
         my_worker->running = false;
     }
@@ -187,7 +188,7 @@ initialize_worker_list_on_gpu(collocation_integration* handle, const int number_
 void
 collocate_one_grid_level_gpu(
     struct collocation_integration_* handler, const grid_task_list_private* task_list, const int first_task,
-    const int last_task, const int func,
+    const int last_task, const enum func_ func,
     /* const int grid_full_size[3], /\* size of the full grid *\/ */
     /* const int grid_local_size[3], /\* size of the local grid block *\/ */
     /* const int shift_local[3], /\* coordinates of the lower coordinates of the local grid window *\/ */
@@ -477,43 +478,50 @@ collocate_one_grid_level_gpu(
     cudaSetDevice(handler->worker_list->device_id);
     cudaStreamSynchronize(handler->worker_list->stream);
 
-    double* tmp = NULL;
+    /* double* tmp = NULL; */
 
-    if (handler->worker_list->number_of_devices != 1) {
-        tmp = malloc(sizeof(double) * handler->grid.alloc_size_);
-        memset(grid_, 0, sizeof(double) * handler->grid.alloc_size_);
-    }
+    /* if (handler->worker_list->number_of_devices != 1) { */
+    /*     tmp = malloc(sizeof(double) * handler->grid.alloc_size_); */
+    /*     memset(grid_, 0, sizeof(double) * handler->grid.alloc_size_); */
+    /* } */
 
-    for (int worker = 1; worker < handler->worker_list_size; worker++) {
-        double alpha = 1.0;
-        cudaSetDevice(handler->worker_list[worker].device_id);
-        cudaStreamSynchronize(handler->worker_list[worker].stream);
-        if (handler->worker_list->number_of_devices == 1) {
-            cublasDaxpy(handler->worker_list->blas_handle, handler->grid.alloc_size_, &alpha,
-                        handler->worker_list[worker].data_gpu_, 1, handler->worker_list[0].data_gpu_, 1);
-        } else {
-            if (handler->worker_list->device_id == handler->worker_list[worker].device_id) {
-                cublasDaxpy(handler->worker_list->blas_handle, handler->grid.alloc_size_, &alpha,
-                            handler->worker_list[worker].data_gpu_, 1, handler->worker_list[0].data_gpu_, 1);
-            } else {
-                cudaMemcpy(tmp, handler->worker_list[worker].data_gpu_, sizeof(double) * handler->grid.alloc_size_,
-                           cudaMemcpyDeviceToHost);
-                cblas_daxpy(handler->grid.alloc_size_, 1.0, tmp, 1, grid_, 1);
-            }
-        }
-    }
+    /* for (int worker = 1; worker < handler->worker_list_size; worker++) { */
+    /*     double alpha = 1.0; */
+    /*     cudaSetDevice(handler->worker_list[worker].device_id); */
+    /*     cudaStreamSynchronize(handler->worker_list[worker].stream); */
+    /*     if (handler->worker_list->number_of_devices == 1) { */
+    /*         cublasDaxpy(handler->worker_list->blas_handle, handler->grid.alloc_size_, &alpha, */
+    /*                     handler->worker_list[worker].data_gpu_, 1, handler->worker_list[0].data_gpu_, 1); */
+    /*     } else { */
+    /*         if (handler->worker_list->device_id == handler->worker_list[worker].device_id) { */
+    /*             cublasDaxpy(handler->worker_list->blas_handle, handler->grid.alloc_size_, &alpha, */
+    /*                         handler->worker_list[worker].data_gpu_, 1, handler->worker_list[0].data_gpu_, 1); */
+    /*         } else { */
+    /*             cudaMemcpy(tmp, handler->worker_list[worker].data_gpu_, sizeof(double) * handler->grid.alloc_size_, */
+    /*                        cudaMemcpyDeviceToHost); */
+    /*             cblas_daxpy(handler->grid.alloc_size_, 1.0, tmp, 1, grid_, 1); */
+    /*         } */
+    /*     } */
+    /* } */
 
-    if (handler->worker_list->number_of_devices != 1) {
-        cudaSetDevice(handler->worker_list->device_id);
-        cudaMemcpy(tmp, handler->worker_list->data_gpu_, sizeof(double) * handler->grid.alloc_size_,
-                   cudaMemcpyDeviceToHost);
-        cblas_daxpy(handler->grid.alloc_size_, 1.0, tmp, 1, grid_, 1);
-        free(tmp);
-    } else {
-        cudaStreamSynchronize(handler->worker_list->stream);
-        cudaMemcpy(grid_, handler->worker_list->data_gpu_, sizeof(double) * handler->grid.alloc_size_,
-                   cudaMemcpyDeviceToHost);
-    }
+    /* if (handler->worker_list->number_of_devices != 1) { */
+    /*     cudaSetDevice(handler->worker_list->device_id); */
+    /*     cudaMemcpy(tmp, handler->worker_list->data_gpu_, sizeof(double) * handler->grid.alloc_size_, */
+    /*                cudaMemcpyDeviceToHost); */
+    /*     cblas_daxpy(handler->grid.alloc_size_, 1.0, tmp, 1, grid_, 1); */
+    /*     free(tmp); */
+    /* } else { */
+    cudaStreamSynchronize(handler->worker_list->stream);
+    cudaMemcpy(grid_, handler->worker_list->data_gpu_, sizeof(double) * handler->grid.alloc_size_,
+               cudaMemcpyDeviceToHost);
+
+    double sum = 0.0;
+
+    for(int s = 0; s < handler->grid.alloc_size_; s++)
+        sum += grid_[s];
+
+    printf("%.15lf\n", sum);
+    /* } */
 }
 
 void
@@ -525,7 +533,7 @@ grid_collocate_task_list_gpu(const int device_id, const grid_task_list_private* 
     int first_task = 0;
 
     struct collocation_integration_* handler = collocate_create_handle();
-    handler->device_id[0]                    = device_id;
+    handler->device_id[0]                    = 0;
 
     /* we can think about the multi gpu here */
     /*

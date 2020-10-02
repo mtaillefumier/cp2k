@@ -41,9 +41,17 @@ __inline__ __device__ void  return_cube_position(const int3 *__restrict__ const 
                                                  const int3 period,
                                                  int3 *const position)
 {
-    position->x = (cube_center->x + lower_boundaries_cube->x + 32 * period.x) % period.x;
-    position->y = (cube_center->y + lower_boundaries_cube->y + 32 * period.y) % period.y;
-    position->z = (cube_center->z + lower_boundaries_cube->z + 32 * period.z) % period.z;
+    position->x = (cube_center->x + lower_boundaries_cube->x) % period.x;
+    position->y = (cube_center->y + lower_boundaries_cube->y) % period.y;
+    position->z = (cube_center->z + lower_boundaries_cube->z) % period.z;
+
+    if (position->x < 0)
+        position->x += period.x;
+    if (position->y < 0)
+        position->y += period.y;
+    if (position->x < 0)
+        position->y += period.z;
+
 }
 
 __inline__ __device__ void convert_to_lattice_coordinates(const double3 *__restrict__ const rp, double3 *__restrict__ rp_c)
@@ -82,8 +90,8 @@ __device__ void compute_cube_properties(const double radius,
 
     if (is_orthorhombic_[0]) {
         /* seting up the cube parameters */
-        const double3 dr     = {.z = dh_[8], .y = dh_[4], .x = dh_[0]};
-        const double3 dr_inv = {.z = dh_inv_[8], .y = dh_inv_[4], .x = dh_inv_[0]};
+        const double3 dr     = {.x = dh_[0], .y = dh_[4], .z = dh_[8]};
+        const double3 dr_inv = { .x = dh_inv_[0], .y = dh_inv_[4], .z = dh_inv_[8]};
         /* cube center */
 
         /* lower and upper bounds */
@@ -126,16 +134,17 @@ __device__ void compute_cube_properties(const double radius,
             for (int j = -1; j <= 1; j++) {
                 for (int k = -1; k <= 1; k++) {
                     double3 r = make_double3(((double)i) * radius, ((double)j) * radius, ((double)k) * radius);
+                    // roffset.x = dh_inv[0][0] * x[0] + dh_inv[1][idir] * x[1] + dh_inv[2][idir] * x[2];
                     convert_to_lattice_coordinates(&r, roffset);
 
-                    lb_cube->x     = min(lb_cube->x, floor(roffset->x));
-                    ub_cube.x     = max(ub_cube.x, ceil(roffset->x));
+                    lb_cube->x     = min(lb_cube->x, (int)floor(roffset->x));
+                    ub_cube.x     = max(ub_cube.x, (int)ceil(roffset->x));
 
-                    lb_cube->y     = min(lb_cube->y, floor(roffset->y));
-                    ub_cube.y     = max(ub_cube.y, ceil(roffset->y));
+                    lb_cube->y     = min(lb_cube->y, (int)floor(roffset->y));
+                    ub_cube.y     = max(ub_cube.y, (int)ceil(roffset->y));
 
-                    lb_cube->z     = min(lb_cube->z, floor(roffset->z));
-                    ub_cube.z     = max(ub_cube.z, ceil(roffset->z));
+                    lb_cube->z     = min(lb_cube->z, (int)floor(roffset->z));
+                    ub_cube.z     = max(ub_cube.z, (int)ceil(roffset->z));
                 }
             }
         }
@@ -144,9 +153,9 @@ __device__ void compute_cube_properties(const double radius,
         lb_cube->y -= 1;
         lb_cube->z -= 1;
 
-        ub_cube->x += 1;
-        ub_cube->y += 1;
-        ub_cube->z += 1;
+        ub_cube.x += 1;
+        ub_cube.y += 1;
+        ub_cube.z += 1;
 
         /* compute the offset in lattice coordinates */
 
@@ -183,7 +192,7 @@ __global__ void compute_collocation_gpu_spherical(const int3 grid_size_,
 
     int3 position;
 
-    int3 cube_size, cube_center, lb_cube, ub_cube;
+    int3 cube_size, cube_center, lb_cube;
 
     double3 roffset;
     double disr_radius = 0;
@@ -222,27 +231,27 @@ __global__ void compute_collocation_gpu_spherical(const int3 grid_size_,
         const int z2 = (z + position.z + 32 * period_.z) % period_.z - grid_lower_corner_pos_.z;
 
         /* check if the point is within the window */
-        if ((z2 < (window_shift.z - grid_lower_corner_pos_.z)) || (z2 >= window_size.z)) {
-            continue;
-        }
+        // if ((z2 < (window_shift.z - grid_lower_corner_pos_.z)) || (z2 >= window_size.z)) {
+        //     continue;
+        // }
 
         for (int y = threadIdx.y; y < cube_size.y; y += blockDim.y) {
             double y1 = y - (cube_size.y / 2) - roffset.y;
             const int y2 = (y + position.y + 32 * period_.y) % period_.y - grid_lower_corner_pos_.y;
 
             /* check if the point is within the window */
-            if ((y2 < window_shift.y - grid_lower_corner_pos_.y) || (y2 >= window_size.y)) {
-                continue;
-            }
+            // if ((y2 < window_shift.y - grid_lower_corner_pos_.y) || (y2 >= window_size.y)) {
+            //     continue;
+            // }
 
             for (int x = threadIdx.x; x < cube_size.x; x += blockDim.x) {
                 const double x1 = x - (cube_size.x / 2) - roffset.x;
                 const int x2 = (x + position.x + 32 * period_.x) % period_.x - grid_lower_corner_pos_.x;
 
                 /* check if the point is within the window */
-                if ((x2 < (window_shift.x - grid_lower_corner_pos_.x)) || (x2 >= window_size.x)) {
-                     continue;
-                }
+                // if ((x2 < (window_shift.x - grid_lower_corner_pos_.x)) || (x2 >= window_size.x)) {
+                //      continue;
+                // }
 
                 double3 r3;
                 r3.x = z1 * dh_[6] + y1 * dh_[3] + x1 * dh_[0];
@@ -272,7 +281,9 @@ __global__ void compute_collocation_gpu_spherical(const int3 grid_size_,
 
                 // if (r3.x * r3.x + r3.y * r3.y + r3.z * r3.z <= radius * radius) {
                     res *= exp_factor;
-                // } else {
+                    if (threadIdx.x == 0)
+                        printf(".5lf\n", exp_factor);
+                    // } else {
                 //     res = 0.0;
                 // }
 
@@ -340,32 +351,35 @@ __global__ void compute_collocation_gpu_(const int3 grid_size_,
         coefs_[i] = coef[i];
     __syncthreads();
 
+    // if (threadIdx.x == 0) {
+    //     printf("%d %d %d\n", cube_size.z, cube_size.y, cube_size.x);
+    // }
     for (int z = threadIdx.z; z < cube_size.z; z += blockDim.z) {
         const double z1 = z - (cube_size.z / 2) - roffset.z;
         const int z2 = (z + position.z + 32 * period_.z) % period_.z - grid_lower_corner_pos_.z;
 
         /* check if the point is within the window */
-        if ((z2 < (window_shift.z - grid_lower_corner_pos_.z)) || (z2 >= window_size.z)) {
-            continue;
-        }
+        // if ((z2 < (window_shift.z - grid_lower_corner_pos_.z)) || (z2 >= window_size.z)) {
+        //     continue;
+        // }
 
         for (int y = threadIdx.y; y < cube_size.y; y += blockDim.y) {
             double y1 = y - (cube_size.y / 2) - roffset.y;
             const int y2 = (y + position.y + 32 * period_.y) % period_.y - grid_lower_corner_pos_.y;
 
             /* check if the point is within the window */
-            if ((y2 < window_shift.y - grid_lower_corner_pos_.y) || (y2 >= window_size.y)) {
-                continue;
-            }
+            // if ((y2 < window_shift.y - grid_lower_corner_pos_.y) || (y2 >= window_size.y)) {
+            //     continue;
+            // }
 
             for (int x = threadIdx.x; x < cube_size.x; x += blockDim.x) {
                 const double x1 = x - (cube_size.x / 2) - roffset.x;
                 const int x2 = (x + position.x + 32 * period_.x) % period_.x - grid_lower_corner_pos_.x;
 
                 /* check if the point is within the window */
-                if ((x2 < (window_shift.x - grid_lower_corner_pos_.x)) || (x2 >= window_size.x)) {
-                     continue;
-                }
+                // if ((x2 < (window_shift.x - grid_lower_corner_pos_.x)) || (x2 >= window_size.x)) {
+                //      continue;
+                // }
 
                 double3 r3;
                 r3.x = z1 * dh_[6] + y1 * dh_[3] + x1 * dh_[0];
@@ -373,6 +387,11 @@ __global__ void compute_collocation_gpu_(const int3 grid_size_,
                 r3.z = z1 * dh_[8] + y1 * dh_[5] + x1 * dh_[2];
                 /* compute the coordinates of the point in atomic coordinates */
                 double exp_factor = exp(-(r3.x * r3.x + r3.y * r3.y + r3.z * r3.z) * zeta);
+
+                // if (threadIdx.x == 0) {
+                //     printf("%.5lf %.5lf %.5lf %.5lf %.5lf %.5lf\n", zeta, r3.x, r3.y, r3.z, (r3.x * r3.x + r3.y * r3.y + r3.z * r3.z) * zeta, exp_factor);
+                //     printf("%.5lf %.5lf %.5lf %.5lf %.5lf %.5lf %.5lf %.5lf %.5lf\n", dh_[0], dh_[1], dh_[2], dh_[3], dh_[4], dh_[5], dh_[6], dh_[7], dh_[8]);
+                // }
 
                 double res = 0.0;
                 double dx = 1;
@@ -492,6 +511,7 @@ __global__ void compute_integration_gpu_(const int3 grid_size,
 
 extern "C"  void compute_collocation_gpu(pgf_list_gpu *handler)
 {
+    static int counting = 0;
     if (handler->running)
         return;
 
@@ -515,7 +535,7 @@ extern "C"  void compute_collocation_gpu(pgf_list_gpu *handler)
                     cudaMemcpyHostToDevice,
                     handler->stream);
 
-    cudaEventRecord(handler->event, handler->stream);
+    //cudaEventRecord(handler->event, handler->stream);
     dim3 block, thread;
 
     block.x = handler->list_length;
@@ -523,7 +543,8 @@ extern "C"  void compute_collocation_gpu(pgf_list_gpu *handler)
     thread.x = 4;
     thread.y = 4;
     thread.z = 4;
-
+    printf("test %d\n", counting);
+    counting++;
     compute_collocation_gpu_<<<block,
         thread,
         (handler->lmax + 1) * (handler->lmax + 1) * (handler->lmax + 1) * sizeof(double), handler->stream>>>(handler->grid_size,

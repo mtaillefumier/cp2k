@@ -7,6 +7,7 @@
 
 #include <stdbool.h>
 
+#include "common/grid_constants.h"
 #include "common/grid_basis_set.h"
 #include "common/grid_tasklist_private.h"
 
@@ -95,7 +96,7 @@ void grid_free_task_list(grid_task_list* task_list);
 //
 // \author Ole Schuett
 //******************************************************************************
-void grid_collocate_task_list(const int device_id, const grid_task_list* task_list, const bool orthorhombic, const int func,
+void grid_collocate_task_list(const int device_id, const grid_task_list* task_list, const bool orthorhombic, const enum func_ func,
                               const int nlevels, const int npts_global[nlevels][3], const int npts_local[nlevels][3],
                               const int shift_local[nlevels][3], const int border_width[nlevels][3],
                               const double dh[nlevels][3][3], const double dh_inv[nlevels][3][3],

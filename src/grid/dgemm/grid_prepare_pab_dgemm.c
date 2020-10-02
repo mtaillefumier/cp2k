@@ -930,7 +930,7 @@ grid_prepare_get_ldiffs_dgemm(const int func, int* const lmin_diff, int* const l
 
 // *****************************************************************************
 void
-grid_prepare_pab_dgemm(const int func, const int* const offset, const int* const lmin, const int* const lmax,
+grid_prepare_pab_dgemm(const enum func_ func, const int* const offset, const int* const lmin, const int* const lmax,
                        const double *const zeta, tensor* const pab, tensor* const pab_prep)
 {
     struct pab_computation_struct_ tmp;

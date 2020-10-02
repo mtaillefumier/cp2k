@@ -12,6 +12,8 @@
 #include "../common/tensor_local.h"
 #include "coefficients.h"
 
+
+
 void
 transform_xyz_to_triangular(const tensor* const coef, double* const coef_xyz)
 {
@@ -71,14 +73,17 @@ grid_prepare_coef_dgemm(const int* lmin, const int* lmax, const int lp, const do
                         const tensor* const pab,
                         tensor* coef_xyz) //[lp+1][lp+1][lp+1]
 {
+    /* can be done with dgemms as well, since it is a change of basis from (x - x1) (x - x2) to (x - x12)^alpha */
+
     assert(alpha != NULL);
     assert(coef_xyz != NULL);
     assert(coef_xyz->data != NULL);
     memset(coef_xyz->data, 0, coef_xyz->alloc_size_ * sizeof(double));
     // we need a proper fix for that. We can use the tensor structure for this
 
-    double coef_xyt[lp + 1][lp + 1];
-    double coef_xtt[lp + 1];
+
+    double *coef_xyt = malloc(sizeof(double) * (lp + 1) * (lp + 1));
+    double *coef_xtt  = malloc(sizeof(double) * (lp + 1));
 
     for (int lzb = 0; lzb <= lmax[1]; lzb++) {
         for (int lza = 0; lza <= lmax[0]; lza++) {
@@ -101,7 +106,7 @@ grid_prepare_coef_dgemm(const int* lmin, const int* lmax, const int lp, const do
                     }
                     for (int lyp = 0; lyp <= lya + lyb; lyp++) {
                         for (int lxp = 0; lxp <= lp - lza - lzb - lya - lyb; lxp++) {
-                            coef_xyt[lyp][lxp] += idx4(alpha[0], 1, lyb, lya, lyp) * coef_xtt[lxp];
+                            coef_xyt[lyp * (lp + 1) + lxp] += idx4(alpha[0], 1, lyb, lya, lyp) * coef_xtt[lxp];
                         }
                     }
                 }
@@ -110,12 +115,15 @@ grid_prepare_coef_dgemm(const int* lmin, const int* lmax, const int lp, const do
             for (int lzp = 0; lzp <= lza + lzb; lzp++) {
                 for (int lyp = 0; lyp <= lp - lza - lzb; lyp++) {
                     for (int lxp = 0; lxp <= lp - lza - lzb - lyp; lxp++) {
-                        idx3(coef_xyz[0], lxp, lzp, lyp) += idx4(alpha[0], 2, lzb, lza, lzp) * coef_xyt[lyp][lxp];
+                        idx3(coef_xyz[0], lxp, lzp, lyp) += idx4(alpha[0], 2, lzb, lza, lzp) * coef_xyt[lyp * (lp + 1) + lxp];
                     }
                 }
             }
         }
     }
+
+    free(coef_xyt);
+    free(coef_xtt);
 }
 
 // *****************************************************************************
@@ -131,9 +139,8 @@ grid_prepare_coef_gpu(const int* lmin, const int* lmax, const int lp, const doub
     assert(alpha != NULL);
     assert(coef_xyz != NULL);
     // we need a proper fix for that. We can use the tensor structure for this
-
-    double coef_xyt[lp + 1][lp + 1];
-    double coef_xtt[lp + 1];
+    double *coef_xyt = malloc(sizeof(double) * (lp + 1) * (lp + 1));
+    double *coef_xtt  = malloc(sizeof(double) * (lp + 1));
 
     for (int lzb = 0; lzb <= lmax[1]; lzb++) {
         for (int lza = 0; lza <= lmax[0]; lza++) {
@@ -156,7 +163,7 @@ grid_prepare_coef_gpu(const int* lmin, const int* lmax, const int lp, const doub
                     }
                     for (int lyp = 0; lyp <= lya + lyb; lyp++) {
                         for (int lxp = 0; lxp <= lp - lza - lzb - lya - lyb; lxp++) {
-                            coef_xyt[lyp][lxp] += idx4(alpha[0], 1, lyb, lya, lyp) * coef_xtt[lxp];
+                            coef_xyt[lyp* (lp + 1) + lxp] += idx4(alpha[0], 1, lyb, lya, lyp) * coef_xtt[lxp];
                         }
                     }
                 }
@@ -166,12 +173,15 @@ grid_prepare_coef_gpu(const int* lmin, const int* lmax, const int lp, const doub
                 for (int lyp = 0; lyp <= lp - lza - lzb; lyp++) {
                     for (int lxp = 0; lxp <= lp - lza - lzb - lyp; lxp++) {
                         coef_xyz[coset_without_offset(lxp, lzp, lyp)] +=
-                            idx4(alpha[0], 2, lzb, lza, lzp) * coef_xyt[lyp][lxp];
+                            idx4(alpha[0], 2, lzb, lza, lzp) * coef_xyt[lyp* (lp + 1) + lxp];
                     }
                 }
             }
         }
     }
+
+    free(coef_xyt);
+    free(coef_xtt);
 }
 
 // *****************************************************************************

@@ -15,7 +15,7 @@
 
 static grid_library_stats** per_thread_stats = NULL;
 static bool library_initialized              = false;
-static grid_library_config config            = {.backend = GRID_BACKEND_AUTO, .validate = false, .apply_cutoff = false};
+static grid_library_config config            = {.backend = GRID_BACKEND_GPU, .validate = false, .apply_cutoff = true};
 
 //******************************************************************************
 // \brief Initializes the grid library.
