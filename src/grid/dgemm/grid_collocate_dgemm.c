@@ -671,7 +671,6 @@ grid_collocate_pgf_product_cpu_dgemm(const bool use_ortho, const int border_mask
 {
 
     collocation_integration* handler = collocate_create_handle();
-    memset(handler, 0, sizeof(collocation_integration));
 
     tensor pab;
     initialize_tensor_2(&pab, n2, n1);
@@ -812,7 +811,6 @@ collocate_one_grid_level_dgemm(const grid_task_list_private* task_list, const in
         memset(&m2, 0, sizeof(dgemm_params));
 
         struct collocation_integration_* handler = collocate_create_handle();
-        memset(handler, 0, sizeof(struct collocation_integration_));
 
         handler->apply_cutoff = task_list->apply_cutoff;
         tensor work, subblock, pab, pab_prep;

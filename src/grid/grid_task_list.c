@@ -42,7 +42,7 @@ grid_create_task_list(const int ntasks, const int nlevels, const int natoms, con
         const grid_library_config config = grid_library_get_config();
 
         (*task_list)->validate           = config.validate;
-        (*task_list)->backend = GRID_BACKEND_GPU;
+        (*task_list)->backend = GRID_BACKEND_DGEMM;
         (*task_list)->apply_cutoff = config.apply_cutoff;
     }
 
