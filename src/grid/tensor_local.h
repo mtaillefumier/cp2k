@@ -170,8 +170,11 @@ create_tensor(const int dim, const int* sizes)
 inline void
 destroy_tensor(tensor* a)
 {
-    if (a->block != NULL)
+    if (a->block != NULL) {
+        if (a->block->data)
+            free(a->block->data);
         free(a->block);
+    }
 
     if (a->data)
         free(a->data);

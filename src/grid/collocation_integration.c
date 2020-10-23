@@ -98,6 +98,10 @@ collocate_finalize(void* gaussian_handle)
     free(handle->scratch);
     free(handle->pol.data);
     free(handle->cube.data);
+
+    if (handle->blocked_grid.data)
+        free(handle->blocked_grid.data);
+
     free(handle->blocks_coordinates.data);
     handle->alpha.data              = NULL;
     handle->coef.data               = NULL;
@@ -245,32 +249,32 @@ initialize_grid(collocation_integration* handler, const bool use_ortho, const bo
         }
 #endif
 
-        compute_block_dimensions(grid_reverse, handler->blockDim);
+        /* compute_block_dimensions(grid_reverse, handler->blockDim); */
 
-        if ((handler->blockDim[0] != -1) && (handler->blockDim[1] != -1) && (handler->blockDim[2] != -1) && use_ortho) {
-            assert(handler->grid.size[0] % handler->blockDim[0] == 0);
-            assert(handler->grid.size[1] % handler->blockDim[1] == 0);
-            assert(handler->grid.size[2] % handler->blockDim[2] == 0);
+        /* if ((handler->blockDim[0] != -1) && (handler->blockDim[1] != -1) && (handler->blockDim[2] != -1) && use_ortho) { */
+        /*     assert(handler->grid.size[0] % handler->blockDim[0] == 0); */
+        /*     assert(handler->grid.size[1] % handler->blockDim[1] == 0); */
+        /*     assert(handler->grid.size[2] % handler->blockDim[2] == 0); */
 
-            initialize_tensor_blocked(&handler->blocked_grid, 3, grid_reverse, handler->blockDim);
+        /*     initialize_tensor_blocked(&handler->blocked_grid, 3, grid_reverse, handler->blockDim); */
 
-            /* if (!integrate) { */
-            /*     assert(handler->grid.size[0] % handler->blockDim[2] == 0); */
-            /*     assert(handler->grid.size[1] % handler->blockDim[0] == 0); */
-            /*     assert(handler->grid.size[2] % handler->blockDim[1] == 0); */
-            /* } else { */
-            /* } */
+        /*     /\* if (!integrate) { *\/ */
+        /*     /\*     assert(handler->grid.size[0] % handler->blockDim[2] == 0); *\/ */
+        /*     /\*     assert(handler->grid.size[1] % handler->blockDim[0] == 0); *\/ */
+        /*     /\*     assert(handler->grid.size[2] % handler->blockDim[1] == 0); *\/ */
+        /*     /\* } else { *\/ */
+        /*     /\* } *\/ */
 
-            realloc_tensor(&handler->blocked_grid);
+        /*     realloc_tensor(&handler->blocked_grid); */
 
-            if (integrate) {
-                decompose_grid_to_blocked_grid(&handler->grid, &handler->blocked_grid);
-            } else {
-                memset(handler->blocked_grid.data, 0, sizeof(double) * handler->blocked_grid.alloc_size_);
-            }
-        } else {
+        /*     if (integrate) { */
+        /*         decompose_grid_to_blocked_grid(&handler->grid, &handler->blocked_grid); */
+        /*     } else { */
+        /*         memset(handler->blocked_grid.data, 0, sizeof(double) * handler->blocked_grid.alloc_size_); */
+        /*     } */
+        /* } else { */
             handler->blocked_grid.blocked_decomposition = false;
-        }
+        /* } */
     }
 }
 

@@ -632,7 +632,7 @@ apply_mapping_cubic(const int* lower_boundaries_cube, const int* cube_center, co
                         for (int y2 = 0; y2 < upper_corner[1] - lower_corner[1]; y2++) {
 
                             // the tail of the queue.
-                            LIBXSMM_PRAGMA_SIMD
+#pragma GCC ivdep
                             for (int x = 0; x < offset_x; x++)
                                 dst[x + position[2]] += src[x];
 
