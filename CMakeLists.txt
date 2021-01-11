@@ -386,25 +386,6 @@ endif ()
 # =================================== SIRIUS ==========================================
 
 if (USE_SIRIUS)
-  find_package(SPLA REQUIRED)
-  find_package(SpFFT REQUIRED)
-  find_package(HDF5 REQUIRED COMPONENTS C HL)
-  find_package(GSL REQUIRED)
-
-  if (NOT USE_SPGLIB)
-    find_package(LibSPG)
-  endif ()
-
-  if (NOT USE_LIBXC)
-    find_package(LibXC 4.3.4 REQUIRED)
-  endif ()
-
-  if (NOT USE_FFTW3)
-    find_package(FFTW REQUIRED)
-  endif ()
-
-  find_package(LibVDWXC)
-
   find_package(sirius REQUIRED)
   message("-- SIRIUS library was found")
 endif()
