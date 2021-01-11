@@ -1150,43 +1150,115 @@ add_library(cp2kobj OBJECT ${CP2K_SRCS}
     grid/ref/grid_ref_prepare_pab.c
     grid/ref/grid_ref_task_list.c
     )
-target_link_libraries(cp2kobj PUBLIC DBCSR::dbcsr OpenMP::OpenMP_Fortran OpenMP::OpenMP_C)
 
-if (USE_SMM MATCHES "libxsmm")
-  # linker/include flags are managed by pkg-config (above)
-  target_compile_definitions(dbcsr PUBLIC __LIBXSMM)
-  target_link_libraries(cp2kobj PUBLIC libxsmm::deps)
-endif ()
-
-if (BLAS_LIBRARIES MATCHES "mkl_")
-  target_compile_definitions(cp2kobj PUBLIC __MKL)
-endif ()
-
-if (APPLE)
-  # fix /proc/self/statm can not be opened on macOS
-  target_compile_definitions(cp2kobj PUBLIC __NO_STATM_ACCESS)
-
-  if (BLAS_LIBRARIES MATCHES "Accelerate")
-    target_compile_definitions(cp2kobj PUBLIC __ACCELERATE)
+  if (PLUMED2_FOUND)
+    target_compile_definitions(cp2kobj PUBLIC __PLUMED2)
+    target_link_libraries(cp2kobj PUBLIC plumed2::plumed2)
   endif ()
-endif ()
 
-# set -DNDEBUG for Release builds
-target_compile_definitions(cp2kobj PUBLIC "$<$<CONFIG:Release>:NDEBUG>")
+  if (QUIP_FOUND)
+    target_compile_definitions(cp2kobj PUBLIC __QUIP)
+    target_link_libraries(cp2kobj PUBLIC quip::quip)
+  endif ()
 
-target_link_libraries(cp2kobj PUBLIC ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES})
+  # if (MAXWELL_FOUND)
+  #   target_compile_definitions(cp2kobj PUBLIC __LIBMAXWELL)
+  #   target_link_libraries(cp2kobj PUBLIC libmaxwell::libmaxwell)
+  # endif ()
 
-target_include_directories(
-  cp2kobj
-  PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-          $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
-         )
+  if (VORI_FOUND)
+    target_compile_definitions(cp2kobj PUBLIC __LIBVORI)
+    target_link_libraries(cp2kobj PUBLIC vori::vori)
+  endif ()
 
-target_include_directories(
-  cp2kobj PUBLIC base common dbcsrx motion)
+  if (SPGLIB_FOUND)
+    target_compile_definitions(cp2kobj PUBLIC __SPGLIB)
+    target_link_libraries(cp2kobj PUBLIC spglib::spglib)
+  endif ()
 
-if (MPI_FOUND)
-  target_compile_definitions(
+  if (SIRIUS_FOUND)
+    target_compile_definitions(cp2kobj PUBLIC __SIRIUS __GSL __SPLA __SPFFT)
+    target_link_libraries(cp2kobj PUBLIC sirius::sirius)
+  endif ()
+
+  if (ELPA_FOUND)
+    target_compile_definitions(cp2kobj PUBLIC __ELPA)
+    target_link_libraries(cp2kobj PUBLIC elpa::elpa)
+  endif ()
+
+  if (COSMA_FOUND)
+    target_compile_definitions(cp2kobj PUBLIC __COSMA)
+    target_link_libraries(cp2kobj PUBLIC cosma::cosma)
+  endif ()
+
+  if (SCALAPACK_FOUND)
+    target_compile_definitions(cp2kobj PUBLIC __SCALAPACK)
+    target_link_libraries(cp2kobj PUBLIC scalapack::scalapack)
+  endif ()
+
+  if (LIBXC_FOUND)
+    target_compile_definitions(cp2kobj PUBLIC __LIBXC)
+    target_link_libraries(cp2kobj PUBLIC libxc::libxc)
+  endif ()
+
+  if (FFTW3_FOUND)
+    target_compile_definitions(cp2kobj PUBLIC __FFTW3)
+    target_link_libraries(cp2kobj PUBLIC fftw3::fftw3)
+  endif ()
+
+  if (LIBINT_FOUND)
+    target_compile_definitions(cp2kobj PUBLIC __LIBINT)
+    target_link_libraries(cp2kobj PUBLIC libint2::libint2)
+  endif ()
+
+  if (LIBPEXSI_FOUND)
+    target_compile_definitions(cp2kobj PUBLIC -D__LIBPEXSI)
+    target_compile_libraries(cp2kobj PUBLIC)
+  endif ()
+
+  target_link_libraries(cp2kobj PUBLIC DBCSR::dbcsr OpenMP::OpenMP_Fortran OpenMP::OpenMP_C)
+
+  if (CUDATOOLKIT_FOUND)
+    target_compile_definitions(cp2kobj PUBLIC -D__GRID_CUDA -D__PW_CUDA)
+    target_link_libraries(cp2kobj PUBLIC CUDA::cufft CUDA::cufftw CUDA::cublas CUDA::cudart)
+  endif ()
+
+  if (USE_SMM MATCHES "libxsmm")
+    # linker/include flags are managed by pkg-config (above)
+    target_compile_definitions(dbcsr PUBLIC __LIBXSMM)
+    target_link_libraries(cp2kobj PUBLIC libxsmm::deps)
+  endif ()
+
+  if (BLAS_LIBRARIES MATCHES "mkl_")
+    target_compile_definitions(cp2kobj PUBLIC __MKL blas::blas)
+  endif ()
+
+
+  if (APPLE)
+    # fix /proc/self/statm can not be opened on macOS
+    target_compile_definitions(cp2kobj PUBLIC __NO_STATM_ACCESS)
+
+    if (BLAS_LIBRARIES MATCHES "Accelerate")
+      target_compile_definitions(cp2kobj PUBLIC __ACCELERATE)
+    endif ()
+  endif ()
+
+  # set -DNDEBUG for Release builds
+  target_compile_definitions(cp2kobj PUBLIC "$<$<CONFIG:Release>:NDEBUG>")
+
+  target_link_libraries(cp2kobj PUBLIC ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES})
+
+  target_include_directories(
+    cp2kobj
+    PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
+    )
+
+  target_include_directories(
+    cp2kobj PUBLIC base common dbcsrx motion)
+
+  if (MPI_FOUND)
+    target_compile_definitions(
     cp2kobj PUBLIC __parallel __MPI_VERSION=${MPI_Fortran_VERSION_MAJOR})
 
   # Instead of resetting the compiler for MPI, we are adding the compiler flags

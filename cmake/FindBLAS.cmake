@@ -76,6 +76,8 @@ This module defines the following variables:
 ``BLAS95_LIBRARIES``
   uncached list of libraries (using full path name) to link against
   to use BLAS95 interface
+  ``BALS_INCLUDE_DIR``
+  uncached list of include directories
 ``BLAS95_FOUND``
   library implementing the BLAS95 interface is found
 
@@ -496,6 +498,16 @@ if(BLA_VENDOR MATCHES "Intel" OR BLA_VENDOR STREQUAL "All")
         endif()
       endforeach()
 
+      # check header files. BLAS is not reserved to fortran.
+
+      find_path(BLAS_INCLUDE_DIRS NAMES mkl.h
+        PATH_SUFFIXES inc include include/mkl mkl
+        HINTS
+        ENV{MKLROOT}
+        ENV{EBMKLROOT}
+        ENV{MKL_ROOT}
+        )
+
       unset(BLAS_mkl_ILP_MODE)
       unset(BLAS_mkl_INTFACE)
       unset(BLAS_mkl_THREADING)
@@ -550,6 +562,14 @@ if(BLA_VENDOR STREQUAL "OpenBLAS" OR BLA_VENDOR STREQUAL "All")
       ""
       )
 
+    find_path(BLAS_INCLUDE_DIRS NAMES openblas.h
+      PATH_SUFFIXES inc include include/openblas openblas
+      HINTS
+      ENV{OPENBLASROOT}
+      ENV{OPENBLAS_ROOT}
+      ENV{EBOPENBLAS_ROOT}
+      )
+
     if (BLAS_LIBRARIES AND USE_OPENMP)
       check_openblas_omp_support()
     endif ()
@@ -601,6 +621,14 @@ if(BLA_VENDOR STREQUAL "OpenBLAS" OR BLA_VENDOR STREQUAL "All")
     if (BLAS_LIBRARIES AND USE_OPENMP)
       check_openblas_omp_support()
     endif ()
+
+    find_path(BLAS_INCLUDE_DIRS NAMES openblas.h
+      PATH_SUFFIXES inc include include/openblas openblas
+      HINTS
+      ENV{OPENBLASROOT}
+      ENV{OPENBLAS_ROOT}
+      ENV{EBOPENBLAS_ROOT}
+      )
 
     if (NOT BLAS_LIBRARIES)
       check_blas_libraries(
@@ -657,6 +685,14 @@ if(BLA_VENDOR MATCHES "Arm" OR BLA_VENDOR STREQUAL "All")
       ""
       ""
       )
+    find_path(BLAS_INCLUDE_DIRS NAMES armpl.h
+      PATH_SUFFIXES inc include
+      HINTS
+      ENV{ARMPLROOT}
+      ENV{ARMPL_ROOT}
+      ENV{EBARMPL_ROOT}
+      ENV{EBARMPLROOT}
+      )
   endif()
 
 endif()
@@ -673,6 +709,14 @@ if(BLA_VENDOR STREQUAL "FLAME" OR BLA_VENDOR STREQUAL "All")
       ""
       ""
       ""
+      )
+    find_path(BLAS_INCLUDE_DIRS NAMES blis.h
+      PATH_SUFFIXES inc include
+      HINTS
+      ENV{FLAMEROOT}
+      ENV{FLAME_ROOT}
+      ENV{EBFLAME_ROOT}
+      ENV{EBFLAMEROOT}
       )
   endif()
 endif()
@@ -1000,7 +1044,18 @@ if(BLA_VENDOR STREQUAL "Generic" OR BLA_VENDOR STREQUAL "All")
 endif()
 
 if(NOT BLA_F95)
-  find_package_handle_standard_args(BLAS REQUIRED_VARS BLAS_LIBRARIES)
+  if (BLAS_INCLUDE_DIRS)
+    find_package_handle_standard_args(BLAS REQUIRED_VARS BLAS_LIBRARIES BLAS_INCLUDE_DIRS)
+  else ()
+    find_package_handle_standard_args(BLAS REQUIRED_VARS BLAS_LIBRARIES)
+  endif ()
+
+  if (NOT TARGET blas::blas)
+    add_library(blas::blas INTERFACE IMPORTED)
+    set_target_properties(blas::blas PROPERTIES
+      INTERFACE_INCLUDE_DIRECTORIES "${BLAS_INCLUDE_DIRS}"
+      INTERFACE_LINK_LIBRARIES "${BLAS_LIBRARIES}")
+    endif()
 endif()
 
 # On compilers that implicitly link BLAS (such as ftn, cc, and CC on Cray HPC machines)
@@ -1010,4 +1065,5 @@ if(BLAS_LIBRARIES STREQUAL "BLAS_LIBRARIES-PLACEHOLDER-FOR-EMPTY-LIBRARIES")
 endif()
 
 cmake_pop_check_state()
+
 set(CMAKE_FIND_LIBRARY_SUFFIXES ${_blas_ORIG_CMAKE_FIND_LIBRARY_SUFFIXES})
