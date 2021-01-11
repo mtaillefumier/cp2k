@@ -92,6 +92,7 @@ option(USE_PEXSI "Enable pexsi support" NO)
 option(USE_QUIP "Enable quip support" NO)
 option(USE_SPGLIB "Enable spglib support" NO)
 option(USE_LIBXC "Enable libxc support" NO)
+option(USE_SCALAPACK "Enable scalapack support" NO)
 
 set(SUPPORTED_CUDA_ARCHITECTURES K20X K40 K80 P100 V100)
 set(SUPPORTED_HIP_ARCHITECTURES Mi50)
@@ -176,8 +177,6 @@ elseif (USE_SMM MATCHES "libxsmm")
 else ()
   message(FATAL_ERROR "Unknown SMM library specified")
 endif ()
-
-option (LIBXC "Use libxc for calculating the exchange and correlation terms" NO)
 
 # ================================== CUDA / ROCM ======================================
 
