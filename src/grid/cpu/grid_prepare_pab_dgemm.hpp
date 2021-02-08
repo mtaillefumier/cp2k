@@ -8,14 +8,16 @@
 #ifndef GRID_PREPARE_PAB_DGEMM_H
 #define GRID_PREPARE_PAB_DGEMM_H
 
-#include "../common/grid_constants.h"
-#include "tensor_local.h"
+extern "C" {
+		#include "../common/grid_constants.h"
+}
+#include "tensor_local.hpp"
 void grid_prepare_get_ldiffs_dgemm(const enum grid_func func,
-                                   int *const lmin_diff, int *const lmax_diff);
+																	 int *const lmin_diff, int *const lmax_diff);
 
 void grid_prepare_pab_dgemm(const enum grid_func func, const int *const offset,
-                            const int *const lmax, const int *const lmin,
-                            const double *const zeta, tensor *const pab,
-                            tensor *const pab_prep);
+														const int *const lmax, const int *const lmin,
+														const double *const zeta, tensor *const pab,
+														tensor *const pab_prep);
 
 #endif

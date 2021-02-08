@@ -22,14 +22,14 @@
  * \author Ole Schuett
  ******************************************************************************/
 typedef struct {
-  int backend;
-  grid_ref_task_list *ref;
-  grid_cpu_task_list *cpu;
+	int backend;
+	grid_ref_task_list *ref;
+	void *cpu;
 #ifdef __GRID_CUDA
-  grid_gpu_task_list *gpu;
-  grid_hybrid_task_list *hybrid;
+	grid_gpu_task_list *gpu;
+	void *hybrid;
 #endif
-  // more backends to be added here
+	// more backends to be added here
 } grid_task_list;
 
 /*******************************************************************************
@@ -64,16 +64,16 @@ typedef struct {
  * \author Ole Schuett
  ******************************************************************************/
 void grid_create_task_list(
-    const int ntasks, const int nlevels, const int natoms, const int nkinds,
-    const int nblocks, const int block_offsets[nblocks],
-    const double atom_positions[natoms][3], const int atom_kinds[natoms],
-    const grid_basis_set *basis_sets[nkinds], const int level_list[ntasks],
-    const int iatom_list[ntasks], const int jatom_list[ntasks],
-    const int iset_list[ntasks], const int jset_list[ntasks],
-    const int ipgf_list[ntasks], const int jpgf_list[ntasks],
-    const int border_mask_list[ntasks], const int block_num_list[ntasks],
-    const double radius_list[ntasks], const double rab_list[ntasks][3],
-    grid_task_list **task_list);
+		const int ntasks, const int nlevels, const int natoms, const int nkinds,
+		const int nblocks, const int block_offsets[nblocks],
+		const double atom_positions[natoms][3], const int atom_kinds[natoms],
+		const grid_basis_set *basis_sets[nkinds], const int level_list[ntasks],
+		const int iatom_list[ntasks], const int jatom_list[ntasks],
+		const int iset_list[ntasks], const int jset_list[ntasks],
+		const int ipgf_list[ntasks], const int jpgf_list[ntasks],
+		const int border_mask_list[ntasks], const int block_num_list[ntasks],
+		const double radius_list[ntasks], const double rab_list[ntasks][3],
+		grid_task_list **task_list);
 
 /*******************************************************************************
  * \brief Deallocates given task list, basis_sets have to be freed separately.
@@ -103,12 +103,12 @@ void grid_free_task_list(grid_task_list *task_list);
  * \author Ole Schuett
  ******************************************************************************/
 void grid_collocate_task_list(
-    const grid_task_list *task_list, const bool orthorhombic,
-    const enum grid_func func, const int nlevels,
-    const int npts_global[nlevels][3], const int npts_local[nlevels][3],
-    const int shift_local[nlevels][3], const int border_width[nlevels][3],
-    const double dh[nlevels][3][3], const double dh_inv[nlevels][3][3],
-    const grid_buffer *pab_blocks, double *grid[nlevels]);
+		const grid_task_list *task_list, const bool orthorhombic,
+		const enum grid_func func, const int nlevels,
+		const int npts_global[nlevels][3], const int npts_local[nlevels][3],
+		const int shift_local[nlevels][3], const int border_width[nlevels][3],
+		const double dh[nlevels][3][3], const double dh_inv[nlevels][3][3],
+		const grid_buffer *pab_blocks, double *grid[nlevels]);
 
 /*******************************************************************************
  * \brief Integrate all tasks of in given list from given grids.
@@ -138,13 +138,13 @@ void grid_collocate_task_list(
  * \author Ole Schuett
  ******************************************************************************/
 void grid_integrate_task_list(
-    const grid_task_list *task_list, const bool orthorhombic,
-    const bool compute_tau, const int natoms, const int nlevels,
-    const int npts_global[nlevels][3], const int npts_local[nlevels][3],
-    const int shift_local[nlevels][3], const int border_width[nlevels][3],
-    const double dh[nlevels][3][3], const double dh_inv[nlevels][3][3],
-    const grid_buffer *pab_blocks, const double *grid[nlevels],
-    grid_buffer *hab_blocks, double forces[natoms][3], double virial[3][3]);
+		const grid_task_list *task_list, const bool orthorhombic,
+		const bool compute_tau, const int natoms, const int nlevels,
+		const int npts_global[nlevels][3], const int npts_local[nlevels][3],
+		const int shift_local[nlevels][3], const int border_width[nlevels][3],
+		const double dh[nlevels][3][3], const double dh_inv[nlevels][3][3],
+		const grid_buffer *pab_blocks, const double *grid[nlevels],
+		grid_buffer *hab_blocks, double forces[natoms][3], double virial[3][3]);
 
 #endif
 
