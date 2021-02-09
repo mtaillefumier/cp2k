@@ -26,7 +26,8 @@ extern "C" {
 }
 
 #include "Interval.hpp"
-#include "tensor_local.hpp"
+#include "grid_info.hpp"
+#include "tensor.hpp"
 
 /* inverse of the factorials */
 static const double inv_fac[] = {1.0,
@@ -101,12 +102,6 @@ void dgemm_(const char *transa, const char *transb, const int *m, const int *n,
 						const double *b, const int *ldb, const double *beta, double *c,
 						const int *ldc);
 
-extern void extract_sub_grid(const int *lower_corner, const int *upper_corner,
-														 const int *position, const tensor *const grid,
-														 tensor *const subgrid);
-extern void add_sub_grid(const int *lower_corner, const int *upper_corner,
-												 const int *position, const tensor *subgrid,
-												 tensor *grid);
 extern void return_cube_position(const int *grid_size, const int *lb_grid,
 																 const int *cube_center,
 																 const int *lower_boundaries_cube,
@@ -183,9 +178,4 @@ void cblas_dgemv(const CBLAS_LAYOUT Layout, const CBLAS_TRANSPOSE TransA,
 								 const double beta, double *Y, const int incY);
 
 #endif
-
-void compute_interval(const int *const map, const int full_size,
-											const int size, const int cube_size, const int x1,
-											int *x, int *const lower_corner,
-											int *const upper_corner, const Interval &window);
 #endif

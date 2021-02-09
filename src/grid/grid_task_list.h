@@ -12,7 +12,7 @@
 #include "common/grid_basis_set.h"
 #include "common/grid_buffer.h"
 #include "common/grid_constants.h"
-#include "cpu/grid_cpu_task_list.h"
+//#include "cpu/grid_cpu_task_list.h"
 #include "gpu/grid_gpu_task_list.h"
 #include "hybrid/grid_hybrid_task_list.h"
 #include "ref/grid_ref_task_list.h"

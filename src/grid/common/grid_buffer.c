@@ -8,7 +8,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
-
+#include <string.h>
 #include "grid_buffer.h"
 
 #ifdef __GRID_CUDA
@@ -19,11 +19,11 @@
  * \author Ole Schuett
  ******************************************************************************/
 #define CHECK(status)                                                          \
-  if (status != cudaSuccess) {                                                 \
-    fprintf(stderr, "ERROR: %s %s %d\n", cudaGetErrorString(status), __FILE__, \
-            __LINE__);                                                         \
-    abort();                                                                   \
-  }
+	if (status != cudaSuccess) {                                                 \
+		fprintf(stderr, "ERROR: %s %s %d\n", cudaGetErrorString(status), __FILE__, \
+						__LINE__);                                                         \
+		abort();                                                                   \
+	}
 
 #endif // __GRID_CUDA
 
@@ -33,27 +33,28 @@
  ******************************************************************************/
 void grid_create_buffer(const int length, grid_buffer **buffer) {
 
-  const size_t requested_size = length * sizeof(double);
+	const size_t requested_size = length * sizeof(double);
 
-  if (*buffer != NULL) {
-    if ((*buffer)->size >= requested_size) {
-      return; // reuse existing buffer
-    } else {
-      grid_free_buffer(*buffer);
-    }
-  }
+	if (*buffer != NULL) {
+		if ((*buffer)->size >= requested_size) {
+			return; // reuse existing buffer
+		} else {
+			grid_free_buffer(*buffer);
+		}
+	}
 
-  (*buffer) = malloc(sizeof(grid_buffer));
-  (*buffer)->size = requested_size;
+	(*buffer) = malloc(sizeof(grid_buffer));
+	memset((*buffer), 0, sizeof(grid_buffer));
+	(*buffer)->size = requested_size;
 
 #ifdef __GRID_CUDA
-  // With size 0 cudaMallocHost doesn't null the pointer and cudaFreeHost fails.
-  (*buffer)->host_buffer = NULL;
-  CHECK(cudaMallocHost((void **)&(*buffer)->host_buffer, requested_size));
-  CHECK(cudaMalloc((void **)&(*buffer)->device_buffer, requested_size));
+	// With size 0 cudaMallocHost doesn't null the pointer and cudaFreeHost fails.
+	(*buffer)->host_buffer = NULL;
+	CHECK(cudaMallocHost((void **)&(*buffer)->host_buffer, requested_size));
+	CHECK(cudaMalloc((void **)&(*buffer)->device_buffer, requested_size));
 #else
-  (*buffer)->host_buffer = malloc(requested_size);
-  (*buffer)->device_buffer = NULL;
+	(*buffer)->host_buffer = malloc(requested_size);
+	(*buffer)->device_buffer = NULL;
 #endif
 }
 
@@ -63,17 +64,17 @@ void grid_create_buffer(const int length, grid_buffer **buffer) {
  ******************************************************************************/
 void grid_free_buffer(grid_buffer *buffer) {
 
-  if (buffer == NULL)
-    return;
+	if (buffer == NULL)
+		return;
 
 #ifdef __GRID_CUDA
-  CHECK(cudaFreeHost(buffer->host_buffer));
-  CHECK(cudaFree(buffer->device_buffer));
+	CHECK(cudaFreeHost(buffer->host_buffer));
+	CHECK(cudaFree(buffer->device_buffer));
 #else
-  free(buffer->host_buffer);
+	free(buffer->host_buffer);
 #endif
 
-  free(buffer);
+	free(buffer);
 }
 
 /*******************************************************************************
@@ -81,8 +82,8 @@ void grid_free_buffer(grid_buffer *buffer) {
  * \author Ole Schuett
  ******************************************************************************/
 double *grid_buffer_get_host_pointer(grid_buffer *buffer) {
-  assert(buffer != NULL);
-  return buffer->host_buffer;
+	assert(buffer != NULL);
+	return buffer->host_buffer;
 }
 
 // EOF

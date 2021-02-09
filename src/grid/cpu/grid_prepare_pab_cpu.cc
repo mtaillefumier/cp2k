@@ -6,24 +6,35 @@
 /*----------------------------------------------------------------------------*/
 
 #include <cassert>
-
+#include <algorithm>
 extern "C" {
 #include "../common/grid_common.h"
 #include "../common/grid_constants.h"
 }
 
+#include "grid_context_cpu.hpp"
+#include "tensor.hpp"
 #include "utils.hpp"
-#include "grid_prepare_pab_dgemm.hpp"
 
 
-struct pab_computation_struct_ {
-	int offset[2];
-	int lmax[2];
-	int lmin[2];
-	double zeta[2];
-	tensor *pab;
-	tensor *pab_prep;
-	int dir1, dir2;
+class pab_computation_struct_ {
+public:
+		int offset[2];
+		int lmax[2];
+		int lmin[2];
+		double zeta[2];
+		tensor1<double, 2> &pab;
+		tensor1<double, 2> &pab_prep;
+		int dir1, dir2;
+		pab_computation_struct_(tensor1<double, 2> &pab_, tensor1<double, 2> &pab_prep_)
+				:pab(pab_),
+				pab_prep(pab_prep_)
+				{
+						pab = pab_;
+						pab_prep = pab_prep_;
+				};
+		~pab_computation_struct_() {
+		};
 };
 
 // *****************************************************************************
@@ -38,8 +49,8 @@ static void grid_prepare_pab_AB(struct pab_computation_struct_ *const tp) {
 								 lzb <= tp->lmax[1] - lxb - lyb; lzb++) {
 							const int ico = tp->offset[0] + coset(lxa, lya, lza);
 							const int jco = tp->offset[1] + coset(lxb, lyb, lzb);
-							idx2(tp->pab_prep[0], coset(lxb, lyb, lzb),
-									 coset(lxa, lya, lza)) = idx2(tp->pab[0], jco, ico);
+							tp->pab_prep(coset(lxb, lyb, lzb),
+													 coset(lxa, lya, lza)) = tp->pab(jco, ico);
 						}
 					}
 				}
@@ -59,70 +70,70 @@ static void grid_prepare_pab_DADB(struct pab_computation_struct_ *const tp) {
 		for (int lxb = 0; lxb <= tp->lmax[1]; lxb++) {
 			for (int lya = 0; lya <= tp->lmax[0] - lxa; lya++) {
 				for (int lyb = 0; lyb <= tp->lmax[1] - lxb; lyb++) {
-					for (int lza = imax(tp->lmin[0] - lxa - lya, 0);
+					for (int lza = std::max(tp->lmin[0] - lxa - lya, 0);
 							 lza <= tp->lmax[0] - lxa - lya; lza++) {
-						for (int lzb = imax(tp->lmin[1] - lxb - lyb, 0);
+						for (int lzb = std::max(tp->lmin[1] - lxb - lyb, 0);
 								 lzb <= tp->lmax[1] - lxb - lyb; lzb++) {
 							const int ico = tp->offset[0] + coset(lxa, lya, lza);
 							const int jco = tp->offset[1] + coset(lxb, lyb, lzb);
-							const double pab = idx2(tp->pab[0], jco, ico);
+							const double pab = tp->pab(jco, ico);
 							int ico_l, jco_l;
 							// x  (all safe if lxa = 0, as the spurious added terms have zero
 							// prefactor)
 
-							ico_l = coset(imax(lxa - 1, 0), lya, lza);
-							jco_l = coset(imax(lxb - 1, 0), lyb, lzb);
-							idx2(tp->pab_prep[0], jco_l, ico_l) += 0.5 * lxa * lxb * pab;
+							ico_l = coset(std::max(lxa - 1, 0), lya, lza);
+							jco_l = coset(std::max(lxb - 1, 0), lyb, lzb);
+							tp->pab_prep(jco_l, ico_l) += 0.5 * lxa * lxb * pab;
 
-							ico_l = coset(imax(lxa - 1, 0), lya, lza);
+							ico_l = coset(std::max(lxa - 1, 0), lya, lza);
 							jco_l = coset((lxb + 1), lyb, lzb);
-							idx2(tp->pab_prep[0], jco_l, ico_l) -= lxa * tp->zeta[1] * pab;
+							tp->pab_prep(jco_l, ico_l) -= lxa * tp->zeta[1] * pab;
 
 							ico_l = coset((lxa + 1), lya, lza);
-							jco_l = coset(imax(lxb - 1, 0), lyb, lzb);
-							idx2(tp->pab_prep[0], jco_l, ico_l) -= tp->zeta[0] * lxb * pab;
+							jco_l = coset(std::max(lxb - 1, 0), lyb, lzb);
+							tp->pab_prep(jco_l, ico_l) -= tp->zeta[0] * lxb * pab;
 
 							ico_l = coset((lxa + 1), lya, lza);
 							jco_l = coset((lxb + 1), lyb, lzb);
-							idx2(tp->pab_prep[0], jco_l, ico_l) +=
+							tp->pab_prep(jco_l, ico_l) +=
 									2.0 * tp->zeta[0] * tp->zeta[1] * pab;
 
 							// y
 
-							ico_l = coset(lxa, imax(lya - 1, 0), lza);
-							jco_l = coset(lxb, imax(lyb - 1, 0), lzb);
-							idx2(tp->pab_prep[0], jco_l, ico_l) += 0.5 * lya * lyb * pab;
+							ico_l = coset(lxa, std::max(lya - 1, 0), lza);
+							jco_l = coset(lxb, std::max(lyb - 1, 0), lzb);
+							tp->pab_prep(jco_l, ico_l) += 0.5 * lya * lyb * pab;
 
-							ico_l = coset(lxa, imax(lya - 1, 0), lza);
+							ico_l = coset(lxa, std::max(lya - 1, 0), lza);
 							jco_l = coset(lxb, (lyb + 1), lzb);
-							idx2(tp->pab_prep[0], jco_l, ico_l) -= lya * tp->zeta[1] * pab;
+							tp->pab_prep(jco_l, ico_l) -= lya * tp->zeta[1] * pab;
 
 							ico_l = coset(lxa, (lya + 1), lza);
-							jco_l = coset(lxb, imax(lyb - 1, 0), lzb);
-							idx2(tp->pab_prep[0], jco_l, ico_l) -= tp->zeta[0] * lyb * pab;
+							jco_l = coset(lxb, std::max(lyb - 1, 0), lzb);
+							tp->pab_prep(jco_l, ico_l) -= tp->zeta[0] * lyb * pab;
 
 							ico_l = coset(lxa, (lya + 1), lza);
 							jco_l = coset(lxb, (lyb + 1), lzb);
-							idx2(tp->pab_prep[0], jco_l, ico_l) +=
+							tp->pab_prep(jco_l, ico_l) +=
 									2.0 * tp->zeta[0] * tp->zeta[1] * pab;
 
 							// z
 
-							ico_l = coset(lxa, lya, imax(lza - 1, 0));
-							jco_l = coset(lxb, lyb, imax(lzb - 1, 0));
-							idx2(tp->pab_prep[0], jco_l, ico_l) += 0.5 * lza * lzb * pab;
+							ico_l = coset(lxa, lya, std::max(lza - 1, 0));
+							jco_l = coset(lxb, lyb, std::max(lzb - 1, 0));
+							tp->pab_prep(jco_l, ico_l) += 0.5 * lza * lzb * pab;
 
-							ico_l = coset(lxa, lya, imax(lza - 1, 0));
+							ico_l = coset(lxa, lya, std::max(lza - 1, 0));
 							jco_l = coset(lxb, lyb, (lzb + 1));
-							idx2(tp->pab_prep[0], jco_l, ico_l) -= lza * tp->zeta[1] * pab;
+							tp->pab_prep(jco_l, ico_l) -= lza * tp->zeta[1] * pab;
 
 							ico_l = coset(lxa, lya, (lza + 1));
-							jco_l = coset(lxb, lyb, imax(lzb - 1, 0));
-							idx2(tp->pab_prep[0], jco_l, ico_l) -= tp->zeta[0] * lzb * pab;
+							jco_l = coset(lxb, lyb, std::max(lzb - 1, 0));
+							tp->pab_prep(jco_l, ico_l) -= tp->zeta[0] * lzb * pab;
 
 							ico_l = coset(lxa, lya, (lza + 1));
 							jco_l = coset(lxb, lyb, (lzb + 1));
-							idx2(tp->pab_prep[0], jco_l, ico_l) +=
+							tp->pab_prep(jco_l, ico_l) +=
 									2.0 * tp->zeta[0] * tp->zeta[1] * pab;
 						}
 					}
@@ -145,67 +156,67 @@ static void grid_prepare_pab_ADBmDAB(struct pab_computation_struct_ *const tp) {
 		for (int lxb = 0; lxb <= tp->lmax[1]; lxb++) {
 			for (int lya = 0; lya <= tp->lmax[0] - lxa; lya++) {
 				for (int lyb = 0; lyb <= tp->lmax[1] - lxb; lyb++) {
-					for (int lza = imax(tp->lmin[0] - lxa - lya, 0);
+					for (int lza = std::max(tp->lmin[0] - lxa - lya, 0);
 							 lza <= tp->lmax[0] - lxa - lya; lza++) {
-						for (int lzb = imax(tp->lmin[1] - lxb - lyb, 0);
+						for (int lzb = std::max(tp->lmin[1] - lxb - lyb, 0);
 								 lzb <= tp->lmax[1] - lxb - lyb; lzb++) {
 							const int ico = tp->offset[0] + coset(lxa, lya, lza);
 							const int jco = tp->offset[1] + coset(lxb, lyb, lzb);
-							const double pab = idx2(tp->pab[0], jco, ico);
+							const double pab = tp->pab(jco, ico);
 							int ico_l, jco_l;
 
 							// ! this element of pab results in 4 elements of pab_prep
 							switch (tp->dir1) {
 							case 'X': { // x
 								ico_l = coset(lxa, lya, lza);
-								jco_l = coset(imax(lxb - 1, 0), lyb, lzb);
-								idx2(tp->pab_prep[0], jco_l, ico_l) += lxb * pab;
+								jco_l = coset(std::max(lxb - 1, 0), lyb, lzb);
+								tp->pab_prep(jco_l, ico_l) += lxb * pab;
 
 								// ico_l = coset(lxa, lya, lza);
 								jco_l = coset((lxb + 1), lyb, lzb);
-								idx2(tp->pab_prep[0], jco_l, ico_l) -= 2.0 * tp->zeta[1] * pab;
+								tp->pab_prep(jco_l, ico_l) -= 2.0 * tp->zeta[1] * pab;
 
-								ico_l = coset(imax(lxa - 1, 0), lya, lza);
+								ico_l = coset(std::max(lxa - 1, 0), lya, lza);
 								jco_l = coset(lxb, lyb, lzb);
-								idx2(tp->pab_prep[0], jco_l, ico_l) -= lxa * pab;
+								tp->pab_prep(jco_l, ico_l) -= lxa * pab;
 
 								ico_l = coset(lxa + 1, lya, lza);
 								// jco_l = coset(lxb, lyb, lzb);
-								idx2(tp->pab_prep[0], jco_l, ico_l) += 2.0 * tp->zeta[0] * pab;
+								tp->pab_prep(jco_l, ico_l) += 2.0 * tp->zeta[0] * pab;
 							} break;
 							case 'Y': { // y
 								ico_l = coset(lxa, lya, lza);
-								jco_l = coset(lxb, imax(lyb - 1, 0), lzb);
-								idx2(tp->pab_prep[0], jco_l, ico_l) += lyb * pab;
+								jco_l = coset(lxb, std::max(lyb - 1, 0), lzb);
+								tp->pab_prep(jco_l, ico_l) += lyb * pab;
 
 								// ico_l = coset(lxa, lya, lza);
 								jco_l = coset(lxb, lyb + 1, lzb);
-								idx2(tp->pab_prep[0], jco_l, ico_l) -= 2.0 * tp->zeta[1] * pab;
+								tp->pab_prep(jco_l, ico_l) -= 2.0 * tp->zeta[1] * pab;
 
-								ico_l = coset(lxa, imax(lya - 1, 0), lza);
+								ico_l = coset(lxa, std::max(lya - 1, 0), lza);
 								jco_l = coset(lxb, lyb, lzb);
-								idx2(tp->pab_prep[0], jco_l, ico_l) -= lya * pab;
+								tp->pab_prep(jco_l, ico_l) -= lya * pab;
 
 								ico_l = coset(lxa, lya + 1, lza);
 								// jco_l = coset(lxb, lyb, lzb);
-								idx2(tp->pab_prep[0], jco_l, ico_l) += 2.0 * tp->zeta[0] * pab;
+								tp->pab_prep(jco_l, ico_l) += 2.0 * tp->zeta[0] * pab;
 							} break;
 							case 'Z': { // z
 								ico_l = coset(lxa, lya, lza);
-								jco_l = coset(lxb, lyb, imax(lzb - 1, 0));
-								idx2(tp->pab_prep[0], jco_l, ico_l) += lzb * pab;
+								jco_l = coset(lxb, lyb, std::max(lzb - 1, 0));
+								tp->pab_prep(jco_l, ico_l) += lzb * pab;
 
 								// ico_l = coset(lxa, lya, lza);
 								jco_l = coset(lxb, lyb, lzb + 1);
-								idx2(tp->pab_prep[0], jco_l, ico_l) -= 2.0 * tp->zeta[1] * pab;
+								tp->pab_prep(jco_l, ico_l) -= 2.0 * tp->zeta[1] * pab;
 
-								ico_l = coset(lxa, lya, imax(lza - 1, 0));
+								ico_l = coset(lxa, lya, std::max(lza - 1, 0));
 								jco_l = coset(lxb, lyb, lzb);
-								idx2(tp->pab_prep[0], jco_l, ico_l) -= lza * pab;
+								tp->pab_prep(jco_l, ico_l) -= lza * pab;
 
 								ico_l = coset(lxa, lya, lza + 1);
 								// jco_l = coset(lxb, lyb, lzb);
-								idx2(tp->pab_prep[0], jco_l, ico_l) += 2.0 * tp->zeta[0] * pab;
+								tp->pab_prep(jco_l, ico_l) += 2.0 * tp->zeta[0] * pab;
 							} break;
 							default:
 								break;
@@ -236,13 +247,13 @@ grid_prepare_pab_ARDBmDARB(struct pab_computation_struct_ *const tp) {
 		for (int lxb = 0; lxb <= tp->lmax[1]; lxb++) {
 			for (int lya = 0; lya <= tp->lmax[0] - lxa; lya++) {
 				for (int lyb = 0; lyb <= tp->lmax[1] - lxb; lyb++) {
-					for (int lza = imax(tp->lmin[0] - lxa - lya, 0);
+					for (int lza = std::max(tp->lmin[0] - lxa - lya, 0);
 							 lza <= tp->lmax[0] - lxa - lya; lza++) {
-						for (int lzb = imax(tp->lmin[1] - lxb - lyb, 0);
+						for (int lzb = std::max(tp->lmin[1] - lxb - lyb, 0);
 								 lzb <= tp->lmax[1] - lxb - lyb; lzb++) {
 							const int ico = tp->offset[0] + coset(lxa, lya, lza);
 							const int jco = tp->offset[1] + coset(lxb, lyb, lzb);
-							const double pab = idx2(tp->pab[0], jco, ico);
+							const double pab = tp->pab(jco, ico);
 
 							int ico_l, jco_l;
 
@@ -253,58 +264,58 @@ grid_prepare_pab_ARDBmDARB(struct pab_computation_struct_ *const tp) {
 								case 'X': {
 									ico_l = coset(lxa, lya, lza);
 									jco_l = coset(lxb, lyb, lzb);
-									idx2(tp->pab_prep[0], jco_l, ico_l) += lxb * pab;
+									tp->pab_prep(jco_l, ico_l) += lxb * pab;
 
 									ico_l = coset(lxa, lya, lza);
 									jco_l = coset((lxb + 2), lyb, lzb);
-									idx2(tp->pab_prep[0], jco_l, ico_l) -=
+									tp->pab_prep(jco_l, ico_l) -=
 											2.0 * tp->zeta[1] * pab;
 
-									ico_l = coset(imax(lxa - 1, 0), lya, lza);
+									ico_l = coset(std::max(lxa - 1, 0), lya, lza);
 									jco_l = coset((lxb + 1), lyb, lzb);
-									idx2(tp->pab_prep[0], jco_l, ico_l) -= lxa * pab;
+									tp->pab_prep(jco_l, ico_l) -= lxa * pab;
 
 									ico_l = coset((lxa + 1), lya, lza);
 									jco_l = coset((lxb + 1), lyb, lzb);
-									idx2(tp->pab_prep[0], jco_l, ico_l) +=
+									tp->pab_prep(jco_l, ico_l) +=
 											2.0 * tp->zeta[0] * pab;
 								} break;
 								case 'Y': {
 									ico_l = coset(lxa, lya, lza);
-									jco_l = coset(imax(lxb - 1, 0), (lyb + 1), lzb);
-									idx2(tp->pab_prep[0], jco_l, ico_l) += lxb * pab;
+									jco_l = coset(std::max(lxb - 1, 0), (lyb + 1), lzb);
+									tp->pab_prep(jco_l, ico_l) += lxb * pab;
 
 									ico_l = coset(lxa, lya, lza);
 									jco_l = coset((lxb + 1), (lyb + 1), lzb);
-									idx2(tp->pab_prep[0], jco_l, ico_l) -=
+									tp->pab_prep(jco_l, ico_l) -=
 											2.0 * tp->zeta[1] * pab;
 
-									ico_l = coset(imax(lxa - 1, 0), lya, lza);
+									ico_l = coset(std::max(lxa - 1, 0), lya, lza);
 									jco_l = coset(lxb, (lyb + 1), lzb);
-									idx2(tp->pab_prep[0], jco_l, ico_l) -= lxa * pab;
+									tp->pab_prep(jco_l, ico_l) -= lxa * pab;
 
 									ico_l = coset((lxa + 1), lya, lza);
 									jco_l = coset(lxb, (lyb + 1), lzb);
-									idx2(tp->pab_prep[0], jco_l, ico_l) +=
+									tp->pab_prep(jco_l, ico_l) +=
 											2.0 * tp->zeta[0] * pab;
 								} break;
 								case 'Z': {
 									ico_l = coset(lxa, lya, lza);
-									jco_l = coset(imax(lxb - 1, 0), lyb, (lzb + 1));
-									idx2(tp->pab_prep[0], jco_l, ico_l) += lxb * pab;
+									jco_l = coset(std::max(lxb - 1, 0), lyb, (lzb + 1));
+									tp->pab_prep(jco_l, ico_l) += lxb * pab;
 
 									ico_l = coset(lxa, lya, lza);
 									jco_l = coset((lxb + 1), lyb, (lzb + 1));
-									idx2(tp->pab_prep[0], jco_l, ico_l) -=
+									tp->pab_prep(jco_l, ico_l) -=
 											2.0 * tp->zeta[1] * pab;
 
-									ico_l = coset(imax(lxa - 1, 0), lya, lza);
+									ico_l = coset(std::max(lxa - 1, 0), lya, lza);
 									jco_l = coset(lxb, lyb, (lzb + 1));
-									idx2(tp->pab_prep[0], jco_l, ico_l) -= lxa * pab;
+									tp->pab_prep(jco_l, ico_l) -= lxa * pab;
 
 									ico_l = coset((lxa + 1), lya, lza);
 									jco_l = coset(lxb, lyb, (lzb + 1));
-									idx2(tp->pab_prep[0], jco_l, ico_l) +=
+									tp->pab_prep(jco_l, ico_l) +=
 											2.0 * tp->zeta[0] * pab;
 								} break;
 								default:
@@ -315,59 +326,59 @@ grid_prepare_pab_ARDBmDARB(struct pab_computation_struct_ *const tp) {
 								switch (tp->dir2) {
 								case 'X': {
 									ico_l = coset(lxa, lya, lza);
-									jco_l = coset((lxb + 1), imax(lyb - 1, 0), lzb);
-									idx2(tp->pab_prep[0], jco_l, ico_l) += lyb * pab;
+									jco_l = coset((lxb + 1), std::max(lyb - 1, 0), lzb);
+									tp->pab_prep(jco_l, ico_l) += lyb * pab;
 
 									ico_l = coset(lxa, lya, lza);
 									jco_l = coset((lxb + 1), (lyb + 1), lzb);
-									idx2(tp->pab_prep[0], jco_l, ico_l) -=
+									tp->pab_prep(jco_l, ico_l) -=
 											2.0 * tp->zeta[1] * pab;
 
-									ico_l = coset(lxa, imax(lya - 1, 0), lza);
+									ico_l = coset(lxa, std::max(lya - 1, 0), lza);
 									jco_l = coset((lxb + 1), lyb, lzb);
-									idx2(tp->pab_prep[0], jco_l, ico_l) -= lya * pab;
+									tp->pab_prep(jco_l, ico_l) -= lya * pab;
 
 									ico_l = coset(lxa, (lya + 1), lza);
 									jco_l = coset((lxb + 1), lyb, lzb);
-									idx2(tp->pab_prep[0], jco_l, ico_l) +=
+									tp->pab_prep(jco_l, ico_l) +=
 											2.0 * tp->zeta[0] * pab;
 								} break;
 								case 'Y': {
 									ico_l = coset(lxa, lya, lza);
 									jco_l = coset(lxb, lyb, lzb);
-									idx2(tp->pab_prep[0], jco_l, ico_l) += lyb * pab;
+									tp->pab_prep(jco_l, ico_l) += lyb * pab;
 
 									ico_l = coset(lxa, lya, lza);
 									jco_l = coset(lxb, (lyb + 2), lzb);
-									idx2(tp->pab_prep[0], jco_l, ico_l) -=
+									tp->pab_prep(jco_l, ico_l) -=
 											2.0 * tp->zeta[1] * pab;
 
-									ico_l = coset(lxa, imax(lya - 1, 0), lza);
+									ico_l = coset(lxa, std::max(lya - 1, 0), lza);
 									jco_l = coset(lxb, (lyb + 1), lzb);
-									idx2(tp->pab_prep[0], jco_l, ico_l) -= lya * pab;
+									tp->pab_prep(jco_l, ico_l) -= lya * pab;
 
 									ico_l = coset(lxa, (lya + 1), lza);
 									jco_l = coset(lxb, (lyb + 1), lzb);
-									idx2(tp->pab_prep[0], jco_l, ico_l) +=
+									tp->pab_prep(jco_l, ico_l) +=
 											2.0 * tp->zeta[0] * pab;
 								} break;
 								case 'Z': {
 									ico_l = coset(lxa, lya, lza);
-									jco_l = coset(lxb, imax(lyb - 1, 0), (lzb + 1));
-									idx2(tp->pab_prep[0], jco_l, ico_l) += lyb * pab;
+									jco_l = coset(lxb, std::max(lyb - 1, 0), (lzb + 1));
+									tp->pab_prep(jco_l, ico_l) += lyb * pab;
 
 									ico_l = coset(lxa, lya, lza);
 									jco_l = coset(lxb, (lyb + 1), (lzb + 1));
-									idx2(tp->pab_prep[0], jco_l, ico_l) -=
+									tp->pab_prep(jco_l, ico_l) -=
 											2.0 * tp->zeta[1] * pab;
 
-									ico_l = coset(lxa, imax(lya - 1, 0), lza);
+									ico_l = coset(lxa, std::max(lya - 1, 0), lza);
 									jco_l = coset(lxb, lyb, (lzb + 1));
-									idx2(tp->pab_prep[0], jco_l, ico_l) -= lya * pab;
+									tp->pab_prep(jco_l, ico_l) -= lya * pab;
 
 									ico_l = coset(lxa, (lya + 1), lza);
 									jco_l = coset(lxb, lyb, (lzb + 1));
-									idx2(tp->pab_prep[0], jco_l, ico_l) +=
+									tp->pab_prep(jco_l, ico_l) +=
 											2.0 * tp->zeta[0] * pab;
 								} break;
 								default:
@@ -378,59 +389,59 @@ grid_prepare_pab_ARDBmDARB(struct pab_computation_struct_ *const tp) {
 								switch (tp->dir2) {
 								case 'X': {
 									ico_l = coset(lxa, lya, lza);
-									jco_l = coset((lxb + 1), lyb, imax(lzb - 1, 0));
-									idx2(tp->pab_prep[0], jco_l, ico_l) += lzb * pab;
+									jco_l = coset((lxb + 1), lyb, std::max(lzb - 1, 0));
+									tp->pab_prep(jco_l, ico_l) += lzb * pab;
 
 									ico_l = coset(lxa, lya, lza);
 									jco_l = coset((lxb + 1), lyb, (lzb + 1));
-									idx2(tp->pab_prep[0], jco_l, ico_l) -=
+									tp->pab_prep(jco_l, ico_l) -=
 											2.0 * tp->zeta[1] * pab;
 
-									ico_l = coset(lxa, lya, imax(lza - 1, 0));
+									ico_l = coset(lxa, lya, std::max(lza - 1, 0));
 									jco_l = coset((lxb + 1), lyb, lzb);
-									idx2(tp->pab_prep[0], jco_l, ico_l) -= lza * pab;
+									tp->pab_prep(jco_l, ico_l) -= lza * pab;
 
 									ico_l = coset(lxa, lya, (lza + 1));
 									jco_l = coset((lxb + 1), lyb, lzb);
-									idx2(tp->pab_prep[0], jco_l, ico_l) +=
+									tp->pab_prep(jco_l, ico_l) +=
 											2.0 * tp->zeta[0] * pab;
 								} break;
 								case 'Y': {
 									ico_l = coset(lxa, lya, lza);
-									jco_l = coset(lxb, (lyb + 1), imax(lzb - 1, 0));
-									idx2(tp->pab_prep[0], jco_l, ico_l) += lzb * pab;
+									jco_l = coset(lxb, (lyb + 1), std::max(lzb - 1, 0));
+									tp->pab_prep(jco_l, ico_l) += lzb * pab;
 
 									ico_l = coset(lxa, lya, lza);
 									jco_l = coset(lxb, (lyb + 1), (lzb + 1));
-									idx2(tp->pab_prep[0], jco_l, ico_l) +=
+									tp->pab_prep(jco_l, ico_l) +=
 											-2.0 * tp->zeta[1] * pab;
 
-									ico_l = coset(lxa, lya, imax(lza - 1, 0));
+									ico_l = coset(lxa, lya, std::max(lza - 1, 0));
 									jco_l = coset(lxb, (lyb + 1), lzb);
-									idx2(tp->pab_prep[0], jco_l, ico_l) -= lza * pab;
+									tp->pab_prep(jco_l, ico_l) -= lza * pab;
 
 									ico_l = coset(lxa, lya, (lza + 1));
 									jco_l = coset(lxb, (lyb + 1), lzb);
-									idx2(tp->pab_prep[0], jco_l, ico_l) +=
+									tp->pab_prep(jco_l, ico_l) +=
 											2.0 * tp->zeta[0] * pab;
 								} break;
 								case 'Z': {
 									ico_l = coset(lxa, lya, lza);
 									jco_l = coset(lxb, lyb, lzb);
-									idx2(tp->pab_prep[0], jco_l, ico_l) += lzb * pab;
+									tp->pab_prep(jco_l, ico_l) += lzb * pab;
 
 									ico_l = coset(lxa, lya, lza);
 									jco_l = coset(lxb, lyb, (lzb + 2));
-									idx2(tp->pab_prep[0], jco_l, ico_l) -=
+									tp->pab_prep(jco_l, ico_l) -=
 											2.0 * tp->zeta[1] * pab;
 
-									ico_l = coset(lxa, lya, imax(lza - 1, 0));
+									ico_l = coset(lxa, lya, std::max(lza - 1, 0));
 									jco_l = coset(lxb, lyb, (lzb + 1));
-									idx2(tp->pab_prep[0], jco_l, ico_l) -= lza * pab;
+									tp->pab_prep(jco_l, ico_l) -= lza * pab;
 
 									ico_l = coset(lxa, lya, (lza + 1));
 									jco_l = coset(lxb, lyb, (lzb + 1));
-									idx2(tp->pab_prep[0], jco_l, ico_l) +=
+									tp->pab_prep(jco_l, ico_l) +=
 											2.0 * tp->zeta[0] * pab;
 								} break;
 								default:
@@ -459,13 +470,13 @@ static void grid_prepare_pab_DABpADB(struct pab_computation_struct_ *const tp) {
 		for (int lxb = 0; lxb <= tp->lmax[1]; lxb++) {
 			for (int lya = 0; lya <= tp->lmax[0] - lxa; lya++) {
 				for (int lyb = 0; lyb <= tp->lmax[1] - lxb; lyb++) {
-					for (int lza = imax(tp->lmin[0] - lxa - lya, 0);
+					for (int lza = std::max(tp->lmin[0] - lxa - lya, 0);
 							 lza <= tp->lmax[0] - lxa - lya; lza++) {
-						for (int lzb = imax(tp->lmin[1] - lxb - lyb, 0);
+						for (int lzb = std::max(tp->lmin[1] - lxb - lyb, 0);
 								 lzb <= tp->lmax[1] - lxb - lyb; lzb++) {
 							const int ico = tp->offset[0] + coset(lxa, lya, lza);
 							const int jco = tp->offset[1] + coset(lxb, lyb, lzb);
-							const double pab = idx2(tp->pab[0], jco, ico);
+							const double pab = tp->pab(jco, ico);
 
 							int ico_l, jco_l;
 
@@ -474,54 +485,54 @@ static void grid_prepare_pab_DABpADB(struct pab_computation_struct_ *const tp) {
 							switch (tp->dir1) {
 							case 'X': {
 								ico_l = coset(lxa, lya, lza);
-								jco_l = coset(imax(lxb - 1, 0), lyb, lzb);
-								idx2(tp->pab_prep[0], jco_l, ico_l) += lxb * pab;
+								jco_l = coset(std::max(lxb - 1, 0), lyb, lzb);
+								tp->pab_prep(jco_l, ico_l) += lxb * pab;
 
 								ico_l = coset(lxa, lya, lza);
 								jco_l = coset((lxb + 1), lyb, lzb);
-								idx2(tp->pab_prep[0], jco_l, ico_l) -= 2.0 * tp->zeta[1] * pab;
+								tp->pab_prep(jco_l, ico_l) -= 2.0 * tp->zeta[1] * pab;
 
-								ico_l = coset(imax(lxa - 1, 0), lya, lza);
+								ico_l = coset(std::max(lxa - 1, 0), lya, lza);
 								jco_l = coset(lxb, lyb, lzb);
-								idx2(tp->pab_prep[0], jco_l, ico_l) += lxa * pab;
+								tp->pab_prep(jco_l, ico_l) += lxa * pab;
 
 								ico_l = coset((lxa + 1), lya, lza);
 								jco_l = coset(lxb, lyb, lzb);
-								idx2(tp->pab_prep[0], jco_l, ico_l) -= 2.0 * tp->zeta[0] * pab;
+								tp->pab_prep(jco_l, ico_l) -= 2.0 * tp->zeta[0] * pab;
 							} break;
 							case 'Y': { // y
 								ico_l = coset(lxa, lya, lza);
-								jco_l = coset(lxb, imax(lyb - 1, 0), lzb);
-								idx2(tp->pab_prep[0], jco_l, ico_l) += lyb * pab;
+								jco_l = coset(lxb, std::max(lyb - 1, 0), lzb);
+								tp->pab_prep(jco_l, ico_l) += lyb * pab;
 
 								ico_l = coset(lxa, lya, lza);
 								jco_l = coset(lxb, (lyb + 1), lzb);
-								idx2(tp->pab_prep[0], jco_l, ico_l) -= 2.0 * tp->zeta[1] * pab;
+								tp->pab_prep(jco_l, ico_l) -= 2.0 * tp->zeta[1] * pab;
 
-								ico_l = coset(lxa, imax(lya - 1, 0), lza);
+								ico_l = coset(lxa, std::max(lya - 1, 0), lza);
 								jco_l = coset(lxb, lyb, lzb);
-								idx2(tp->pab_prep[0], jco_l, ico_l) += lya * pab;
+								tp->pab_prep(jco_l, ico_l) += lya * pab;
 
 								ico_l = coset(lxa, (lya + 1), lza);
 								jco_l = coset(lxb, lyb, lzb);
-								idx2(tp->pab_prep[0], jco_l, ico_l) -= 2.0 * tp->zeta[0] * pab;
+								tp->pab_prep(jco_l, ico_l) -= 2.0 * tp->zeta[0] * pab;
 							} break;
 							case 'Z': { // z
 								ico_l = coset(lxa, lya, lza);
-								jco_l = coset(lxb, lyb, imax(lzb - 1, 0));
-								idx2(tp->pab_prep[0], jco_l, ico_l) += lzb * pab;
+								jco_l = coset(lxb, lyb, std::max(lzb - 1, 0));
+								tp->pab_prep(jco_l, ico_l) += lzb * pab;
 
 								ico_l = coset(lxa, lya, lza);
 								jco_l = coset(lxb, lyb, (lzb + 1));
-								idx2(tp->pab_prep[0], jco_l, ico_l) -= 2.0 * tp->zeta[1] * pab;
+								tp->pab_prep(jco_l, ico_l) -= 2.0 * tp->zeta[1] * pab;
 
-								ico_l = coset(lxa, lya, imax(lza - 1, 0));
+								ico_l = coset(lxa, lya, std::max(lza - 1, 0));
 								jco_l = coset(lxb, lyb, lzb);
-								idx2(tp->pab_prep[0], jco_l, ico_l) += lza * pab;
+								tp->pab_prep(jco_l, ico_l) += lza * pab;
 
 								ico_l = coset(lxa, lya, (lza + 1));
 								jco_l = coset(lxb, lyb, lzb);
-								idx2(tp->pab_prep[0], jco_l, ico_l) -= 2.0 * tp->zeta[0] * pab;
+								tp->pab_prep(jco_l, ico_l) -= 2.0 * tp->zeta[0] * pab;
 								break;
 							}
 							default:
@@ -548,13 +559,13 @@ static void grid_prepare_pab_Di(struct pab_computation_struct_ *const tp) {
 		for (int lxb = 0; lxb <= tp->lmax[1]; lxb++) {
 			for (int lya = 0; lya <= tp->lmax[0] - lxa; lya++) {
 				for (int lyb = 0; lyb <= tp->lmax[1] - lxb; lyb++) {
-					for (int lza = imax(tp->lmin[0] - lxa - lya, 0);
+					for (int lza = std::max(tp->lmin[0] - lxa - lya, 0);
 							 lza <= tp->lmax[0] - lxa - lya; lza++) {
-						for (int lzb = imax(tp->lmin[1] - lxb - lyb, 0);
+						for (int lzb = std::max(tp->lmin[1] - lxb - lyb, 0);
 								 lzb <= tp->lmax[1] - lxb - lyb; lzb++) {
 							const int ico = tp->offset[0] + coset(lxa, lya, lza);
 							const int jco = tp->offset[1] + coset(lxb, lyb, lzb);
-							const double pab = idx2(tp->pab[0], jco, ico);
+							const double pab = tp->pab(jco, ico);
 
 							int ico_l, jco_l;
 							// this element of pab results in 12 elements of pab_prep
@@ -563,65 +574,65 @@ static void grid_prepare_pab_Di(struct pab_computation_struct_ *const tp) {
 							case 'X': {
 								// x  (all safe if lxa = 0, as the spurious added terms have
 								// zero prefactor)
-								ico_l = coset(imax(lxa - 1, 0), lya, lza);
-								jco_l = coset(imax(lxb - 1, 0), lyb, lzb);
-								idx2(tp->pab_prep[0], jco_l, ico_l) += lxa * lxb * pab;
+								ico_l = coset(std::max(lxa - 1, 0), lya, lza);
+								jco_l = coset(std::max(lxb - 1, 0), lyb, lzb);
+								tp->pab_prep(jco_l, ico_l) += lxa * lxb * pab;
 
-								ico_l = coset(imax(lxa - 1, 0), lya, lza);
+								ico_l = coset(std::max(lxa - 1, 0), lya, lza);
 								jco_l = coset((lxb + 1), lyb, lzb);
-								idx2(tp->pab_prep[0], jco_l, ico_l) -=
+								tp->pab_prep(jco_l, ico_l) -=
 										2.0 * lxa * tp->zeta[1] * pab;
 
 								ico_l = coset((lxa + 1), lya, lza);
-								jco_l = coset(imax(lxb - 1, 0), lyb, lzb);
-								idx2(tp->pab_prep[0], jco_l, ico_l) -=
+								jco_l = coset(std::max(lxb - 1, 0), lyb, lzb);
+								tp->pab_prep(jco_l, ico_l) -=
 										2.0 * tp->zeta[0] * lxb * pab;
 
 								ico_l = coset((lxa + 1), lya, lza);
 								jco_l = coset((lxb + 1), lyb, lzb);
-								idx2(tp->pab_prep[0], jco_l, ico_l) +=
+								tp->pab_prep(jco_l, ico_l) +=
 										4.0 * tp->zeta[0] * tp->zeta[1] * pab;
 							} break;
 							case 'Y': {
 								// y
-								ico_l = coset(lxa, imax(lya - 1, 0), lza);
-								jco_l = coset(lxb, imax(lyb - 1, 0), lzb);
-								idx2(tp->pab_prep[0], jco_l, ico_l) += lya * lyb * pab;
+								ico_l = coset(lxa, std::max(lya - 1, 0), lza);
+								jco_l = coset(lxb, std::max(lyb - 1, 0), lzb);
+								tp->pab_prep(jco_l, ico_l) += lya * lyb * pab;
 
-								ico_l = coset(lxa, imax(lya - 1, 0), lza);
+								ico_l = coset(lxa, std::max(lya - 1, 0), lza);
 								jco_l = coset(lxb, (lyb + 1), lzb);
-								idx2(tp->pab_prep[0], jco_l, ico_l) -=
+								tp->pab_prep(jco_l, ico_l) -=
 										2.0 * lya * tp->zeta[1] * pab;
 
 								ico_l = coset(lxa, (lya + 1), lza);
-								jco_l = coset(lxb, imax(lyb - 1, 0), lzb);
-								idx2(tp->pab_prep[0], jco_l, ico_l) -=
+								jco_l = coset(lxb, std::max(lyb - 1, 0), lzb);
+								tp->pab_prep(jco_l, ico_l) -=
 										2.0 * tp->zeta[0] * lyb * pab;
 
 								ico_l = coset(lxa, (lya + 1), lza);
 								jco_l = coset(lxb, (lyb + 1), lzb);
-								idx2(tp->pab_prep[0], jco_l, ico_l) +=
+								tp->pab_prep(jco_l, ico_l) +=
 										4.0 * tp->zeta[0] * tp->zeta[1] * pab;
 							} break;
 							case 'Z': {
 								// z
-								ico_l = coset(lxa, lya, imax(lza - 1, 0));
-								jco_l = coset(lxb, lyb, imax(lzb - 1, 0));
-								idx2(tp->pab_prep[0], jco_l, ico_l) += lza * lzb * pab;
+								ico_l = coset(lxa, lya, std::max(lza - 1, 0));
+								jco_l = coset(lxb, lyb, std::max(lzb - 1, 0));
+								tp->pab_prep(jco_l, ico_l) += lza * lzb * pab;
 
-								ico_l = coset(lxa, lya, imax(lza - 1, 0));
+								ico_l = coset(lxa, lya, std::max(lza - 1, 0));
 								jco_l = coset(lxb, lyb, (lzb + 1));
-								idx2(tp->pab_prep[0], jco_l, ico_l) -=
+								tp->pab_prep(jco_l, ico_l) -=
 										2.0 * lza * tp->zeta[1] * pab;
 
 								ico_l = coset(lxa, lya, (lza + 1));
-								jco_l = coset(lxb, lyb, imax(lzb - 1, 0));
-								idx2(tp->pab_prep[0], jco_l, ico_l) -=
+								jco_l = coset(lxb, lyb, std::max(lzb - 1, 0));
+								tp->pab_prep(jco_l, ico_l) -=
 										2.0 * tp->zeta[0] * lzb * pab;
 
 								ico_l = coset(lxa, lya, (lza + 1));
 								jco_l = coset(lxb, lyb, (lzb + 1));
-								idx2(tp->pab_prep[0], jco_l, ico_l) +=
+								tp->pab_prep(jco_l, ico_l) +=
 										4.0 * tp->zeta[0] * tp->zeta[1] * pab;
 							} break;
 							default:
@@ -638,54 +649,54 @@ static void grid_prepare_pab_Di(struct pab_computation_struct_ *const tp) {
 // *****************************************************************************
 static void oneterm_dijdij(const int idir, const double func_a, const int ico_l,
 													 const int lx, const int ly, const int lz,
-													 const double zet, tensor *const pab_prep) {
+													 const double zet, tensor1<double, 2> &pab_prep) {
 	int jco_l;
 
 	switch (idir) {
 	case 'X': {
 		const int l1 = lx;
 		const int l2 = ly;
-		jco_l = coset(imax(lx - 1, 0), imax(ly - 1, 0), lz);
-		idx2(pab_prep[0], jco_l, ico_l) += l1 * l2 * func_a;
+		jco_l = coset(std::max(lx - 1, 0), std::max(ly - 1, 0), lz);
+		pab_prep(jco_l, ico_l) += l1 * l2 * func_a;
 
-		jco_l = coset(lx + 1, imax(ly - 1, 0), lz);
-		idx2(pab_prep[0], jco_l, ico_l) -= 2.0 * zet * l2 * func_a;
+		jco_l = coset(lx + 1, std::max(ly - 1, 0), lz);
+		pab_prep(jco_l, ico_l) -= 2.0 * zet * l2 * func_a;
 
-		jco_l = coset(imax(lx - 1, 0), ly + 1, lz);
-		idx2(pab_prep[0], jco_l, ico_l) -= 2.0 * zet * l1 * func_a;
+		jco_l = coset(std::max(lx - 1, 0), ly + 1, lz);
+		pab_prep(jco_l, ico_l) -= 2.0 * zet * l1 * func_a;
 
 		jco_l = coset(lx + 1, ly + 1, lz);
-		idx2(pab_prep[0], jco_l, ico_l) += 4.0 * zet * zet * func_a;
+		pab_prep(jco_l, ico_l) += 4.0 * zet * zet * func_a;
 	} break;
 	case 'Y': {
 		const int l1 = ly;
 		const int l2 = lz;
-		jco_l = coset(lx, imax(ly - 1, 0), imax(lz - 1, 0));
-		idx2(pab_prep[0], jco_l, ico_l) += l1 * l2 * func_a;
+		jco_l = coset(lx, std::max(ly - 1, 0), std::max(lz - 1, 0));
+		pab_prep(jco_l, ico_l) += l1 * l2 * func_a;
 
-		jco_l = coset(lx, ly + 1, imax(lz - 1, 0));
-		idx2(pab_prep[0], jco_l, ico_l) -= 2.0 * zet * l2 * func_a;
+		jco_l = coset(lx, ly + 1, std::max(lz - 1, 0));
+		pab_prep(jco_l, ico_l) -= 2.0 * zet * l2 * func_a;
 
-		jco_l = coset(lx, imax(ly - 1, 0), lz + 1);
-		idx2(pab_prep[0], jco_l, ico_l) -= 2.0 * zet * l1 * func_a;
+		jco_l = coset(lx, std::max(ly - 1, 0), lz + 1);
+		pab_prep(jco_l, ico_l) -= 2.0 * zet * l1 * func_a;
 
 		jco_l = coset(lx, ly + 1, lz + 1);
-		idx2(pab_prep[0], jco_l, ico_l) += 4.0 * zet * zet * func_a;
+		pab_prep(jco_l, ico_l) += 4.0 * zet * zet * func_a;
 	} break;
 	case 'Z': {
 		const int l1 = lz;
 		const int l2 = lx;
-		jco_l = coset(imax(lx - 1, 0), ly, imax(lz - 1, 0));
-		idx2(pab_prep[0], jco_l, ico_l) += l1 * l2 * func_a;
+		jco_l = coset(std::max(lx - 1, 0), ly, std::max(lz - 1, 0));
+		pab_prep(jco_l, ico_l) += l1 * l2 * func_a;
 
-		jco_l = coset(imax(lx - 1, 0), ly, lz + 1);
-		idx2(pab_prep[0], jco_l, ico_l) -= 2.0 * zet * l2 * func_a;
+		jco_l = coset(std::max(lx - 1, 0), ly, lz + 1);
+		pab_prep(jco_l, ico_l) -= 2.0 * zet * l2 * func_a;
 
-		jco_l = coset(lx + 1, ly, imax(lz - 1, 0));
-		idx2(pab_prep[0], jco_l, ico_l) -= 2.0 * zet * l1 * func_a;
+		jco_l = coset(lx + 1, ly, std::max(lz - 1, 0));
+		pab_prep(jco_l, ico_l) -= 2.0 * zet * l1 * func_a;
 
 		jco_l = coset(lx + 1, ly, lz + 1);
-		idx2(pab_prep[0], jco_l, ico_l) += 4.0 * zet * zet * func_a;
+		pab_prep(jco_l, ico_l) += 4.0 * zet * zet * func_a;
 	} break;
 	default:
 		break;
@@ -701,13 +712,13 @@ static void grid_prepare_pab_DiDj(struct pab_computation_struct_ *const tp) {
 		for (int lxb = 0; lxb <= tp->lmax[1]; lxb++) {
 			for (int lya = 0; lya <= tp->lmax[0] - lxa; lya++) {
 				for (int lyb = 0; lyb <= tp->lmax[1] - lxb; lyb++) {
-					for (int lza = imax(tp->lmin[0] - lxa - lya, 0);
+					for (int lza = std::max(tp->lmin[0] - lxa - lya, 0);
 							 lza <= tp->lmax[0] - lxa - lya; lza++) {
-						for (int lzb = imax(tp->lmin[1] - lxb - lyb, 0);
+						for (int lzb = std::max(tp->lmin[1] - lxb - lyb, 0);
 								 lzb <= tp->lmax[1] - lxb - lyb; lzb++) {
 							const int ico = tp->offset[0] + coset(lxa, lya, lza);
 							const int jco = tp->offset[1] + coset(lxb, lyb, lzb);
-							const double pab = idx2(tp->pab[0], jco, ico);
+							const double pab = tp->pab(jco, ico);
 
 							int ico_l;
 							double func_a;
@@ -717,17 +728,17 @@ static void grid_prepare_pab_DiDj(struct pab_computation_struct_ *const tp) {
 							if ((tp->dir1 == 'X' && tp->dir2 == 'Y') ||
 									(tp->dir1 == 'Y' && tp->dir2 == 'X')) {
 								// xy
-								ico_l = coset(imax(lxa - 1, 0), imax(lya - 1, 0), lza);
+								ico_l = coset(std::max(lxa - 1, 0), std::max(lya - 1, 0), lza);
 								func_a = lxa * lya * pab;
 								oneterm_dijdij('X', func_a, ico_l, lxb, lyb, lzb, tp->zeta[1],
 															 tp->pab_prep);
 
-								ico_l = coset(lxa + 1, imax(lya - 1, 0), lza);
+								ico_l = coset(lxa + 1, std::max(lya - 1, 0), lza);
 								func_a = -2.0 * tp->zeta[0] * lya * pab;
 								oneterm_dijdij('X', func_a, ico_l, lxb, lyb, lzb, tp->zeta[1],
 															 tp->pab_prep);
 
-								ico_l = coset(imax(lxa - 1, 0), lya + 1, lza);
+								ico_l = coset(std::max(lxa - 1, 0), lya + 1, lza);
 								func_a = -2.0 * tp->zeta[0] * lxa * pab;
 								oneterm_dijdij('X', func_a, ico_l, lxb, lyb, lzb, tp->zeta[1],
 															 tp->pab_prep);
@@ -739,17 +750,17 @@ static void grid_prepare_pab_DiDj(struct pab_computation_struct_ *const tp) {
 							} else if ((tp->dir1 == 'Y' && tp->dir2 == 'Z') ||
 												 (tp->dir1 == 'Z' && tp->dir2 == 'Y')) {
 								// yz
-								ico_l = coset(lxa, imax(lya - 1, 0), imax(lza - 1, 0));
+								ico_l = coset(lxa, std::max(lya - 1, 0), std::max(lza - 1, 0));
 								func_a = lya * lza * pab;
 								oneterm_dijdij('Y', func_a, ico_l, lxb, lyb, lzb, tp->zeta[1],
 															 tp->pab_prep);
 
-								ico_l = coset(lxa, lya + 1, imax(lza - 1, 0));
+								ico_l = coset(lxa, lya + 1, std::max(lza - 1, 0));
 								func_a = -2.0 * tp->zeta[0] * lza * pab;
 								oneterm_dijdij('Y', func_a, ico_l, lxb, lyb, lzb, tp->zeta[1],
 															 tp->pab_prep);
 
-								ico_l = coset(lxa, imax(lya - 1, 0), lza + 1);
+								ico_l = coset(lxa, std::max(lya - 1, 0), lza + 1);
 								func_a = -2.0 * tp->zeta[0] * lya * pab;
 								oneterm_dijdij('Y', func_a, ico_l, lxb, lyb, lzb, tp->zeta[1],
 															 tp->pab_prep);
@@ -761,17 +772,17 @@ static void grid_prepare_pab_DiDj(struct pab_computation_struct_ *const tp) {
 							} else if ((tp->dir1 == 'Z' && tp->dir2 == 'X') ||
 												 (tp->dir1 == 'X' && tp->dir2 == 'Z')) {
 								// zx
-								ico_l = coset(imax(lxa - 1, 0), lya, imax(lza - 1, 0));
+								ico_l = coset(std::max(lxa - 1, 0), lya, std::max(lza - 1, 0));
 								func_a = lza * lxa * pab;
 								oneterm_dijdij('Z', func_a, ico_l, lxb, lyb, lzb, tp->zeta[1],
 															 tp->pab_prep);
 
-								ico_l = coset(imax(lxa - 1, 0), lya, lza + 1);
+								ico_l = coset(std::max(lxa - 1, 0), lya, lza + 1);
 								func_a = -2.0 * tp->zeta[0] * lxa * pab;
 								oneterm_dijdij('Z', func_a, ico_l, lxb, lyb, lzb, tp->zeta[1],
 															 tp->pab_prep);
 
-								ico_l = coset(lxa + 1, lya, imax(lza - 1, 0));
+								ico_l = coset(lxa + 1, lya, std::max(lza - 1, 0));
 								func_a = -2.0 * tp->zeta[0] * lza * pab;
 								oneterm_dijdij('Z', func_a, ico_l, lxb, lyb, lzb, tp->zeta[1],
 															 tp->pab_prep);
@@ -792,42 +803,42 @@ static void grid_prepare_pab_DiDj(struct pab_computation_struct_ *const tp) {
 // *****************************************************************************
 static void oneterm_diidii(const int idir, const double func_a, const int ico_l,
 													 const int lx, const int ly, const int lz,
-													 const double zet, tensor *const pab_prep) {
+													 const double zet, tensor1<double, 2> &pab_prep) {
 	int jco_l;
 
 	switch (idir) {
 	case 'X': {
 		const int l1 = lx;
-		jco_l = coset(imax(lx - 2, 0), ly, lz);
-		idx2(pab_prep[0], jco_l, ico_l) += l1 * (l1 - 1) * func_a;
+		jco_l = coset(std::max(lx - 2, 0), ly, lz);
+		pab_prep(jco_l, ico_l) += l1 * (l1 - 1) * func_a;
 
 		jco_l = coset(lx, ly, lz);
-		idx2(pab_prep[0], jco_l, ico_l) -= 2.0 * zet * (2 * l1 + 1) * func_a;
+		pab_prep(jco_l, ico_l) -= 2.0 * zet * (2 * l1 + 1) * func_a;
 
 		jco_l = coset(lx + 2, ly, lz);
-		idx2(pab_prep[0], jco_l, ico_l) += 4.0 * zet * zet * func_a;
+		pab_prep(jco_l, ico_l) += 4.0 * zet * zet * func_a;
 	} break;
 	case 'Y': {
 		const int l1 = ly;
-		jco_l = coset(lx, imax(ly - 2, 0), lz);
-		idx2(pab_prep[0], jco_l, ico_l) += l1 * (l1 - 1) * func_a;
+		jco_l = coset(lx, std::max(ly - 2, 0), lz);
+		pab_prep(jco_l, ico_l) += l1 * (l1 - 1) * func_a;
 
 		jco_l = coset(lx, ly, lz);
-		idx2(pab_prep[0], jco_l, ico_l) -= 2.0 * zet * (2 * l1 + 1) * func_a;
+		pab_prep(jco_l, ico_l) -= 2.0 * zet * (2 * l1 + 1) * func_a;
 
 		jco_l = coset(lx, ly + 2, lz);
-		idx2(pab_prep[0], jco_l, ico_l) += 4.0 * zet * zet * func_a;
+		pab_prep(jco_l, ico_l) += 4.0 * zet * zet * func_a;
 	} break;
 	case 'Z': {
 		const int l1 = lz;
-		jco_l = coset(lx, ly, imax(lz - 2, 0));
-		idx2(pab_prep[0], jco_l, ico_l) += l1 * (l1 - 1) * func_a;
+		jco_l = coset(lx, ly, std::max(lz - 2, 0));
+		pab_prep(jco_l, ico_l) += l1 * (l1 - 1) * func_a;
 
 		jco_l = coset(lx, ly, lz);
-		idx2(pab_prep[0], jco_l, ico_l) -= 2.0 * zet * (2 * l1 + 1) * func_a;
+		pab_prep(jco_l, ico_l) -= 2.0 * zet * (2 * l1 + 1) * func_a;
 
 		jco_l = coset(lx, ly, lz + 2);
-		idx2(pab_prep[0], jco_l, ico_l) += 4.0 * zet * zet * func_a;
+		pab_prep(jco_l, ico_l) += 4.0 * zet * zet * func_a;
 	} break;
 	default:
 		printf("Wrong value for ider: should be 1, 2, or 3\n");
@@ -846,13 +857,13 @@ static void grid_prepare_pab_Di2(struct pab_computation_struct_ *const tp) {
 		for (int lxb = 0; lxb <= tp->lmax[1]; lxb++) {
 			for (int lya = 0; lya <= tp->lmax[0] - lxa; lya++) {
 				for (int lyb = 0; lyb <= tp->lmax[1] - lxb; lyb++) {
-					for (int lza = imax(tp->lmin[0] - lxa - lya, 0);
+					for (int lza = std::max(tp->lmin[0] - lxa - lya, 0);
 							 lza <= tp->lmax[0] - lxa - lya; lza++) {
-						for (int lzb = imax(tp->lmin[1] - lxb - lyb, 0);
+						for (int lzb = std::max(tp->lmin[1] - lxb - lyb, 0);
 								 lzb <= tp->lmax[1] - lxb - lyb; lzb++) {
 							const int ico = tp->offset[0] + coset(lxa, lya, lza);
 							const int jco = tp->offset[1] + coset(lxb, lyb, lzb);
-							const double pab = idx2(tp->pab[0], jco, ico);
+							const double pab = tp->pab(jco, ico);
 
 							int ico_l;
 							double func_a;
@@ -861,7 +872,7 @@ static void grid_prepare_pab_Di2(struct pab_computation_struct_ *const tp) {
 							switch (tp->dir1) {
 							case 'X': {
 								// x
-								ico_l = coset(imax(lxa - 2, 0), lya, lza);
+								ico_l = coset(std::max(lxa - 2, 0), lya, lza);
 								func_a = lxa * (lxa - 1) * pab;
 								oneterm_diidii('X', func_a, ico_l, lxb, lyb, lzb, tp->zeta[1],
 															 tp->pab_prep);
@@ -878,7 +889,7 @@ static void grid_prepare_pab_Di2(struct pab_computation_struct_ *const tp) {
 							} break;
 							case 'Y': {
 								// y
-								ico_l = coset(lxa, imax(lya - 2, 0), lza);
+								ico_l = coset(lxa, std::max(lya - 2, 0), lza);
 								func_a = lya * (lya - 1) * pab;
 								oneterm_diidii('Y', func_a, ico_l, lxb, lyb, lzb, tp->zeta[1],
 															 tp->pab_prep);
@@ -895,7 +906,7 @@ static void grid_prepare_pab_Di2(struct pab_computation_struct_ *const tp) {
 							} break;
 							case 'Z': {
 								// z
-								ico_l = coset(lxa, lya, imax(lza - 2, 0));
+								ico_l = coset(lxa, lya, std::max(lza - 2, 0));
 								func_a = lza * (lza - 1) * pab;
 								oneterm_diidii('Z', func_a, ico_l, lxb, lyb, lzb, tp->zeta[1],
 															 tp->pab_prep);
@@ -924,72 +935,72 @@ static void grid_prepare_pab_Di2(struct pab_computation_struct_ *const tp) {
 }
 
 // *****************************************************************************
-void grid_prepare_get_ldiffs_dgemm(const enum grid_func func,
-																	 int *const lmin_diff, int *const lmax_diff) {
-	switch (func) {
-	case GRID_FUNC_AB:
-		lmax_diff[0] = 0;
-		lmin_diff[0] = 0;
-		lmax_diff[1] = 0;
-		lmin_diff[1] = 0;
-		break;
-	case GRID_FUNC_DADB:
-	case GRID_FUNC_ADBmDAB_X:
-	case GRID_FUNC_ADBmDAB_Y:
-	case GRID_FUNC_ADBmDAB_Z:
-	case GRID_FUNC_DABpADB_X:
-	case GRID_FUNC_DABpADB_Y:
-	case GRID_FUNC_DABpADB_Z:
-		lmax_diff[0] = 1;
-		lmin_diff[0] = -1;
-		lmax_diff[1] = 1;
-		lmin_diff[1] = -1;
-		break;
-	case GRID_FUNC_ARDBmDARB_XX:
-	case GRID_FUNC_ARDBmDARB_XY:
-	case GRID_FUNC_ARDBmDARB_XZ:
-	case GRID_FUNC_ARDBmDARB_YX:
-	case GRID_FUNC_ARDBmDARB_YY:
-	case GRID_FUNC_ARDBmDARB_YZ:
-	case GRID_FUNC_ARDBmDARB_ZX:
-	case GRID_FUNC_ARDBmDARB_ZY:
-	case GRID_FUNC_ARDBmDARB_ZZ:
-		lmax_diff[0] = 1; // TODO: mistake???, then we could merge la and lb.
-		lmin_diff[0] = -1;
-		lmax_diff[1] = 2;
-		lmin_diff[1] = -1;
-		break;
-	case GRID_FUNC_DX:
-	case GRID_FUNC_DY:
-	case GRID_FUNC_DZ:
-		lmax_diff[0] = 1;
-		lmin_diff[0] = -1;
-		lmax_diff[1] = 1;
-		lmin_diff[1] = -1;
-		break;
-	case GRID_FUNC_DXDY:
-	case GRID_FUNC_DYDZ:
-	case GRID_FUNC_DZDX:
-	case GRID_FUNC_DXDX:
-	case GRID_FUNC_DYDY:
-	case GRID_FUNC_DZDZ:
-		lmax_diff[0] = 2;
-		lmin_diff[0] = -2;
-		lmax_diff[1] = 2;
-		lmin_diff[1] = -2;
-		break;
-	default:
-		printf("Unkown ga-gb function");
-		abort();
-	}
+void grid_context::get_ldiffs(const enum grid_func func,
+															int *const lmin_diff, int *const lmax_diff) {
+		switch (func) {
+		case GRID_FUNC_AB:
+				lmax_diff[0] = 0;
+				lmin_diff[0] = 0;
+				lmax_diff[1] = 0;
+				lmin_diff[1] = 0;
+				break;
+		case GRID_FUNC_DADB:
+		case GRID_FUNC_ADBmDAB_X:
+		case GRID_FUNC_ADBmDAB_Y:
+		case GRID_FUNC_ADBmDAB_Z:
+		case GRID_FUNC_DABpADB_X:
+		case GRID_FUNC_DABpADB_Y:
+		case GRID_FUNC_DABpADB_Z:
+				lmax_diff[0] = 1;
+				lmin_diff[0] = -1;
+				lmax_diff[1] = 1;
+				lmin_diff[1] = -1;
+				break;
+		case GRID_FUNC_ARDBmDARB_XX:
+		case GRID_FUNC_ARDBmDARB_XY:
+		case GRID_FUNC_ARDBmDARB_XZ:
+		case GRID_FUNC_ARDBmDARB_YX:
+		case GRID_FUNC_ARDBmDARB_YY:
+		case GRID_FUNC_ARDBmDARB_YZ:
+		case GRID_FUNC_ARDBmDARB_ZX:
+		case GRID_FUNC_ARDBmDARB_ZY:
+		case GRID_FUNC_ARDBmDARB_ZZ:
+				lmax_diff[0] = 1; // TODO: mistake???, then we could merge la and lb.
+				lmin_diff[0] = -1;
+				lmax_diff[1] = 2;
+				lmin_diff[1] = -1;
+				break;
+		case GRID_FUNC_DX:
+		case GRID_FUNC_DY:
+		case GRID_FUNC_DZ:
+				lmax_diff[0] = 1;
+				lmin_diff[0] = -1;
+				lmax_diff[1] = 1;
+				lmin_diff[1] = -1;
+				break;
+		case GRID_FUNC_DXDY:
+		case GRID_FUNC_DYDZ:
+		case GRID_FUNC_DZDX:
+		case GRID_FUNC_DXDX:
+		case GRID_FUNC_DYDY:
+		case GRID_FUNC_DZDZ:
+				lmax_diff[0] = 2;
+				lmin_diff[0] = -2;
+				lmax_diff[1] = 2;
+				lmin_diff[1] = -2;
+				break;
+		default:
+				printf("Unkown ga-gb function");
+				abort();
+		}
 }
 
 // *****************************************************************************
-void grid_prepare_pab_dgemm(const enum grid_func func, const int *const offset,
-														const int *const lmin, const int *const lmax,
-														const double *const zeta, tensor *const pab,
-														tensor *const pab_prep) {
-	struct pab_computation_struct_ tmp;
+void grid_context::prepare_pab(const enum grid_func func, const int *const offset,
+															 const int *const lmin, const int *const lmax,
+															 const double *const zeta, tensor1<double, 2> &pab,
+															 tensor1<double, 2> &pab_prep) {
+		struct pab_computation_struct_ tmp(pab, pab_prep);
 
 	tmp.offset[0] = offset[0];
 	tmp.offset[1] = offset[1];
@@ -1000,12 +1011,9 @@ void grid_prepare_pab_dgemm(const enum grid_func func, const int *const offset,
 	tmp.lmax[0] = lmax[0];
 	tmp.lmax[1] = lmax[1];
 
-	tmp.pab = pab;
-	tmp.pab_prep = pab_prep;
-
 	tmp.zeta[0] = zeta[0];
 	tmp.zeta[1] = zeta[1];
-	memset(pab_prep->data, 0, pab_prep->alloc_size_ * sizeof(double));
+	pab_prep.zero();
 
 	switch (func) {
 	case GRID_FUNC_AB:

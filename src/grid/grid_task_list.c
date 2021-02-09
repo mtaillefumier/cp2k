@@ -16,7 +16,7 @@
 #include "common/grid_constants.h"
 #include "common/grid_library.h"
 #include "grid_task_list.h"
-
+#include "cpu/grid_cpu_task_list.h"
 /*******************************************************************************
  * \brief Allocates a task list which can be passed to grid_collocate_task_list.
  *        See grid_task_list.h for details.
@@ -45,7 +45,7 @@ void grid_create_task_list(
 #ifdef __GRID_CUDA
 			(*task_list)->backend = GRID_BACKEND_GPU;
 #else
-			(*task_list)->backend = GRID_BACKEND_REF;
+			(*task_list)->backend = GRID_BACKEND_CPU;
 #endif
 		} else {
 			(*task_list)->backend = config.backend;
@@ -65,7 +65,7 @@ void grid_create_task_list(
 		break; // was already created above
 	case GRID_BACKEND_CPU:
 		grid_cpu_create_task_list(
-				ntasks, nlevels, natoms, nkinds, nblocks, block_offsets, &atom_positions[0][0],
+				ntasks, nlevels, natoms, nkinds, nblocks, &block_offsets[0], &atom_positions[0][0],
 				atom_kinds, basis_sets, level_list, iatom_list, jatom_list, iset_list,
 				jset_list, ipgf_list, jpgf_list, border_mask_list, block_num_list,
 				radius_list, &rab_list[0][0], &(*task_list)->cpu);

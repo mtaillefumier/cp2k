@@ -20,7 +20,6 @@ extern "C"
 {
 #include "../common/grid_common.h"
 }
-#include "tensor_local.hpp"
 #include "utils.hpp"
 
 void convert_to_lattice_coordinates(const double dh_inv_[3][3],
@@ -175,104 +174,6 @@ void batched_dgemm_simplified(dgemm_params *const m, const int batch_size) {
 #endif
 }
 
-void extract_sub_grid(const int *lower_corner, const int *upper_corner,
-											const int *position, const tensor *const grid,
-											tensor *const subgrid) {
-	int position1[3] = {0, 0, 0};
-
-	if (position) {
-		position1[0] = position[0];
-		position1[1] = position[1];
-		position1[2] = position[2];
-	}
-
-	const int sizex = upper_corner[2] - lower_corner[2];
-	const int sizey = upper_corner[1] - lower_corner[1];
-	const int sizez = upper_corner[0] - lower_corner[0];
-
-	for (int z = 0; z < sizez; z++) {
-		/* maybe use matcopy from libxsmm if possible */
-		for (int y = 0; y < sizey; y++) {
-			double *__restrict__ src =
-					&idx3(grid[0], lower_corner[0] + z - grid->window_shift[0],
-								lower_corner[1] + y - grid->window_shift[1],
-								lower_corner[2] - grid->window_shift[2]);
-			double *__restrict__ dst =
-					&idx3(subgrid[0], position1[0] + z, position1[1] + y, position1[2]);
-#ifdef __LIBXSMM
-			LIBXSMM_PRAGMA_SIMD
-#else
-#pragma GCC ivdep
-#endif
-			for (int x = 0; x < sizex; x++) {
-				dst[x] = src[x];
-			}
-		}
-	}
-
-	return;
-}
-
-void add_sub_grid(const int *lower_corner, const int *upper_corner,
-									const int *position, const tensor *subgrid, tensor *grid) {
-	int position1[3] = {0, 0, 0};
-
-	if (position) {
-		position1[0] = position[0];
-		position1[1] = position[1];
-		position1[2] = position[2];
-	}
-	for (int d = 0; d < 3; d++) {
-		if ((lower_corner[d] < grid->window_shift[d]) || (lower_corner[d] < 0) ||
-				(lower_corner[d] >= upper_corner[d]) || (upper_corner[d] <= 0) ||
-				(upper_corner[d] - lower_corner[d] > subgrid->size[d]) ||
-				(grid == NULL) || (subgrid == NULL)) {
-			printf("Error : invalid parameters. Values of the given parameters along "
-						 "the first wrong dimension\n");
-			printf("      : lorner corner  [%d] = %d\n", d, lower_corner[d]);
-			printf("      : upper  corner  [%d] = %d\n", d, upper_corner[d]);
-			printf("      : diff           [%d] = %d\n", d,
-						 upper_corner[d] - lower_corner[d]);
-			printf("      : src grid size  [%d] = %d\n", d, subgrid->size[d]);
-			printf("      : dst grid size  [%d] = %d\n", d, grid->size[d]);
-			printf("      : window dst grid size  [%d] = %d\n", d,
-						 grid->window_size[d]);
-			printf("      : window dst shift  [%d] = %d\n", d, grid->window_shift[d]);
-			abort();
-		}
-	}
-
-	const int sizex = upper_corner[2] - lower_corner[2];
-	const int sizey = upper_corner[1] - lower_corner[1];
-	const int sizez = upper_corner[0] - lower_corner[0];
-
-	for (int z = 0; z < sizez; z++) {
-		double *__restrict__ dst =
-				&idx3(grid[0], lower_corner[0] + z, lower_corner[1], lower_corner[2]);
-		double *__restrict__ src =
-				&idx3(subgrid[0], position1[0] + z, position1[1], position1[2]);
-		for (int y = 0; y < sizey - 1; y++) {
-			//__builtin_prefetch(dst + grid->ld_);
-#ifdef __LIBXSMM
-			LIBXSMM_PRAGMA_SIMD
-#else
-#pragma GCC ivdep
-#endif
-			for (int x = 0; x < sizex; x++) {
-				dst[x] += src[x];
-			}
-
-			dst += grid->ld_;
-			src += subgrid->ld_;
-		}
-
-#pragma GCC ivdep
-		for (int x = 0; x < sizex; x++) {
-			dst[x] += src[x];
-		}
-	}
-	return;
-}
 
 int compute_cube_properties(const bool ortho, const double radius,
 														const double dh[3][3], const double dh_inv[3][3],
@@ -303,8 +204,8 @@ int compute_cube_properties(const bool ortho, const double radius,
 		/* lower and upper bounds */
 
 		// Historically, the radius gets discretized.
-		const double drmin = fmin(dh[0][0], fmin(dh[1][1], dh[2][2]));
-		*disr_radius = drmin * fmax(1.0, ceil(radius / drmin));
+		const double drmin = std::min(dh[0][0], std::min(dh[1][1], dh[2][2]));
+		*disr_radius = drmin * std::max(1.0, std::ceil(radius / drmin));
 
 		for (int i = 0; i < 3; i++) {
 			roffset[i] = rp[2 - i] - ((double)cubecenter[i]) * dx[i];
@@ -337,8 +238,8 @@ int compute_cube_properties(const bool ortho, const double radius,
 					for (int idir = 0; idir < 3; idir++) {
 						const double resc = dh_inv[0][idir] * x[0] +
 																dh_inv[1][idir] * x[1] + dh_inv[2][idir] * x[2];
-						lb_cube[2 - idir] = imin(lb_cube[2 - idir], floor(resc));
-						ub_cube[2 - idir] = imax(ub_cube[2 - idir], ceil(resc));
+						lb_cube[2 - idir] = std::min(lb_cube[2 - idir], (int)std::floor(resc));
+						ub_cube[2 - idir] = std::max(ub_cube[2 - idir], (int)std::ceil(resc));
 					}
 				}
 			}
@@ -361,7 +262,7 @@ int compute_cube_properties(const bool ortho, const double radius,
 	cube_size[2] = ub_cube[2] - lb_cube[2] + 1;
 
 	for (int i = 0; i < 3; i++) {
-		cmax = imax(cmax, cube_size[i]);
+			cmax = std::max(cmax, cube_size[i]);
 	}
 
 	return cmax;
@@ -377,31 +278,6 @@ void return_cube_position(const int *const grid_size, const int *const lb_grid,
 
 	assert(!(position[0] >= grid_size[0]) || (position[1] >= grid_size[1]) ||
 				 (position[2] >= grid_size[2]));
-}
-
-void verify_orthogonality(const double dh[3][3], bool orthogonal[3]) {
-	double norm1, norm2, norm3;
-
-	norm1 = dh[0][0] * dh[0][0] + dh[0][1] * dh[0][1] + dh[0][2] * dh[0][2];
-	norm2 = dh[1][0] * dh[1][0] + dh[1][1] * dh[1][1] + dh[1][2] * dh[1][2];
-	norm3 = dh[2][0] * dh[2][0] + dh[2][1] * dh[2][1] + dh[2][2] * dh[2][2];
-
-	norm1 = 1.0 / sqrt(norm1);
-	norm2 = 1.0 / sqrt(norm2);
-	norm3 = 1.0 / sqrt(norm3);
-
-	/* x z */
-	orthogonal[0] =
-			((fabs(dh[0][0] * dh[2][0] + dh[0][1] * dh[2][1] + dh[0][2] * dh[2][2]) *
-				norm1 * norm3) < 1e-12);
-	/* y z */
-	orthogonal[1] =
-			((fabs(dh[1][0] * dh[2][0] + dh[1][1] * dh[2][1] + dh[1][2] * dh[2][2]) *
-				norm2 * norm3) < 1e-12);
-	/* x y */
-	orthogonal[2] =
-			((fabs(dh[0][0] * dh[1][0] + dh[0][1] * dh[1][1] + dh[0][2] * dh[1][2]) *
-				norm1 * norm2) < 1e-12);
 }
 
 #ifndef __MKL
@@ -592,47 +468,3 @@ void cblas_dgemv(const CBLAS_LAYOUT order, const CBLAS_TRANSPOSE TransA,
 #undef OFFSET
 }
 #endif
-
-static inline int compute_next_boundaries(const int y1, const int y,
-																					const int grid_size,
-																					const int cube_size) {
-		return y1 + imin(cube_size - y, grid_size - y1);
-}
-
-void compute_interval(const int *const map, const int full_size, const int size,
-											const int cube_size, const int x1, int *x,
-											int *const lower_corner, int *const upper_corner,
-											const Interval &window) {
-	if (size == full_size) {
-		/* we have the full grid in that direction */
-		/* lower boundary is within the window */
-		*lower_corner = x1;
-		/* now compute the upper corner */
-		/* needs to be as large as possible. basically I take [x1..
-		 * min(grid.full_size, cube_size - x)] */
-
-		*upper_corner = compute_next_boundaries(x1, *x, full_size, cube_size);
-
-		{
-			Interval tz(*lower_corner, *upper_corner);
-			Interval res = tz.intersection_interval(window);
-			*lower_corner = res.xmin();
-			*upper_corner = res.xmax();
-		}
-	} else {
-		*lower_corner = x1;
-		*upper_corner = x1 + 1;
-
-		// the map is always increasing by 1 except when we cross the boundaries of
-		// the grid and pbc are applied. Since we are only interested in by a
-		// subwindow of the full table we check that the next point is inside the
-		// window of interest and is also equal to the previous point + 1. The last
-		// check is pointless in practice.
-
-		for (int i = *x + 1; (i < size) && (*upper_corner == map[i]) &&
-												 window.is_point_in_interval(map[i]);
-				 i++) {
-			(*upper_corner)++;
-		}
-	}
-}
