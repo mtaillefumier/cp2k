@@ -20,6 +20,7 @@ extern "C" {
 
 #include "grid_info.hpp"
 #include "utils.hpp"
+
 #include "cpu_handler.hpp"
 
 cpu_handler::cpu_handler() {

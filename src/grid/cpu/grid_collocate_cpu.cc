@@ -26,7 +26,7 @@ extern"C" {
 #include "grid_context_cpu.hpp"
 #include "cpu_handler.hpp"
 #include "grid_info.hpp"
-#include "task.hpp"
+#include "../common/task.hpp"
 
 
 /* compute the functions (x - x_i)^l exp (-eta (x - x_i)^2) for l = 0..lp using

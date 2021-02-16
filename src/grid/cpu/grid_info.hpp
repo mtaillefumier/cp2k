@@ -11,7 +11,7 @@
 #include <cmath>
 #include <cstring>
 #include <vector>
-#include "tensor.hpp"
+#include "../common/tensor.hpp"
 
 #ifdef __LIBXSMM
 #include <libxsmm.h>

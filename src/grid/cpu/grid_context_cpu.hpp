@@ -19,8 +19,8 @@ extern "C" {
 #include "../common/grid_constants.h"
 }
 
-#include "task.hpp"
-#include "Interval.hpp"
+#include "../common/task.hpp"
+#include "../common/Interval.hpp"
 #include "grid_info.hpp"
 #include "cpu_handler.hpp"
 

@@ -11,9 +11,8 @@ extern "C" {
 #include "../common/grid_common.h"
 #include "../common/grid_constants.h"
 }
-
+#include "../common/tensor.hpp"
 #include "grid_context_cpu.hpp"
-#include "tensor.hpp"
 #include "utils.hpp"
 
 

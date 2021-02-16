@@ -23,12 +23,12 @@ extern "C" {
 #include "../common/grid_common.h"
 }
 
-#include "tensor.hpp"
-#include "cpu_handler.hpp"
-#include "grid_context_cpu.hpp"
-#include "grid_info.hpp"
+#include "../common/tensor.hpp"
+#include "../common/task.hpp"
 #include "utils.hpp"
-#include "task.hpp"
+#include "grid_info.hpp"
+#include "grid_context_cpu.hpp"
+#include "cpu_handler.hpp"
 
 
 void update_force_pair(orbital a, orbital b, const double pab,

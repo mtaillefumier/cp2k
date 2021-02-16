@@ -217,9 +217,12 @@ int compute_cube_properties(const bool ortho, const double radius,
 
 		// Symmetric interval
 		for (int i = 0; i < 3; i++) {
-			ub_cube[i] = 1 - lb_cube[i];
+			ub_cube[i] = - lb_cube[i];
 		}
 
+		cube_size[0] = ub_cube[0] - lb_cube[0] + 1;
+		cube_size[1] = ub_cube[1] - lb_cube[1] + 1;
+		cube_size[2] = ub_cube[2] - lb_cube[2] + 1;
 	} else {
 		for (int idir = 0; idir < 3; idir++) {
 			lb_cube[idir] = INT_MAX;
@@ -252,14 +255,15 @@ int compute_cube_properties(const bool ortho, const double radius,
 		}
 
 		*disr_radius = radius;
+
+		/* the +1 is normal here */
+		cube_size[0] = ub_cube[0] - lb_cube[0] + 1;
+		cube_size[1] = ub_cube[1] - lb_cube[1] + 1;
+		cube_size[2] = ub_cube[2] - lb_cube[2] + 1;
 	}
 
 	/* compute the cube size ignoring periodicity */
 
-	/* the +1 is normal here */
-	cube_size[0] = ub_cube[0] - lb_cube[0] + 1;
-	cube_size[1] = ub_cube[1] - lb_cube[1] + 1;
-	cube_size[2] = ub_cube[2] - lb_cube[2] + 1;
 
 	for (int i = 0; i < 3; i++) {
 			cmax = std::max(cmax, cube_size[i]);

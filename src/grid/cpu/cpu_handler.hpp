@@ -22,11 +22,11 @@ extern "C" {
 #include "../common/grid_constants.h"
 }
 
-#include "Interval.hpp"
-#include "tensor.hpp"
-#include "grid_info.hpp"
+#include "../common/Interval.hpp"
+#include "../common/tensor.hpp"
+#include "../common/task.hpp"
 #include "utils.hpp"
-#include "task.hpp"
+#include "grid_info.hpp"
 
 class cpu_handler {
 private:

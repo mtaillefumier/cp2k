@@ -17,7 +17,7 @@ extern "C" {
 #include "../common/grid_library.h"
 }
 
-#include "task.hpp"
+#include "../common/task.hpp"
 #include "grid_info.hpp"
 #include "utils.hpp"
 #include "grid_context_cpu.hpp"
