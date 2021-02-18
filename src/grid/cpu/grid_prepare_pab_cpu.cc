@@ -934,7 +934,7 @@ static void grid_prepare_pab_Di2(struct pab_computation_struct_ *const tp) {
 }
 
 // *****************************************************************************
-void grid_context::get_ldiffs(const enum grid_func func,
+void cpu_backend::get_ldiffs(const enum grid_func func,
 															int *const lmin_diff, int *const lmax_diff) {
 		switch (func) {
 		case GRID_FUNC_AB:
@@ -995,10 +995,10 @@ void grid_context::get_ldiffs(const enum grid_func func,
 }
 
 // *****************************************************************************
-void grid_context::prepare_pab(const enum grid_func func, const int *const offset,
-															 const int *const lmin, const int *const lmax,
-															 const double *const zeta, tensor1<double, 2> &pab,
-															 tensor1<double, 2> &pab_prep) {
+void cpu_backend::prepare_pab(const enum grid_func func, const int *const offset,
+															const int *const lmin, const int *const lmax,
+															const double *const zeta, tensor1<double, 2> &pab,
+															tensor1<double, 2> &pab_prep) {
 		struct pab_computation_struct_ tmp(pab, pab_prep);
 
 	tmp.offset[0] = offset[0];

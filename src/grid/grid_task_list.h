@@ -10,59 +10,8 @@
 #include <stdbool.h>
 
 #include "common/grid_basis_set.h"
-#include "common/grid_buffer.h"
 #include "common/grid_constants.h"
-//#include "cpu/grid_cpu_task_list.h"
-#include "gpu/grid_gpu_task_list.h"
-#include "hybrid/grid_hybrid_task_list.h"
-#include "ref/grid_ref_task_list.h"
 
-/*******************************************************************************
- * \brief Internal representation of a task list, abstracting various backends.
- * \author Ole Schuett
- ******************************************************************************/
-typedef struct {
-	int backend;
-	grid_ref_task_list *ref;
-	void *cpu;
-#ifdef __GRID_CUDA
-	grid_gpu_task_list *gpu;
-	void *hybrid;
-#endif
-	// more backends to be added here
-} grid_task_list;
-
-/*******************************************************************************
- * \brief Allocates a task list which can be passed to grid_collocate_task_list.
- *
- * \param ntasks           Number of tasks, ie. length of the task list.
- * \param nlevels          Number of grid levels.
- * \param natoms           Number of atoms.
- * \param nkinds           Number of atomic kinds.
- * \param nblocks          Number of local matrix blocks.
- * \param block_offsets    Offset of each block within the buffer (zero based).
- * \param atom_positions   Position of the atoms.
- * \param atom_kinds       Mapping from atom to atomic kind (one based).
- * \param basis_sets       Mapping from atomic kind to basis sets.
- *
- *      The following params are given for each task:
- *
- * \param level_list       Index of grid level (one based).
- * \param iatom_list       Index of first atom (one based).
- * \param jatom_list       Index of second atom (one based).
- * \param iset_list        Index of first set (one based).
- * \param jset_list        Index of second set (one based).
- * \param ipgf_list        Index of first exponent (one based).
- * \param jpgf_list        Index of second exponent (one based).
- * \param border_mask_list Bit-pattern determining border regions to exclude.
- * \param block_num_list   Index into the block_offsets array (one based).
- * \param radius_list      Radius where Gaussian becomes smaller than threshold.
- * \param rab_list         Vector between atoms, encodes the virtual image.
- *
- * \param task_list        Handle to the created task list.
- *
- * \author Ole Schuett
- ******************************************************************************/
 void grid_create_task_list(
 		const int ntasks, const int nlevels, const int natoms, const int nkinds,
 		const int nblocks, const int block_offsets[nblocks],
@@ -73,13 +22,13 @@ void grid_create_task_list(
 		const int ipgf_list[ntasks], const int jpgf_list[ntasks],
 		const int border_mask_list[ntasks], const int block_num_list[ntasks],
 		const double radius_list[ntasks], const double rab_list[ntasks][3],
-		grid_task_list **task_list);
+		void *ptr);
 
 /*******************************************************************************
  * \brief Deallocates given task list, basis_sets have to be freed separately.
  * \author Ole Schuett
  ******************************************************************************/
-void grid_free_task_list(grid_task_list *task_list);
+void grid_free_task_list(void *ptr);
 
 /*******************************************************************************
  * \brief Collocate all tasks of in given list onto given grids.
@@ -103,7 +52,7 @@ void grid_free_task_list(grid_task_list *task_list);
  * \author Ole Schuett
  ******************************************************************************/
 void grid_collocate_task_list(
-		const grid_task_list *task_list, const bool orthorhombic,
+		void *ptr, const bool orthorhombic,
 		const enum grid_func func, const int nlevels,
 		const int npts_global[nlevels][3], const int npts_local[nlevels][3],
 		const int shift_local[nlevels][3], const int border_width[nlevels][3],
@@ -138,7 +87,7 @@ void grid_collocate_task_list(
  * \author Ole Schuett
  ******************************************************************************/
 void grid_integrate_task_list(
-		const grid_task_list *task_list, const bool orthorhombic,
+		void *ptr, const bool orthorhombic,
 		const bool compute_tau, const int natoms, const int nlevels,
 		const int npts_global[nlevels][3], const int npts_local[nlevels][3],
 		const int shift_local[nlevels][3], const int border_width[nlevels][3],

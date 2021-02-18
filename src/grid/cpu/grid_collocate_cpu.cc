@@ -22,11 +22,11 @@ extern"C" {
 #include "../common/grid_basis_set.h"
 #include "../common/grid_constants.h"
 }
+#include "../common/grid_info.hpp"
+#include "../common/task.hpp"
 
 #include "grid_context_cpu.hpp"
 #include "cpu_handler.hpp"
-#include "grid_info.hpp"
-#include "../common/task.hpp"
 
 
 /* compute the functions (x - x_i)^l exp (-eta (x - x_i)^2) for l = 0..lp using
@@ -153,7 +153,6 @@ void cpu_handler::collocate_l0(const double alpha, tensor1<double, 3> &cube) {
 	const double *__restrict__ px =
 			pol_.at(2, 0, 0); /* i indice */
 
-	cube.zero();
 	tensor1<double, 2> exp_xy(Exp_.at(2, 0, 0), Exp_.size(1), Exp_.size(2));
 
 	if (this->scratch_size_ < cube.size(1) * cube.ld()) {
@@ -297,6 +296,7 @@ void cpu_handler::tensor_reduction(const bool integrate,
 		dgemm_simplified(&m3);
 		} else {
 				if (!integrate) {
+						cube.zero();
 						this->collocate_l0(co(0, 0, 0) * alpha, cube);
 				}
 		}
@@ -317,8 +317,7 @@ void cpu_handler::tensor_reduction(const bool integrate,
 }
 
 // *****************************************************************************
-void cpu_handler::collocate(const bool use_ortho,
-																				const task_info &task) {
+void cpu_handler::collocate(const bool use_ortho,	const task_info &task) {
 	// *** position of the gaussian product
 	//
 	// this is the actual definition of the position on the grid
@@ -351,7 +350,7 @@ void cpu_handler::collocate(const bool use_ortho,
 
 	/* initialize the multidimensional array containing the polynomials */
 	this->pol_.resize(3, this->coef_.size(0), this->cmax_);
-	this->pol_.zero();
+	//this->pol_.zero();
 	/* compute the polynomials */
 
 	// WARNING : do not reverse the order in pol otherwise you will have to
@@ -394,71 +393,4 @@ void cpu_handler::collocate(const bool use_ortho,
 	}
 
 	this->extract_add_cube<true>();
-}
-
-
-/*******************************************************************************
- * \brief Collocate all tasks of a given list onto given grids.
- *        See gridtask_info_list.h for details.
- ******************************************************************************/
-extern "C" void grid_cpu_collocate_task_list(void *const ptr, const bool orthorhombic,
-																						 const enum grid_func func, const int nlevels,
-																						 const int *npts_global, const int *npts_local,
-																						 const int *shift_local, const int *border_width,
-																						 const double *dh, const double *dh_inv,
-																						 const grid_buffer *pab_blocks, double **grid) {
-		assert(ptr != nullptr);
-		assert(grid != nullptr);
-		grid_context *const ctx = (grid_context *const)ptr;
-
-		assert(ctx->grid.size() > 0);
-		ctx->orthorhombic = orthorhombic;
-		ctx->set_function(func);
-		const int max_threads = omp_get_max_threads();
-
-
-		//#pragma omp parallel for
-		for (auto level = 0u; level < ctx->grid.size(); level++) {
-				int local_size__[3] = {npts_local[3 * level + 2], npts_local[3 * level + 1], npts_local[3 * level]};
-				int full_size__[3] = {npts_global[3 * level + 2], npts_global[3 * level + 1], npts_global[3 * level]};
-				int shift_local__[3] = {shift_local[3 * level + 2], shift_local[3 * level + 1], shift_local[3 * level]};
-				int border_width__[3] = {border_width[3 * level + 2], border_width[3 * level + 1], border_width[3 * level]};
-				ctx->grid[level].set_grid_parameters(orthorhombic,
-																						 full_size__,
-																						 local_size__,
-																						 shift_local__,
-																						 border_width__,
-																						 &dh[9 * level],
-																						 &dh_inv[9 * level],
-																						 grid[level]);
-				ctx->grid[level].zero();
-		}
-
-	if (ctx->scratch == NULL) {
-			int max_size = ctx->grid[0].size();
-
-		/* compute the size of the largest grid. It is used afterwards to allocate
-		 * scratch memory for the grid on each omp thread */
-		for (int x = 1; x < nlevels; x++) {
-				max_size = std::max(ctx->grid[x].size(), max_size);
-		}
-
-		max_size = ((max_size / 4096) + (max_size % 4096 != 0)) * 4096;
-
-		/* scratch is a void pointer !!!!! */
-		ctx->scratch =
-				(double *)grid_allocate_scratch(max_size * max_threads * sizeof(double));
-	}
-
-
-	// std::setprecision(15);
-	for (int level = 0; level < ctx->grid.size(); level++) {
-			int shift_local__[3] = {shift_local[3 * level + 2], shift_local[3 * level + 1], shift_local[3 * level]};
-			int border_width__[3] = {border_width[3 * level + 2], border_width[3 * level + 1], border_width[3 * level]};
-			ctx->collocate_one_grid_level(border_width__, shift_local__, level, pab_blocks);
-			// std::cout << ctx->grid[level].integrate() << "\n";
-	}
-
-	grid_free_scratch(ctx->scratch);
-	ctx->scratch = NULL;
 }

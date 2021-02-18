@@ -18,7 +18,7 @@ extern "C" {
 #include "../common/grid_common.h"
 }
 
-#include "grid_info.hpp"
+#include "../common/grid_info.hpp"
 #include "utils.hpp"
 
 #include "cpu_handler.hpp"

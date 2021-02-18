@@ -26,7 +26,7 @@ extern "C" {
 #include "../common/tensor.hpp"
 #include "../common/task.hpp"
 #include "utils.hpp"
-#include "grid_info.hpp"
+#include "../common/grid_info.hpp"
 #include "grid_context_cpu.hpp"
 #include "cpu_handler.hpp"
 
@@ -187,7 +187,7 @@ void cpu_handler::integrate(const bool use_ortho, const task_info &task, tensor1
 			this->pol_.resize(3, this->coef_.size(0), this->cmax_);
 	}
 
-	this->pol_.zero();
+	// this->pol_.zero();
 
 	/* allocate memory for the polynomial and the cube */
 	this->cube_.resize(this->cube_size_[0], this->cube_size_[1], this->cube_size_[2]);
@@ -247,9 +247,9 @@ void cpu_handler::integrate(const bool use_ortho, const task_info &task, tensor1
 		calculate_non_orthorombic_corrections_tensor(task.zetp);
 	}
 
-	this->cube_.zero();
 	/* extract the data from the grid and apply the cutoff eventually */
 	if (this->apply_cutoff) {
+			this->cube_.zero();
 			if (!use_ortho && !use_ortho_forced) {
 					this->apply_spherical_cutoff_ortho<false>();
 			} else {
@@ -309,13 +309,10 @@ void cpu_handler::integrate(const bool use_ortho, const task_info &task, tensor1
 	this->compute_vab(lmin, lmax, lp, task.prefactor, vab); // contains the coefficients of the potential
 }
 
-void grid_context::integrate_one_grid_level(const int level, const bool calculate_tau,
-																						const bool calculate_forces, const bool calculate_virial,
-																						const int *const shift_local, const int *const border_width,
-																						const grid_buffer *const pab_blocks, grid_buffer *const hab_blocks,
-																						tensor1<double, 2> &forces_, tensor1<double, 2> &virial_) {
-		grid_info &grid = this->grid[level];
-
+void cpu_backend::integrate_one_grid_level(const int level) {
+		grid_info &grid = ctx_.grid(level);
+		auto &forces_ = ctx_.forces();
+		auto &virial_ = ctx_.virial();
 	// Using default(shared) because with GCC 9 the behavior around const changed:
 	// https://www.gnu.org/software/gcc/gcc-9/porting_to.html
 #pragma omp parallel default(shared)
@@ -326,39 +323,38 @@ void grid_context::integrate_one_grid_level(const int level, const bool calculat
 		double *hab_block_local = NULL;
 
 		if (num_threads == 1) {
-			hab_block_local = hab_blocks->host_buffer;
+				hab_block_local = ctx_.hab_blocks().host_buffer;
 		} else {
 			hab_block_local =
-
 					((double *)this->scratch) +
-												thread_id * (hab_blocks->size / sizeof(double));
-			memset(hab_block_local, 0, hab_blocks->size);
+					thread_id * (ctx_.hab_blocks().size / sizeof(double));
+			memset(hab_block_local, 0, ctx_.hab_blocks().size);
 		}
 
 		tensor1<double, 2> hab, vab, forces_local_, virial_local_,
 				forces_local_pair_;
 		tensor1<double, 3> virial_local_pair_;
 
-		auto &handler = this->handler[thread_id];
+		auto &handler = this->handler_[thread_id];
 		handler.apply_cutoff = this->apply_cutoff();
 		handler.lmax_diff[0] = 0;
 		handler.lmax_diff[1] = 0;
 		handler.lmin_diff[0] = 0;
 		handler.lmin_diff[1] = 0;
 
-		if (calculate_tau || calculate_forces || calculate_virial) {
+		if (ctx_.calculate_tau() || ctx_.calculate_forces() || ctx_.calculate_virial()) {
 			handler.lmax_diff[0] = 1;
 			handler.lmax_diff[1] = 0;
 			handler.lmin_diff[0] = -1;
 			handler.lmin_diff[1] = -1;
 		}
 
-		if (calculate_virial) {
+		if (ctx_.calculate_virial()) {
 			handler.lmax_diff[0]++;
 			handler.lmax_diff[1]++;
 		}
 
-		if (calculate_tau) {
+		if (ctx_.calculate_tau()) {
 			handler.lmax_diff[0]++;
 			handler.lmax_diff[1]++;
 			handler.lmin_diff[0]--;
@@ -366,13 +362,13 @@ void grid_context::integrate_one_grid_level(const int level, const bool calculat
 		}
 
 		// Allocate pab matrix for re-use across tasks.
-		handler.pab().resize(this->maxco, this->maxco);
-		vab.resize(this->maxco, this->maxco);
-		handler.work().resize(this->maxco, this->maxco);
-		hab.resize(this->maxco, this->maxco);
+		handler.pab().resize(this->ctx_.maxco(), this->ctx_.maxco());
+		vab.resize(this->ctx_.maxco(), this->ctx_.maxco());
+		handler.work().resize(this->ctx_.maxco(), this->ctx_.maxco());
+		hab.resize(this->ctx_.maxco(), this->ctx_.maxco());
 
-		if (calculate_forces) {
-				forces_local_.resize(forces_.size(0), forces_.size(1));
+		if (ctx_.calculate_forces()) {
+				forces_local_.resize(ctx_.forces().size(0), ctx_.forces().size(1));
 				virial_local_.resize(3, 3);
 				forces_local_pair_.resize(2, 3);
 				virial_local_pair_.resize(2, 3, 3);
@@ -387,16 +383,16 @@ void grid_context::integrate_one_grid_level(const int level, const bool calculat
 		handler.grid() = grid;
 
 		for (int d = 0; d < 3; d++)
-			handler.orthogonal[d] = grid.orthogonal[d];
+				handler.orthogonal[d] = grid.orthogonal(d);
 
 		/* it is only useful when we split the list over multiple threads. The
 		 * first iteration should load the block whatever status the
 		 * task->block_update_ variable has */
 		const task_info *prev_task = NULL;
 #pragma omp for schedule(static)
-		for (int itask = 0; itask < this->tasks_per_level[level]; itask++) {
+		for (int itask = 0; itask < ctx_.tasks_per_level(level); itask++) {
 			// Define some convenient aliases.
-			const task_info *task = this->queues_[level] + itask;
+				const task_info *task = ctx_.queues(level, itask);
 
 			if (task->level != level) {
 				printf("level %d, %d\n", task->level, level);
@@ -405,8 +401,8 @@ void grid_context::integrate_one_grid_level(const int level, const bool calculat
 
 			if (task->update_block_ || (prev_task == NULL)) {
 				/* need to load pab if forces are needed */
-				if (calculate_forces) {
-						this->extract_blocks(*task, pab_blocks, handler.work(), handler.pab());
+					if (ctx_.calculate_forces()) {
+						this->extract_blocks(*task, &ctx_.pab_blocks(), handler.work(), handler.pab());
 				}
 				/* store the coefficients of the operator after rotation to
 				 * the spherical harmonic basis */
@@ -428,21 +424,20 @@ void grid_context::integrate_one_grid_level(const int level, const bool calculat
 				/* unfortunately the window where the gaussian should be added depends
 				 * on the bonds. So I have to adjust the window all the time. */
 
-					handler.grid().setup_grid_window(shift_local, border_width,
-																					 task->border_mask);
+					handler.grid().setup_grid_window(task->border_mask);
 			}
 
-			handler.integrate(this->orthorhombic, *task, vab);
+			handler.integrate(ctx_.is_orthorhombic(), *task, vab);
 
 			// in the (x - x_1)(x - x_2) basis
 
-			if (calculate_forces) {
+			if (ctx_.calculate_forces()) {
 					forces_local_pair_.zero();
 					virial_local_pair_.zero();
 			}
 
 			update_hab_forces_and_stress(
-					task, vab, handler.pab(), calculate_tau, calculate_forces, calculate_virial,
+					task, vab, handler.pab(), ctx_.calculate_tau(), ctx_.calculate_forces(), ctx_.calculate_virial(),
 					forces_local_pair_, /* matrix
 																* containing the
 																* contribution of
@@ -453,7 +448,7 @@ void grid_context::integrate_one_grid_level(const int level, const bool calculat
 																*/
 					hab);
 
-			if (calculate_forces) {
+			if (ctx_.calculate_forces()) {
 				const double scaling = (task->iatom == task->jatom) ? 1.0 : 2.0;
 				forces_local_(task->iatom, 0) +=
 						scaling * forces_local_pair_(0, 0);
@@ -468,7 +463,7 @@ void grid_context::integrate_one_grid_level(const int level, const bool calculat
 						scaling * forces_local_pair_(1, 1);
 				forces_local_(task->jatom, 2) +=
 						scaling * forces_local_pair_(1, 2);
-				if (calculate_virial) {
+				if (ctx_.calculate_virial()) {
 						for (int i = 0; i < 3; i++) {
 								for (int j = 0; j < 3; j++) {
 										virial_local_(i, j) +=
@@ -487,7 +482,7 @@ void grid_context::integrate_one_grid_level(const int level, const bool calculat
 		if (num_threads > 1) {
 			// does not store the number of elements but the amount of memory
 			// occupied. That's a strange choice.
-			const int hab_size = hab_blocks->size / sizeof(double);
+				const int hab_size = ctx_.hab_blocks().size / sizeof(double);
 			if ((hab_size / num_threads) >= 2) {
 				const int block_size =
 						hab_size / num_threads + (hab_size % num_threads);
@@ -497,18 +492,18 @@ void grid_context::integrate_one_grid_level(const int level, const bool calculat
 					size_t begin = bk_id * block_size;
 					size_t end = std::min((bk_id + 1) * block_size, hab_size);
 					cblas_daxpy(end - begin, 1.0, hab_block_local + begin, 1,
-											hab_blocks->host_buffer + begin, 1);
+											ctx_.hab_blocks().host_buffer + begin, 1);
 #pragma omp barrier
 				}
 			} else {
-				const int hab_size = hab_blocks->size / sizeof(double);
+					const int hab_size = ctx_.hab_blocks().size / sizeof(double);
 #pragma omp critical
-				cblas_daxpy(hab_size, 1.0, hab_block_local, 1, hab_blocks->host_buffer,
-										1);
+					cblas_daxpy(hab_size, 1.0, hab_block_local, 1, ctx_.hab_blocks().host_buffer,
+											1);
 			}
 		}
 
-		if (calculate_forces) {
+		if (ctx_.calculate_forces()) {
 				if (num_threads > 1) {
 						if ((forces_.size() / num_threads) >= 2) {
 								const int block_size = forces_.size() / num_threads +
@@ -519,18 +514,21 @@ void grid_context::integrate_one_grid_level(const int level, const bool calculat
 										size_t begin = bk_id * block_size;
 										size_t end = std::min((bk_id + 1) * block_size, forces_.size());
 										cblas_daxpy(end - begin, 1.0, forces_local_.at() + begin, 1,
-																forces_.at() + begin, 1);
+																ctx_.forces().at() + begin, 1);
 #pragma omp barrier
 								}
 						} else {
 #pragma omp critical
 								cblas_daxpy(forces_local_.size(), 1.0, forces_local_.at(), 1,
-														forces_.at(), 1);
+														ctx_.forces().at(), 1);
 						}
+				} else {
+						memcpy(ctx_.forces().at(), forces_local_.at(), sizeof(double) * forces_local_.size());
 				}
+
 		}
 
-		if (calculate_virial) {
+		if (ctx_.calculate_virial()) {
 #pragma omp critical
 				for (int i = 0; i < 3; i++) {
 						for (int j = 0; j < 3; j++) {
@@ -544,87 +542,4 @@ void grid_context::integrate_one_grid_level(const int level, const bool calculat
 		forces_local_.clear();
 		virial_local_.clear();
 	}
-}
-
-/*******************************************************************************
- * \brief Integrate all tasks of in given list from given grids using matrix -
- * matrix multiplication
- ******************************************************************************/
-extern "C" void grid_cpu_integrate_task_list(
-		void *ptr, const bool orthorhombic, const bool compute_tau,
-		const int natoms, const int nlevels, const int *npts_global,
-		const int *npts_local, const int *shift_local,
-		const int *border_width, const double *dh,
-		const double *dh_inv, const grid_buffer *const pab_blocks,
-		double **grid, grid_buffer *hab_blocks, double *forces,
-		double *virial) {
-
-	grid_context *const ctx = (grid_context *const)ptr;
-
-	// Zero result arrays.
-	memset(hab_blocks->host_buffer, 0, hab_blocks->size);
-
-	const int max_threads = omp_get_max_threads();
-
-	if (ctx->scratch == NULL)
-			ctx->scratch =(double *)
-				aligned_alloc(sysconf(_SC_PAGESIZE), hab_blocks->size * max_threads);
-
-	ctx->orthorhombic = orthorhombic;
-
-	//#pragma omp parallel for
-	for (int level = 0; level < nlevels; level++) {
-			int local_size__[3] = {npts_local[3 * level + 2], npts_local[3 * level + 1], npts_local[3 * level]};
-			int full_size__[3] = {npts_global[3 * level + 2], npts_global[3 * level + 1], npts_global[3 * level]};
-			int shift_local__[3] = {shift_local[3 * level + 2], shift_local[3 * level + 1], shift_local[3 * level]};
-			int border_width__[3] = {border_width[3 * level + 2], border_width[3 * level + 1], border_width[3 * level]};
-			ctx->grid[level].set_grid_parameters(orthorhombic,
-																					 full_size__,
-																					 local_size__,
-																					 shift_local__,
-																					 border_width__,
-																					 &dh[9 * level],
-																					 &dh_inv[9 * level],
-																					 grid[level]);
-	}
-
-	bool calculate_virial = (virial != NULL);
-	bool calculate_forces = (forces != NULL);
-
-	tensor1<double, 2> forces_, virial_;
-	if (calculate_forces) {
-			forces_.resize(natoms, 3);
-			virial_.resize(3, 3);
-			forces_.zero();
-			virial_.zero();
-	}
-
-	for (int level = 0; level < ctx->grid.size(); level++) {
-			int shift_local__[3] = {shift_local[3 * level + 2], shift_local[3 * level + 1], shift_local[3 * level]};
-			int border_width__[3] = {border_width[3 * level + 2], border_width[3 * level + 1], border_width[3 * level]};
-			ctx->integrate_one_grid_level(level, compute_tau, calculate_forces,
-																		calculate_virial, shift_local__,
-																		border_width__, pab_blocks, hab_blocks,
-																		forces_, virial_);
-	}
-	if (calculate_forces) {
-		if (calculate_virial) {
-				virial[0] = virial_(0, 0);
-				virial[1] = virial_(0, 1);
-				virial[2] = virial_(0, 2);
-				virial[3] = virial_(1, 0);
-				virial[4] = virial_(1, 1);
-				virial[5] = virial_(1, 2);
-				virial[6] = virial_(2, 0);
-				virial[7] = virial_(2, 1);
-				virial[8] = virial_(2, 2);
-		}
-
-		memcpy(forces, forces_.at(), sizeof(double) * forces_.size());
-		forces_.clear();
-		virial_.clear();
-	}
-
-	free(ctx->scratch);
-	ctx->scratch = NULL;
 }

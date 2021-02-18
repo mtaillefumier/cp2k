@@ -18,7 +18,7 @@ extern "C" {
 }
 
 #include "../common/task.hpp"
-#include "grid_info.hpp"
+#include "../common/grid_info.hpp"
 #include "utils.hpp"
 #include "grid_context_cpu.hpp"
 #include "cpu_handler.hpp"
@@ -101,206 +101,11 @@ static void rotate_to_cartesian_harmonics(const grid_basis_set *ibasis,
 }
 
 
-void grid_context::return_dh(const int level, double *const dh) {
-	dh[0] = this->grid[level].dh[0][0];
-	dh[1] = this->grid[level].dh[0][1];
-	dh[2] = this->grid[level].dh[0][2];
-	dh[3] = this->grid[level].dh[1][0];
-	dh[4] = this->grid[level].dh[1][1];
-	dh[5] = this->grid[level].dh[1][2];
-	dh[6] = this->grid[level].dh[2][0];
-	dh[7] = this->grid[level].dh[2][1];
-	dh[8] = this->grid[level].dh[2][2];
-}
+void cpu_backend::collocate_one_grid_level(const int level) {
+		assert(this->handler_.size());
+		assert(ctx_.grid().size());
 
-void grid_context::dh_inv(const int level, double *const dh_inv) {
-	dh_inv[0] = this->grid[level].dh_inv[0][0];
-	dh_inv[1] = this->grid[level].dh_inv[0][1];
-	dh_inv[2] = this->grid[level].dh_inv[0][2];
-	dh_inv[3] = this->grid[level].dh_inv[1][0];
-	dh_inv[4] = this->grid[level].dh_inv[1][1];
-	dh_inv[5] = this->grid[level].dh_inv[1][2];
-	dh_inv[6] = this->grid[level].dh_inv[2][0];
-	dh_inv[7] = this->grid[level].dh_inv[2][1];
-	dh_inv[8] = this->grid[level].dh_inv[2][2];
-}
-
-
-void grid_context::update_queue_length(const int queue_length) {
-	this->queue_length = queue_length;
-}
-
-void grid_context::update_atoms_position(const int natoms,
-																				 const double *atoms_positions) {
-	this->atom_positions_.clear();
-	this->atom_positions_.resize(3 * natoms);
-
-	for (auto i = 0u; i < this->atom_positions_.size(); i++) {
-			this->atom_positions_[i] = atoms_positions[i];
-	}
-}
-
-void grid_context::update_atoms_kinds(const int natoms, const int *atoms_kinds) {
-	this->atom_kinds_.clear();
-	this->atom_kinds_.resize(natoms);
-
-	memcpy(&this->atom_kinds_[0], atoms_kinds, sizeof(int) * natoms);
-
-	for (auto i = 0u; i < this->atom_kinds_.size(); i++) {
-		this->atom_kinds_[i] -= 1;
-	}
-}
-
-void grid_context::update_block_offsets(const int nblocks, const int *const block_offsets) {
-	if (nblocks == 0)
-		return;
-
-	this->block_offsets_.clear();
-	this->block_offsets_.resize(nblocks);
-
-	memcpy(&this->block_offsets_[0], block_offsets, nblocks * sizeof(int));
-}
-
-void grid_context::update_basis_set(const int nkinds, const grid_basis_set **const basis_sets) {
-	this->basis_sets_.clear();
-	this->basis_sets_.resize(nkinds);
-	memcpy(&this->basis_sets_[0], basis_sets, nkinds * sizeof(grid_basis_set *));
-}
-
-void grid_context::update_task_lists(const int nlevels, const int ntasks,
-											 const int *const level_list, const int *const iatom_list,
-											 const int *const jatom_list, const int *const iset_list,
-											 const int *const jset_list, const int *const ipgf_list,
-											 const int *const jpgf_list,
-											 const int *const border_mask_list,
-											 const int *block_num_list,
-											 const double *const radius_list,
-											 const double *rab_list) {
-		if (nlevels == 0)
-				return;
-
-		// Count tasks per level.
-		this->tasks_per_level.clear();
-		this->tasks_per_level.resize(nlevels);
-		this->tasks_list_.clear();
-		this->tasks_list_.resize(ntasks);
-		memset(&this->tasks_list_[0], 0, sizeof(task_info) * this->tasks_list_.size());
-		this->queues_.clear();
-		this->queues_.resize(nlevels);
-
-		memset(&this->tasks_per_level[0], 0, sizeof(int) * nlevels);
-		for (int i = 0; i < ntasks; i++) {
-				this->tasks_per_level[level_list[i] - 1]++;
-				assert(i == 0 || level_list[i] >= level_list[i - 1]); // expect ordered list
-		}
-
-		this->queues_[0] = &this->tasks_list_[0];
-
-		for (auto i = 1u; i < this->tasks_per_level.size(); i++) {
-				this->queues_[i] = this->queues_[i - 1] + this->tasks_per_level[i - 1];
-		}
-
-		int prev_block_num = -1;
-		int prev_iset = -1;
-		int prev_jset = -1;
-		int prev_level = -1;
-		for (int i = 0; i < ntasks; i++) {
-				auto &task_ = this->tasks_list_[i];
-				if (prev_level != (level_list[i] - 1)) {
-						prev_level = level_list[i] - 1;
-						prev_block_num = -1;
-						prev_iset = -1;
-						prev_jset = -1;
-				}
-				task_.level = level_list[i] - 1;
-				task_.iatom = iatom_list[i] - 1;
-				task_.jatom = jatom_list[i] - 1;
-				task_.iset = iset_list[i] - 1;
-				task_.jset = jset_list[i] - 1;
-				task_.ipgf = ipgf_list[i] - 1;
-				task_.jpgf = jpgf_list[i] - 1;
-				task_.border_mask = border_mask_list[i];
-				task_.block_num = block_num_list[i] - 1;
-				task_.radius = radius_list[i];
-				task_.rab[0] = rab_list[3 * i];
-				task_.rab[1] = rab_list[3 * i + 1];
-				task_.rab[2] = rab_list[3 * i + 2];
-				const int iatom = task_.iatom;
-				const int jatom = task_.jatom;
-				const int iset = task_.iset;
-				const int jset = task_.jset;
-				const int ipgf = task_.ipgf;
-				const int jpgf = task_.jpgf;
-				const int ikind = this->atom_kinds_[iatom];
-				const int jkind = this->atom_kinds_[jatom];
-				const grid_basis_set *ibasis = this->basis_sets_[ikind];
-				const grid_basis_set *jbasis = this->basis_sets_[jkind];
-				const int ncoseta = ncoset(ibasis->lmax[iset]);
-				const int ncosetb = ncoset(jbasis->lmax[jset]);
-
-				task_.zeta[0] = ibasis->zet[iset * ibasis->maxpgf + ipgf];
-				task_.zeta[1] = jbasis->zet[jset * jbasis->maxpgf + jpgf];
-
-				const double *ra = &this->atom_positions_[3 * iatom];
-				const double zetp = task_.zeta[0] + task_.zeta[1];
-				const double f = task_.zeta[1] / zetp;
-				const double rab2 = task_.rab[0] * task_.rab[0] +
-						task_.rab[1] * task_.rab[1] +
-						task_.rab[2] * task_.rab[2];
-
-				task_.prefactor = exp(-task_.zeta[0] * f * rab2);
-				task_.zetp = zetp;
-
-				const int block_num = task_.block_num;
-
-				for (int i = 0; i < 3; i++) {
-						task_.ra[i] = ra[i];
-						task_.rp[i] = ra[i] + f * task_.rab[i];
-						task_.rb[i] = ra[i] + task_.rab[i];
-				}
-
-				task_.lmax[0] = ibasis->lmax[iset];
-				task_.lmax[1] = jbasis->lmax[jset];
-				task_.lmin[0] = ibasis->lmin[iset];
-				task_.lmin[1] = jbasis->lmin[jset];
-
-				if ((block_num != prev_block_num) || (iset != prev_iset) ||
-						(jset != prev_jset)) {
-						task_.update_block_ = true;
-						prev_block_num = block_num;
-						prev_iset = iset;
-						prev_jset = jset;
-				} else {
-						task_.update_block_ = false;
-				}
-
-				task_.offset[0] = ipgf * ncoseta;
-				task_.offset[1] = jpgf * ncosetb;
-		}
-
-		// Find largest Cartesian subblock size.
-		this->maxco = 0;
-		for (auto kind: this->basis_sets_) {
-				this->maxco = imax(this->maxco, kind->maxco);
-		}
-}
-
-void grid_context::update_grid(const int nlevels) {
-	if (nlevels == 0)
-		return;
-	this->grid.clear();
-	this->grid.resize(nlevels);
-}
-
-
-void grid_context::collocate_one_grid_level(const int *const border_width,
-																						const int *const shift_local,
-																						const int level,
-																						const grid_buffer *pab_blocks) {
-		assert(this->handler.size());
-		assert(this->grid.size());
-
-		auto &grid = this->grid[level];
+		auto &grid = ctx_.grid(level);
 	// Using default(shared) because with GCC 9 the behavior around const changed:
 	// https://www.gnu.org/software/gcc/gcc-9/porting_to.html
 #pragma omp parallel default(shared)
@@ -308,9 +113,9 @@ void grid_context::collocate_one_grid_level(const int *const border_width,
 		const int num_threads = omp_get_num_threads();
 		const int thread_id = omp_get_thread_num();
 
-		auto &handler = this->handler[thread_id];
+		auto &handler = this->handler_[thread_id];
 
-		handler.func = func_;
+		handler.func = ctx_.func();
 		this->get_ldiffs(handler.func,
 										 handler.lmin_diff,
 										 handler.lmax_diff);
@@ -318,9 +123,9 @@ void grid_context::collocate_one_grid_level(const int *const border_width,
 		handler.apply_cutoff = this->apply_cutoff();
 
 		// Allocate pab matrix for re-use across tasks.
-		handler.pab().resize(this->maxco, this->maxco);
-		handler.work().resize(this->maxco, this->maxco);
-		handler.pab_prep().resize(this->maxco, this->maxco);
+		handler.pab().resize(this->ctx_.maxco(), this->ctx_.maxco());
+		handler.work().resize(this->ctx_.maxco(), this->ctx_.maxco());
+		handler.pab_prep().resize(this->ctx_.maxco(), this->ctx_.maxco());
 
 		handler.initialize_basis_vectors(grid.dh, grid.dh_inv);
 
@@ -330,7 +135,7 @@ void grid_context::collocate_one_grid_level(const int *const border_width,
 		handler.grid() = grid;
 
 		for (int d = 0; d < 3; d++)
-				handler.orthogonal[d] = handler.grid().orthogonal[d];
+				handler.orthogonal[d] = handler.grid().orthogonal(d);
 
 		if ((num_threads > 1) && (thread_id > 0)) {
 				handler.grid().update_pointer(((double *)this->scratch) +
@@ -343,9 +148,9 @@ void grid_context::collocate_one_grid_level(const int *const border_width,
 		 * has */
 		const task_info *prevtask_info = NULL;
 #pragma omp for schedule(static)
-		for (int itask = 0; itask < this->tasks_per_level[level]; itask++) {
+		for (int itask = 0; itask < this->ctx_.tasks_per_level(level); itask++) {
 			// Define some convenient aliases.
-			const task_info *task = this->queues_[level] + itask;
+				const task_info *task = this->ctx_.queues(level, itask);
 
 			if (task->level != level) {
 				printf("level %d, %d\n", task->level, level);
@@ -356,8 +161,7 @@ void grid_context::collocate_one_grid_level(const int *const border_width,
 				/* unfortunately the window where the gaussian should be added depends
 				 * on the bonds. So I have to adjust the window all the time. */
 
-					handler.grid().setup_grid_window(shift_local, border_width,
-																				 task->border_mask);
+					handler.grid().setup_grid_window(task->border_mask);
 			}
 
 			/* this is a three steps procedure. pab_blocks contains the coefficients
@@ -384,10 +188,10 @@ void grid_context::collocate_one_grid_level(const int *const border_width,
 			 * for each bond.
 			 */
 
-			this->compute_coefficients(handler, prevtask_info, *task, pab_blocks, handler.pab(),
+			this->compute_coefficients(handler, prevtask_info, *task, &ctx_.pab_blocks(), handler.pab(),
 																 handler.work(), handler.pab_prep());
 
-			handler.collocate(this->orthorhombic, *task);
+			handler.collocate(this->orthorhombic_, *task);
 			prevtask_info = task;
 		}
 
@@ -421,7 +225,7 @@ void grid_context::collocate_one_grid_level(const int *const border_width,
 	}
 }
 
-void grid_context::rotate_and_store_coefficients(const task_info *prev_task,
+void cpu_backend::rotate_and_store_coefficients(const task_info *prev_task,
 																								 const task_info *task, tensor1<double, 2> &hab,
 																								 tensor1<double, 2> &work, // some scratch matrix
 																								 double *blocks) {
@@ -434,13 +238,13 @@ void grid_context::rotate_and_store_coefficients(const task_info *prev_task,
 		const int jatom = prev_task->jatom;
 		const int iset = prev_task->iset;
 		const int jset = prev_task->jset;
-		const int ikind = this->atom_kinds_[iatom];
-		const int jkind = this->atom_kinds_[jatom];
-		const grid_basis_set *ibasis = this->basis_sets_[ikind];
-		const grid_basis_set *jbasis = this->basis_sets_[jkind];
+		const int ikind = prev_task->ikind;
+		const int jkind = prev_task->jkind;
+		const grid_basis_set *ibasis = this->ctx_.basis_sets_[ikind];
+		const grid_basis_set *jbasis = this->ctx_.basis_sets_[jkind];
 
 		const int block_num = prev_task->block_num;
-		double *const block = &blocks[this->block_offsets_[block_num]];
+		double *const block = &blocks[this->ctx_.block_offsets_[block_num]];
 
 		const int ncoseta = ncoset(ibasis->lmax[iset]);
 		const int ncosetb = ncoset(jbasis->lmax[jset]);
@@ -525,14 +329,12 @@ void grid_context::rotate_and_store_coefficients(const task_info *prev_task,
 	}
 
 	if (task != NULL) {
-		const int iatom = task->iatom;
-		const int jatom = task->jatom;
-		const int ikind = this->atom_kinds_[iatom];
-		const int jkind = this->atom_kinds_[jatom];
+		const int ikind = task->ikind;
+		const int jkind = task->jkind;
 		const int iset = task->iset;
 		const int jset = task->jset;
-		const grid_basis_set *ibasis = this->basis_sets_[ikind];
-		const grid_basis_set *jbasis = this->basis_sets_[jkind];
+		const grid_basis_set *ibasis = this->ctx_.basis_sets_[ikind];
+		const grid_basis_set *jbasis = this->ctx_.basis_sets_[jkind];
 		const int ncoseta = ncoset(ibasis->lmax[iset]);
 		const int ncosetb = ncoset(jbasis->lmax[jset]);
 
@@ -544,7 +346,7 @@ void grid_context::rotate_and_store_coefficients(const task_info *prev_task,
 }
 
 
-void grid_context::extract_blocks(const task_info &task,
+void cpu_backend::extract_blocks(const task_info &task,
 																	const grid_buffer *pab_blocks,
 																	tensor1<double, 2> &work,
 																	tensor1<double, 2> &pab) {
@@ -552,10 +354,10 @@ void grid_context::extract_blocks(const task_info &task,
 		const int jatom = task.jatom;
 		const int iset = task.iset;
 		const int jset = task.jset;
-		const int ikind = this->atom_kinds_[iatom];
-		const int jkind = this->atom_kinds_[jatom];
-		const grid_basis_set *ibasis = this->basis_sets_[ikind];
-		const grid_basis_set *jbasis = this->basis_sets_[jkind];
+		const int ikind = task.ikind;
+		const int jkind = task.jkind;
+		const grid_basis_set *ibasis = this->ctx_.basis_sets_[ikind];
+		const grid_basis_set *jbasis = this->ctx_.basis_sets_[jkind];
 
 		const int block_num = task.block_num;
 
@@ -565,14 +367,14 @@ void grid_context::extract_blocks(const task_info &task,
 		// harmonic basis so we have to rotate the coefficients. It is nothing
 		// else than a basis change and it done with two dgemm.
 
-		const int block_offset = this->block_offsets_[block_num]; // zero based
+		const int block_offset = this->ctx_.block_offsets_[block_num]; // zero based
 		double *const block = &pab_blocks->host_buffer[block_offset];
 
 		rotate_to_cartesian_harmonics(ibasis, jbasis, iatom, jatom, iset, jset, block,
 																	work, pab);
 }
 
-void grid_context::compute_coefficients(cpu_handler &handler,
+void cpu_backend::compute_coefficients(cpu_handler &handler,
 																				const task_info *const previous_task,
 																				const task_info &task,
 																				const grid_buffer *pab_blocks, tensor1<double, 2> &pab,
@@ -601,7 +403,7 @@ void grid_context::compute_coefficients(cpu_handler &handler,
 	pab_prep.resize(n2_prep, n1_prep);
 
 	this->prepare_pab(handler.func, task.offset, task.lmin, task.lmax,
-										&task.zeta[0], pab, pab_prep);
+											&task.zeta[0], pab, pab_prep);
 
 	//   *** initialise the coefficient matrix, we transform the sum
 	//
@@ -639,72 +441,50 @@ void grid_context::compute_coefficients(cpu_handler &handler,
 															 task.prefactor * ((task.iatom == task.jatom) ? 1.0 : 2.0), pab_prep);
 }
 
+void cpu_backend::collocate()
+{
+		const int max_threads = omp_get_max_threads();
+		if (this->scratch == NULL) {
+				int max_size = ctx_.grid(0).size();
 
-/*******************************************************************************
- * \brief Allocates a task list for the cpu backend.
- *        See grid_task_list.h for details.
- ******************************************************************************/
-extern "C" void grid_cpu_create_task_list(
-		const int ntasks, const int nlevels, const int natoms, const int nkinds,
-		const int nblocks, const int *block_offsets,
-		const double *atom_positions, const int *atom_kinds,
-		const grid_basis_set **basis_sets, const int *level_list,
-		const int *iatom_list, const int *jatom_list,
-		const int *iset_list, const int *jset_list,
-		const int *ipgf_list, const int *jpgf_list,
-		const int *border_mask_list, const int *block_num_list,
-		const double *radius_list, const double *rab_list,
-		void *ptr) {
+				/* compute the size of the largest grid. It is used afterwards to allocate
+				 * scratch memory for the grid on each omp thread */
+				for (int x = 1; x < (int)ctx_.grid().size(); x++) {
+						max_size = std::max(ctx_.grid(x).size(), max_size);
+				}
 
-		grid_context **task_list = static_cast<grid_context **>(ptr);
-		grid_context *ctx = nullptr;
-		if (*task_list == nullptr) {
-				ctx = new grid_context();
-				const int max_threads = omp_get_max_threads();
+				max_size = ((max_size / 4096) + (max_size % 4096 != 0)) * 4096;
 
-				ctx->handler.clear();
-				ctx->handler.resize(max_threads);
-
-				for (auto &h : ctx->handler)
-						h.initialize(1);
-		} else {
-				ctx = *task_list;
+				/* scratch is a void pointer !!!!! */
+				this->scratch =
+						(double *)grid_allocate_scratch(max_size * max_threads * sizeof(double));
 		}
 
-		ctx->update_block_offsets(nblocks, block_offsets);
-		ctx->update_atoms_position(natoms, atom_positions);
-		ctx->update_atoms_kinds(natoms, atom_kinds);
-		ctx->update_basis_set(nkinds, basis_sets);
-		ctx->update_task_lists(nlevels, ntasks, level_list, iatom_list, jatom_list,
-											iset_list, jset_list, ipgf_list, jpgf_list,
-											border_mask_list, block_num_list, radius_list, rab_list);
-		ctx->update_grid(nlevels);
 
-		// Find largest Cartesian subblock size.
-		ctx->maxco = 0;
-		for (int i = 0; i < nkinds; i++) {
-				ctx->maxco = imax(ctx->maxco, ctx->basis_sets_[i]->maxco);
+		// std::setprecision(15);
+		for (int level = 0; level < (int)ctx_.grid().size(); level++) {
+				this->collocate_one_grid_level(level);
+				// std::cout << ctx->grid[level].integrate() << "\n";
 		}
 
-		const grid_library_config config = grid_library_get_config();
-		if (config.apply_cutoff) {
-				ctx->apply_cutoff(true);
-		}
-		*task_list = ctx;
+		grid_free_scratch(scratch);
+		scratch = NULL;
 }
 
-/*******************************************************************************
- * \brief Deallocates given task list, basis_sets have to be freed separately.
- ******************************************************************************/
-extern "C" void grid_cpu_free_task_list(void *ptr) {
-		grid_context *ctx = static_cast<grid_context *>(ptr);
-		ctx->block_offsets_.clear();
-		ctx->atom_positions_.clear();
-		ctx->atom_kinds_.clear();
-		ctx->basis_sets_.clear();
-		ctx->tasks_list_.clear();
-		ctx->tasks_per_level.clear();
-		ctx->queues_.clear();
-		ctx->handler.clear();
-		delete ctx;
+void cpu_backend::integrate() {
+		// Zero result arrays.
+		memset(ctx_.hab_blocks().host_buffer, 0, ctx_.hab_blocks().size);
+
+		const int max_threads = omp_get_max_threads();
+
+		if (this->scratch == NULL)
+				this->scratch = static_cast<double *>(malloc(ctx_.hab_blocks().size * max_threads));
+
+		this->orthorhombic_ = ctx_.is_orthorhombic();
+
+		for (int level = 0; level < (int)ctx_.grid().size(); level++) {
+				this->integrate_one_grid_level(level);
+		}
+		free(this->scratch);
+		this->scratch = NULL;
 }

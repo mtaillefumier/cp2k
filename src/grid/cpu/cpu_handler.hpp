@@ -25,8 +25,8 @@ extern "C" {
 #include "../common/Interval.hpp"
 #include "../common/tensor.hpp"
 #include "../common/task.hpp"
+#include "../common/grid_info.hpp"
 #include "utils.hpp"
-#include "grid_info.hpp"
 
 class cpu_handler {
 private:
@@ -410,7 +410,7 @@ private:
 		template<bool add = true> inline void extract_add_cube() {
 					// a mapping so that the ig corresponds to the right grid point
 
-				set_map();
+				// set_map();
 
 				const Interval zwindow = {.xmin = this->grid_.window_shift(0),
 						.xmax = this->grid_.window_size(0)};
@@ -423,40 +423,40 @@ private:
 				int lower_corner[3];
 				int upper_corner[3];
 
-				if (zwindow.is_point_in_interval(map_(0, 0)) &&
-						zwindow.is_point_in_interval(map_(0, 0) + this->cube_.size(0)) &&
-						xwindow.is_point_in_interval(map_(2, 0)) &&
-						xwindow.is_point_in_interval(map_(2, 0) + this->cube_.size(2)) &&
-						ywindow.is_point_in_interval(map_(1, 0)) &&
-						ywindow.is_point_in_interval(map_(1, 0) + this->cube_.size(1))) {
+				// if (zwindow.is_point_in_interval(map_(0, 0)) &&
+				//		zwindow.is_point_in_interval(map_(0, 0) + this->cube_.size(0)) &&
+				//		xwindow.is_point_in_interval(map_(2, 0)) &&
+				//		xwindow.is_point_in_interval(map_(2, 0) + this->cube_.size(2)) &&
+				//		ywindow.is_point_in_interval(map_(1, 0)) &&
+				//		ywindow.is_point_in_interval(map_(1, 0) + this->cube_.size(1))) {
 
-						lower_corner[0] = map_(0, 0);
-						lower_corner[1] = map_(1, 0);
-						lower_corner[2] = map_(2, 0);
-						upper_corner[0] = map_(0, 0) + this->cube_.size(0);
-						upper_corner[1] = map_(1, 0) + this->cube_.size(1);
-						upper_corner[2] = map_(2, 0) + this->cube_.size(2);
-						if (add == true) {
-								this->grid_.add_sub_grid(
-										lower_corner, // lower corner of the portion of cube (in the
-										// full grid)
-										upper_corner, // upper corner of the portion of cube (in the
-										// full grid)
-										nullptr,       // starting position subblock inside the cube
-										this->cube_); // the grid to add data from
-						} else {
-								/* the function will internally take care of the local vx global
-								 * grid */
-								this->grid_.extract_sub_grid(
-										lower_corner, // lower corner of the portion of cube (in the
-										// full grid)
-										upper_corner, // upper corner of the portion of cube (in the
-										// full grid)
-										nullptr, // starting position subblock inside the cube
-										this->cube_); // the grid to add data from
-						}
-						return;
-				}
+				//		lower_corner[0] = map_(0, 0);
+				//		lower_corner[1] = map_(1, 0);
+				//		lower_corner[2] = map_(2, 0);
+				//		upper_corner[0] = map_(0, 0) + this->cube_.size(0);
+				//		upper_corner[1] = map_(1, 0) + this->cube_.size(1);
+				//		upper_corner[2] = map_(2, 0) + this->cube_.size(2);
+				//		if (add == true) {
+				//				this->grid_.add_sub_grid(
+				//						lower_corner, // lower corner of the portion of cube (in the
+				//						// full grid)
+				//						upper_corner, // upper corner of the portion of cube (in the
+				//						// full grid)
+				//						nullptr,       // starting position subblock inside the cube
+				//						this->cube_); // the grid to add data from
+				//		} else {
+				//				/* the function will internally take care of the local vx global
+				//				 * grid */
+				//				this->grid_.extract_sub_grid(
+				//						lower_corner, // lower corner of the portion of cube (in the
+				//						// full grid)
+				//						upper_corner, // upper corner of the portion of cube (in the
+				//						// full grid)
+				//						nullptr, // starting position subblock inside the cube
+				//						this->cube_); // the grid to add data from
+				//		}
+				//		return;
+				// }
 
 
 
@@ -476,7 +476,10 @@ private:
 				 * cube_size - 1] until it is empty. */
 
 				for (auto z = 0; z < (int)this->cube_.size(0); z++) {
-						const int z1 = map_(0, z);
+						int z1 = (cube_center_[0] + lb_cube_[0] + z -
+														 this->grid_.lower_corner(0)) % ((int)this->grid_.full_size(0));
+						z1 = ((z1 < 0) ? (z1 + this->grid_.full_size(0)) : (z1));
+						// const int z1 = map_(0, z);
 
 						if (!zwindow.is_point_in_interval(z1))
 								continue;
@@ -488,7 +491,10 @@ private:
 						/* // We have a full plane. */
 						if (upper_corner[0] - lower_corner[0]) {
 								for (auto y = 0; y < (int)this->cube_.size(1); y++) {
-										const int y1 = map_(1, y);
+										int y1 = (cube_center_[1] + lb_cube_[1] + y -
+															this->grid_.lower_corner(1)) % ((int)this->grid_.full_size(1));
+										y1 = ((y1 < 0) ? (y1 + this->grid_.full_size(1)) : (y1));
+										// const int y1 = map_(1, y);
 
 										// this check is completely irrelevant when running without MPI.
 										if (!ywindow.is_point_in_interval(y1))
@@ -500,7 +506,10 @@ private:
 
 										if (upper_corner[1] - lower_corner[1]) {
 												for (auto x = 0; x < (int)this->cube_.size(2); x++) {
-														const int x1 = map_(2, x);
+														int x1 = (cube_center_[2] + lb_cube_[2] + x -
+																			this->grid_.lower_corner(2)) % ((int)this->grid_.full_size(2));
+														x1 = ((x1 < 0) ? (x1 + this->grid_.full_size(2)) : (x1));
+														// const int x1 = map_(2, x);
 
 														if (!xwindow.is_point_in_interval(x1))
 																continue;

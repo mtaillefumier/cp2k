@@ -27,7 +27,7 @@ extern "C" {
 
 #include "../common/Interval.hpp"
 #include "../common/tensor.hpp"
-#include "grid_info.hpp"
+#include "../common/grid_info.hpp"
 
 /* inverse of the factorials */
 static const double inv_fac[] = {1.0,
