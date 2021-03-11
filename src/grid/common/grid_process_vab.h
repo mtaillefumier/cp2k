@@ -5,12 +5,11 @@
 /*  SPDX-License-Identifier: GPL-2.0-or-later                                 */
 /*----------------------------------------------------------------------------*/
 
-#include <stdbool.h>
+#ifndef GRID_PROCESS_VAB_H
+#define GRID_PROCESS_VAB_H
 
-#if defined(__CUDACC__)
+#ifndef GRID_DEVICE
 #define GRID_DEVICE __device__
-#else
-#define GRID_DEVICE
 #endif
 
 /*******************************************************************************
@@ -255,4 +254,4 @@ static process_ldiffs process_get_ldiffs(bool calculate_forces,
   return ldiffs;
 }
 
-// EOF
+#endif

@@ -25,8 +25,6 @@ extern "C" {
 #include "../common/grid_context.hpp"
 #include "cpu_handler.hpp"
 
-enum checksum_ { task_checksum = 0x2384989, ctx_checksum = 0x2356734 };
-
 class cpu_backend {
 		grid_context &ctx_;
 		// std::vector<int> block_offsets_;

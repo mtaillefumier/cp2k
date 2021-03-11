@@ -144,7 +144,6 @@ void cpu_handler::calculate_polynomials(const bool transpose, const double dr,
 	}
 }
 
-
 void cpu_handler::collocate_l0(const double alpha, tensor1<double, 3> &cube) {
 		const double *__restrict__ pz =
 			pol_.at(0, 0, 0); /* k indice */
@@ -171,6 +170,7 @@ void cpu_handler::collocate_l0(const double alpha, tensor1<double, 3> &cube) {
 			for (int y = 0; y < (int)cube.size(1); y++) {
 					const double *__restrict__ src = exp_xy.at(y, 0);
 					double *__restrict__ dst = &scratch[y * cube.ld()];
+
 #pragma GCC ivdep
 					for (auto x = 0; x < cube.size(2); x++) {
 							dst[x] *= src[x];
@@ -302,15 +302,22 @@ void cpu_handler::tensor_reduction(const bool integrate,
 		}
 
 		if (!integrate) {
-			if (!orthogonal[0]) {
-					tensor1<double, 2> exp_xy(Exp_.at(0, 0, 0), Exp_.size(1), Exp_.size(2));
-					this->apply_non_orthorombic_corrections_xz_blocked(exp_xy, cube);
-			}
+				if (!orthogonal[0] && !orthogonal[1]) {
+						tensor1<double, 2> exp_xz(Exp_.at(0, 0, 0), Exp_.size(1), Exp_.size(2));
+						tensor1<double, 2> exp_yz(Exp_.at(1, 0, 0), Exp_.size(1), Exp_.size(2));
+						this->apply_non_orthorombic_corrections_xz_yz_blocked(exp_xz, exp_yz, cube);
+						return;
+				}
 
-			if (!orthogonal[1]) {
-					tensor1<double, 2> exp_xy(Exp_.at(1, 0, 0), Exp_.size(1), Exp_.size(2));
-					this->apply_non_orthorombic_corrections_yz_blocked(exp_xy, cube);
-			}
+				if (!orthogonal[0]) {
+						tensor1<double, 2> exp_xy(Exp_.at(0, 0, 0), Exp_.size(1), Exp_.size(2));
+						this->apply_non_orthorombic_corrections_xz_blocked(exp_xy, cube);
+				}
+
+				if (!orthogonal[1]) {
+						tensor1<double, 2> exp_xy(Exp_.at(1, 0, 0), Exp_.size(1), Exp_.size(2));
+						this->apply_non_orthorombic_corrections_yz_blocked(exp_xy, cube);
+				}
 	}
 
 	return;

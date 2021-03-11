@@ -13,360 +13,359 @@
 #include <vector>
 #include "../common/tensor.hpp"
 
-#ifdef __LIBXSMM
-#include <libxsmm.h>
-#endif
-
 class grid_info {
 private:
-		tensor1<double, 3> grid_;
+    tensor1<double, 3> grid_;
 
-		/* only relevant when the tensor represents a grid */
-		bool orthogonal_[3] = {false, false, false};
-		bool orthorhombic_{false};
+    /* only relevant when the tensor represents a grid */
+    bool orthogonal_[3] = {false, false, false};
+    bool orthorhombic_{false};
 public:
-		int full_size_[3] = {0, 0, 0};    /* size of the global grid */
-		int window_shift_[3] = {0, 0, 0}; /* lower corner of the window. Should be between lower
-																			 * corner and upper corner of the local grid */
-		int window_size_[3]  = {0, 0, 0};  /* size of the window where computations should be
-																				* done */
-		int lower_corner_[3] = {0, 0, 0}; /* coordinates of the lower corner of the local part of
-																			 * the grid. It can be different from the window where
-																			 * computations should be done. The upper corner can be
-																			 * deduced with the sum of the grid size and the lower
-																			 * corner */
+    int full_size_[3] = {0, 0, 0};    /* size of the global grid */
+    int window_shift_[3] = {0, 0, 0}; /* lower corner of the window. Should be between lower
+                                       * corner and upper corner of the local grid */
+    int window_size_[3]  = {0, 0, 0};  /* size of the window where computations should be
+                                        * done */
+    int lower_corner_[3] = {0, 0, 0}; /* coordinates of the lower corner of the local part of
+                                       * the grid. It can be different from the window where
+                                       * computations should be done. The upper corner can be
+                                       * deduced with the sum of the grid size and the lower
+                                       * corner */
 
-		int border_width_[3] = {0, 0, 0};
+    int border_width_[3] = {0, 0, 0};
 
-		double dh[3][3];
-		double dh_inv[3][3];
-
-
-		grid_info(grid_info const& src) = default;
-		grid_info&
-		operator=(grid_info const& src) = default;
-
-		inline grid_info&operator=(grid_info &&src) {
-				if (this != &src) {
-						grid_ = src.grid_;
-						memcpy(window_shift_, src.window_shift_, sizeof(int) * 3);
-						memcpy(window_size_, src.window_size_, sizeof(int) * 3);
-						memcpy(full_size_, src.full_size_, sizeof(int) * 3);
-						memcpy(&dh[0][0], &src.dh[0][0], sizeof(double) * 9);
-						memcpy(&dh_inv[0][0], &src.dh_inv[0][0], sizeof(double) * 9);
-						memcpy(lower_corner_, src.lower_corner_, sizeof(int) * 3);
-						memcpy(orthogonal_, src.orthogonal_, sizeof(bool) * 3);
-				}
-				return *this;
-		}
-
-		inline grid_info(grid_info &&src) {
-				grid_ = src.grid_;
-				memcpy(window_shift_, src.window_shift_, sizeof(int) * 3);
-				memcpy(window_size_, src.window_size_, sizeof(int) * 3);
-				memcpy(full_size_, src.full_size_, sizeof(int) * 3);
-				memcpy(&dh[0][0], &src.dh[0][0], sizeof(double) * 9);
-				memcpy(&dh_inv[0][0], &src.dh_inv[0][0], sizeof(double) * 9);
-				memcpy(lower_corner_, src.lower_corner_, sizeof(int) * 3);
-				memcpy(orthogonal_, src.orthogonal_, sizeof(bool) * 3);
-		}
-
-		grid_info() {
-		};
-
-		~grid_info() {
-				grid_.clear();
-		}
-
-		grid_info(const int *local_size, const int *full_size) {
-				resize(local_size, full_size);
-		}
-
-		grid_info(double *ptr, const int *local_size, const int *full_size) {
-				grid_.update_pointer(ptr);
-				resize(local_size, full_size);
-		}
-
-		grid_info(double *ptr, const int *shift_local_, const int *local_size, const int *full_size) {
-				grid_.update_pointer(ptr);
-				resize(local_size, full_size);
-				memcpy(this->lower_corner_, shift_local_, sizeof(int) * 3);
-		}
-
-		const bool is_distributed() const {
-				return ((grid_.size(0) != full_size_[0]) ||
-								(grid_.size(1) != full_size_[1]) ||
-								(grid_.size(2) != full_size_[2]));
-		}
-
-		void zero() {
-				grid_.zero();
-		}
-		void clear() {
-				grid_.clear();
-		}
-
-		void update_pointer(double *ptr) {
-				grid_.update_pointer(ptr);
-		}
-
-		int size() const {
-				return grid_.size();
-		}
-		inline double *at() {
-				return grid_.at();
-		}
-
-		inline double *at(const int x, const int y, const int z) {
-				return grid_.at(x, y, z);
-		}
-
-		inline double &operator()(int x, int y, int z) {
-				return grid_(x, y, z);
-		}
-
-		inline const double operator()(int x, int y, int z) const {
-				return grid_(x, y, z);
-		}
-
-		inline int full_size(const int i) const {
-				assert((i >= 0) && (i < 3));
-				return full_size_[i];
-		}
-
-		inline int size(const int i) const {
-				assert((i >= 0) && (i < 3));
-				return grid_.size(i);
-		}
-
-		inline int window_size(const int i) const {
-				assert((i >= 0) && (i < 3));
-				return window_size_[i];
-		}
-
-		inline int window_shift(const int i) const {
-				assert((i >= 0) && (i < 3));
-				return window_shift_[i];
-		}
-
-		inline int lower_corner(const int i) const {
-				assert((i >= 0) && (i < 3));
-				return lower_corner_[i];
-		}
-
-		void set_full_size(const int *full_size) {
-				full_size_[0] = full_size[0];
-				full_size_[1] = full_size[1];
-				full_size_[2] = full_size[2];
-		}
-
-		void resize(const int *local_size, const int *full_size) {
-				grid_.resize(local_size[0], local_size[1], local_size[2]);
-				set_full_size(full_size);
-		}
-
-		void resize(double *ptr, const int *local_size, const int *full_size) {
-				grid_.update_pointer(ptr);
-				grid_.resize(local_size[0], local_size[1], local_size[2]);
-				set_full_size(full_size);
-		}
+    double dh[3][3];
+    double dh_inv[3][3];
 
 
-		inline void setup_grid_window(const int border_mask) {
-				for (int d = 0; d < 3; d++) {
-						this->window_size_[d] = this->grid_.size(d);
-						if (this->grid_.size(d) != this->full_size_[d]) {
-								this->window_size_[d]--;
-						}
-				}
+    grid_info(grid_info const& src) = default;
+    grid_info&
+    operator=(grid_info const& src) = default;
+
+    inline grid_info&operator=(grid_info &&src) {
+        if (this != &src) {
+            grid_ = src.grid_;
+            memcpy(window_shift_, src.window_shift_, sizeof(int) * 3);
+            memcpy(window_size_, src.window_size_, sizeof(int) * 3);
+            memcpy(full_size_, src.full_size_, sizeof(int) * 3);
+            memcpy(&dh[0][0], &src.dh[0][0], sizeof(double) * 9);
+            memcpy(&dh_inv[0][0], &src.dh_inv[0][0], sizeof(double) * 9);
+            memcpy(lower_corner_, src.lower_corner_, sizeof(int) * 3);
+            memcpy(orthogonal_, src.orthogonal_, sizeof(bool) * 3);
+            orthorhombic_ = src.orthorhombic_;
+        }
+        return *this;
+    }
+
+    inline grid_info(grid_info &&src) {
+        grid_ = src.grid_;
+        memcpy(window_shift_, src.window_shift_, sizeof(int) * 3);
+        memcpy(window_size_, src.window_size_, sizeof(int) * 3);
+        memcpy(full_size_, src.full_size_, sizeof(int) * 3);
+        memcpy(&dh[0][0], &src.dh[0][0], sizeof(double) * 9);
+        memcpy(&dh_inv[0][0], &src.dh_inv[0][0], sizeof(double) * 9);
+        memcpy(lower_corner_, src.lower_corner_, sizeof(int) * 3);
+        memcpy(orthogonal_, src.orthogonal_, sizeof(bool) * 3);
+        orthorhombic_ = src.orthorhombic_;
+    }
+
+    grid_info() {
+    };
+
+    ~grid_info() {
+        grid_.clear();
+    }
+
+    grid_info(const int *local_size, const int *full_size) {
+        resize(local_size, full_size);
+    }
+
+    grid_info(double *ptr, const int *local_size, const int *full_size) {
+        grid_.update_pointer(ptr);
+        resize(local_size, full_size);
+    }
+
+    grid_info(double *ptr, const int *shift_local_, const int *local_size, const int *full_size) {
+        grid_.update_pointer(ptr);
+        resize(local_size, full_size);
+        memcpy(this->lower_corner_, shift_local_, sizeof(int) * 3);
+    }
+
+    bool is_distributed() const {
+        return ((grid_.size(0) != full_size_[0]) ||
+                (grid_.size(1) != full_size_[1]) ||
+                (grid_.size(2) != full_size_[2]));
+    }
+
+    void zero() {
+        grid_.zero();
+    }
+    void clear() {
+        grid_.clear();
+    }
+
+    void update_pointer(double *ptr) {
+        grid_.update_pointer(ptr);
+    }
+
+    inline int size() const {
+        return grid_.size();
+    }
+
+    inline int border_width(const int i) const {
+        return border_width_[i];
+    }
+
+    inline double *at() {
+        return grid_.at();
+    }
+
+    inline double *at(const int x, const int y, const int z) {
+        return grid_.at(x, y, z);
+    }
+
+    inline double &operator()(int x, int y, int z) {
+        return grid_(x, y, z);
+    }
+
+    inline double operator()(int x, int y, int z) const {
+        return grid_(x, y, z);
+    }
+
+    inline int full_size(const int i) const {
+        assert((i >= 0) && (i < 3));
+        return full_size_[i];
+    }
+
+    inline int size(const int i) const {
+        assert((i >= 0) && (i < 3));
+        return grid_.size(i);
+    }
+
+    inline int window_size(const int i) const {
+        assert((i >= 0) && (i < 3));
+        return window_size_[i];
+    }
+
+    inline int window_shift(const int i) const {
+        assert((i >= 0) && (i < 3));
+        return window_shift_[i];
+    }
+
+    inline int lower_corner(const int i) const {
+        assert((i >= 0) && (i < 3));
+        return lower_corner_[i];
+    }
+
+    void set_full_size(const int *full_size) {
+        full_size_[0] = full_size[0];
+        full_size_[1] = full_size[1];
+        full_size_[2] = full_size[2];
+    }
+
+    void resize(const int *local_size, const int *full_size) {
+        grid_.resize(local_size[0], local_size[1], local_size[2]);
+        set_full_size(full_size);
+    }
+
+    void resize(double *ptr, const int *local_size, const int *full_size) {
+        grid_.update_pointer(ptr);
+        grid_.resize(local_size[0], local_size[1], local_size[2]);
+        set_full_size(full_size);
+    }
 
 
-				if (border_mask & (1 << 0))
-						this->window_shift_[2] += border_width_[2];
-				if (border_mask & (1 << 1))
-						this->window_size_[2] -= border_width_[2];
-				if (border_mask & (1 << 2))
-						this->window_shift_[1] += border_width_[1];
-				if (border_mask & (1 << 3))
-						this->window_size_[1] -= border_width_[1];
-				if (border_mask & (1 << 4))
-						this->window_shift_[0] += border_width_[0];
-				if (border_mask & (1 << 5))
-						this->window_size_[0] -= border_width_[0];
-		}
+    inline void setup_grid_window(const int border_mask) {
+        for (int d = 0; d < 3; d++) {
+            this->window_size_[d] = this->grid_.size(d);
+            if (this->grid_.size(d) != this->full_size_[d]) {
+                this->window_size_[d]--;
+            }
+        }
 
-		const bool orthogonal(const int i) const {
-				assert((i < 3) && (i >= 0));
-				return orthogonal_[i];
-		}
 
-		void set_grid_parameters(
-				const bool orthorhombic,
-				const int grid_full_size[3],  /* size of the full grid */
-				const int grid_local_size[3], /* size of the local grid block */
-				const int shift_local[3],     /* coordinates of the lower coordinates of the
-																				 local grid window */
-				const int border_width[3],    /* width of the borders */
-				const double
-				*dh, /* displacement vectors of the grid (cartesian) -> (ijk) */
-				const double *dh_inv, /* (ijk) -> (x,y,z) */
-				double *grid__) {
-				grid_.update_pointer(grid__);
-				resize(grid_local_size, grid_full_size);
+        if (border_mask & (1 << 0))
+            this->window_shift_[2] += border_width_[2];
+        if (border_mask & (1 << 1))
+            this->window_size_[2] -= border_width_[2];
+        if (border_mask & (1 << 2))
+            this->window_shift_[1] += border_width_[1];
+        if (border_mask & (1 << 3))
+            this->window_size_[1] -= border_width_[1];
+        if (border_mask & (1 << 4))
+            this->window_shift_[0] += border_width_[0];
+        if (border_mask & (1 << 5))
+            this->window_size_[0] -= border_width_[0];
+    }
 
-				if (border_width)
-						memcpy(border_width_, border_width, sizeof(int) * 3);
-				else
-						memset(&this->border_width_[0], 0, sizeof(int) * 3);
+    bool orthogonal(const int i) const {
+        assert((i < 3) && (i >= 0));
+        return orthogonal_[i];
+    }
 
-				this->window_shift_[0] = 0;
-				this->window_shift_[1] = 0;
-				this->window_shift_[2] = 0;
+    bool is_orthorhombic() const {
+        return orthorhombic_;
+    }
 
-				this->window_size_[0] = this->grid_.size(0);
-				this->window_size_[1] = this->grid_.size(1);
-				this->window_size_[2] = this->grid_.size(2);
+    void set_grid_parameters(
+        const bool orthorhombic,
+        const int grid_full_size[3],  /* size of the full grid */
+        const int grid_local_size[3], /* size of the local grid block */
+        const int shift_local[3],     /* coordinates of the lower coordinates of the
+                                         local grid window */
+        const int border_width[3],    /* width of the borders */
+        const double
+        *dh, /* displacement vectors of the grid (cartesian) -> (ijk) */
+        const double *dh_inv, /* (ijk) -> (x,y,z) */
+        double *grid__) {
+        grid_.update_pointer(grid__);
+        resize(grid_local_size, grid_full_size);
 
-				memcpy(&this->lower_corner_[0],
-							 &shift_local[0],
-							 sizeof(int) * 3);
+        if (border_width)
+            memcpy(border_width_, border_width, sizeof(int) * 3);
+        else
+            memset(&this->border_width_[0], 0, sizeof(int) * 3);
 
-				this->dh[0][0] = dh[0];
-				this->dh[0][1] = dh[1];
-				this->dh[0][2] = dh[2];
-				this->dh[1][0] = dh[3];
-				this->dh[1][1] = dh[4];
-				this->dh[1][2] = dh[5];
-				this->dh[2][0] = dh[6];
-				this->dh[2][1] = dh[7];
-				this->dh[2][2] = dh[8];
+        this->window_shift_[0] = 0;
+        this->window_shift_[1] = 0;
+        this->window_shift_[2] = 0;
 
-				this->dh_inv[0][0] = dh_inv[0];
-				this->dh_inv[0][1] = dh_inv[1];
-				this->dh_inv[0][2] = dh_inv[2];
-				this->dh_inv[1][0] = dh_inv[3];
-				this->dh_inv[1][1] = dh_inv[4];
-				this->dh_inv[1][2] = dh_inv[5];
-				this->dh_inv[2][0] = dh_inv[6];
-				this->dh_inv[2][1] = dh_inv[7];
-				this->dh_inv[2][2] = dh_inv[8];
+        this->window_size_[0] = this->grid_.size(0);
+        this->window_size_[1] = this->grid_.size(1);
+        this->window_size_[2] = this->grid_.size(2);
 
-				verify_orthogonality();
+        memcpy(&this->lower_corner_[0],
+               &shift_local[0],
+               sizeof(int) * 3);
 
-				if (orthorhombic) {
-						this->orthorhombic_ = true;
-						this->orthogonal_[0] = true;
-						this->orthogonal_[1] = true;
-						this->orthogonal_[2] = true;
-				} else {
-						this->orthorhombic_ = false;
-				}
-		}
+        this->dh[0][0] = dh[0];
+        this->dh[0][1] = dh[1];
+        this->dh[0][2] = dh[2];
+        this->dh[1][0] = dh[3];
+        this->dh[1][1] = dh[4];
+        this->dh[1][2] = dh[5];
+        this->dh[2][0] = dh[6];
+        this->dh[2][1] = dh[7];
+        this->dh[2][2] = dh[8];
 
-		inline void verify_orthogonality() {
-				double norm1, norm2, norm3;
+        this->dh_inv[0][0] = dh_inv[0];
+        this->dh_inv[0][1] = dh_inv[1];
+        this->dh_inv[0][2] = dh_inv[2];
+        this->dh_inv[1][0] = dh_inv[3];
+        this->dh_inv[1][1] = dh_inv[4];
+        this->dh_inv[1][2] = dh_inv[5];
+        this->dh_inv[2][0] = dh_inv[6];
+        this->dh_inv[2][1] = dh_inv[7];
+        this->dh_inv[2][2] = dh_inv[8];
 
-				norm1 = dh[0][0] * dh[0][0] + dh[0][1] * dh[0][1] + dh[0][2] * dh[0][2];
-				norm2 = dh[1][0] * dh[1][0] + dh[1][1] * dh[1][1] + dh[1][2] * dh[1][2];
-				norm3 = dh[2][0] * dh[2][0] + dh[2][1] * dh[2][1] + dh[2][2] * dh[2][2];
+        verify_orthogonality();
 
-				norm1 = 1.0 / sqrt(norm1);
-				norm2 = 1.0 / sqrt(norm2);
-				norm3 = 1.0 / sqrt(norm3);
+        if (orthorhombic) {
+            this->orthorhombic_ = true;
+            this->orthogonal_[0] = true;
+            this->orthogonal_[1] = true;
+            this->orthogonal_[2] = true;
+        } else {
+            this->orthorhombic_ = false;
+        }
+    }
 
-				/* x z */
-				orthogonal_[0] =
-						((std::fabs(dh[0][0] * dh[2][0] + dh[0][1] * dh[2][1] + dh[0][2] * dh[2][2]) *
-							norm1 * norm3) < 1e-12);
-				/* y z */
-				orthogonal_[1] =
-						((std::fabs(dh[1][0] * dh[2][0] + dh[1][1] * dh[2][1] + dh[1][2] * dh[2][2]) *
-							norm2 * norm3) < 1e-12);
-				/* x y */
-				orthogonal_[2] =
-						((std::fabs(dh[0][0] * dh[1][0] + dh[0][1] * dh[1][1] + dh[0][2] * dh[1][2]) *
-							norm1 * norm2) < 1e-12);
-		}
+    inline void verify_orthogonality() {
+        double norm1, norm2, norm3;
 
-		void extract_sub_grid(const int *lower_corner, const int *upper_corner,
-											const int *position, tensor1<double, 3> &subgrid) {
-				int position1[3] = {0, 0, 0};
+        norm1 = dh[0][0] * dh[0][0] + dh[0][1] * dh[0][1] + dh[0][2] * dh[0][2];
+        norm2 = dh[1][0] * dh[1][0] + dh[1][1] * dh[1][1] + dh[1][2] * dh[1][2];
+        norm3 = dh[2][0] * dh[2][0] + dh[2][1] * dh[2][1] + dh[2][2] * dh[2][2];
 
-				if (position) {
-						position1[0] = position[0];
-						position1[1] = position[1];
-						position1[2] = position[2];
-				}
+        norm1 = 1.0 / sqrt(norm1);
+        norm2 = 1.0 / sqrt(norm2);
+        norm3 = 1.0 / sqrt(norm3);
 
-				const int sizex = upper_corner[2] - lower_corner[2];
-				const int sizey = upper_corner[1] - lower_corner[1];
-				const int sizez = upper_corner[0] - lower_corner[0];
+        /* x z */
+        orthogonal_[0] =
+            ((std::fabs(dh[0][0] * dh[2][0] + dh[0][1] * dh[2][1] + dh[0][2] * dh[2][2]) *
+              norm1 * norm3) < 1e-12);
+        /* y z */
+        orthogonal_[1] =
+            ((std::fabs(dh[1][0] * dh[2][0] + dh[1][1] * dh[2][1] + dh[1][2] * dh[2][2]) *
+              norm2 * norm3) < 1e-12);
+        /* x y */
+        orthogonal_[2] =
+            ((std::fabs(dh[0][0] * dh[1][0] + dh[0][1] * dh[1][1] + dh[0][2] * dh[1][2]) *
+              norm1 * norm2) < 1e-12);
+    }
 
-				for (int z = 0; z < sizez; z++) {
-						/* maybe use matcopy from libxsmm if possible */
-						for (int y = 0; y < sizey; y++) {
-								double *__restrict__ src =
-										grid_.at(lower_corner[0] + z - this->window_shift_[0],
-														 lower_corner[1] + y - this->window_shift_[1],
-														 lower_corner[2] - this->window_shift_[2]);
-								double *__restrict__ dst = subgrid.at(position1[0] + z, position1[1] + y, position1[2]);
-#ifdef __LIBXSMM
-								LIBXSMM_PRAGMA_SIMD
-#else
+    void extract_sub_grid(const int *lower_corner, const int *upper_corner,
+                      const int *position, tensor1<double, 3> &subgrid) {
+        int position1[3] = {0, 0, 0};
+
+        if (position) {
+            position1[0] = position[0];
+            position1[1] = position[1];
+            position1[2] = position[2];
+        }
+
+        const int sizex = upper_corner[2] - lower_corner[2];
+        const int sizey = upper_corner[1] - lower_corner[1];
+        const int sizez = upper_corner[0] - lower_corner[0];
+
+        for (int z = 0; z < sizez; z++) {
+            /* maybe use matcopy from libxsmm if possible */
+            for (int y = 0; y < sizey; y++) {
+                double *__restrict__ src =
+                    grid_.at(lower_corner[0] + z - this->window_shift_[0],
+                             lower_corner[1] + y - this->window_shift_[1],
+                             lower_corner[2] - this->window_shift_[2]);
+                double *__restrict__ dst = subgrid.at(position1[0] + z, position1[1] + y, position1[2]);
 #pragma GCC ivdep
-#endif
-										for (int x = 0; x < sizex; x++) {
-												dst[x] = src[x];
-										}
-						}
-				}
+                for (int x = 0; x < sizex; x++) {
+                    dst[x] = src[x];
+                }
+            }
+        }
 
-				return;
-		}
+        return;
+    }
 
-		double integrate() {
-				double sum = 0.0;
+    double integrate() {
+        double sum = 0.0;
 
-				const double *__restrict__ src = grid_.at();
-				for (int i = 0; i < size(); i++)
-						sum += src[i];
-				return sum;
-		}
+        const double *__restrict__ src = grid_.at();
+        for (int i = 0; i < size(); i++)
+            sum += src[i];
+        return sum;
+    }
 
-		void add_sub_grid(const int *lower_corner, const int *upper_corner,
-											const int *position, const tensor1<double, 3> &subgrid) {
-				int position1[3] = {0, 0, 0};
+    void add_sub_grid(const int *lower_corner, const int *upper_corner,
+                      const int *position, const tensor1<double, 3> &subgrid) {
+        int position1[3] = {0, 0, 0};
 
-				if (position) {
-						position1[0] = position[0];
-						position1[1] = position[1];
-						position1[2] = position[2];
-				}
+        if (position) {
+            position1[0] = position[0];
+            position1[1] = position[1];
+            position1[2] = position[2];
+        }
 
-				const int sizex = upper_corner[2] - lower_corner[2];
-				const int sizey = upper_corner[1] - lower_corner[1];
-				const int sizez = upper_corner[0] - lower_corner[0];
+        const int sizex = upper_corner[2] - lower_corner[2];
+        const int sizey = upper_corner[1] - lower_corner[1];
+        const int sizez = upper_corner[0] - lower_corner[0];
 
-				for (int z = 0; z < sizez; z++) {
-						double *__restrict__ dst =
-								grid_.at(lower_corner[0] + z, lower_corner[1], lower_corner[2]);
-						const double *__restrict__ src =
-								subgrid.at(position1[0] + z, position1[1], position1[2]);
-						for (int y = 0; y < sizey; y++) {
-#ifdef __LIBXSMM
-								LIBXSMM_PRAGMA_SIMD
-#else
+        for (int z = 0; z < sizez; z++) {
+            double *__restrict__ dst =
+                grid_.at(lower_corner[0] + z, lower_corner[1], lower_corner[2]);
+            const double *__restrict__ src =
+                subgrid.at(position1[0] + z, position1[1], position1[2]);
+            for (int y = 0; y < sizey; y++) {
 #pragma GCC ivdep
-#endif
-										for (int x = 0; x < sizex; x++) {
-												dst[x] += src[x];
-										}
+                for (int x = 0; x < sizex; x++) {
+                    dst[x] += src[x];
+                }
 
-								dst += grid_.ld();
-								src += subgrid.ld();
-						}
-				}
-				return;
-		};
+                dst += grid_.ld();
+                src += subgrid.ld();
+            }
+        }
+        return;
+    };
 };
 #endif

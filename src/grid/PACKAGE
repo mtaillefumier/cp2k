@@ -11,7 +11,8 @@
         "./ref",
         "./cpu",
         "./gpu",
-        "./hybrid",
+        "./gpu/headers",
+        "./gpu/cuda",
     ],
     "public": ["grid_api.F"],
 }

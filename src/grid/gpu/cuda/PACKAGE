@@ -1,0 +1,5 @@
+{
+    "description": "cuda backend",
+    "requires": ["../../common", "../headers"],
+    "archive": "libcp2kgpucuda",
+}

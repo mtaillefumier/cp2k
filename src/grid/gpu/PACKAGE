@@ -1,5 +1,5 @@
 {
     "description": "Optimized GPU backend",
-    "requires": ["../common",],
+    "requires": ["../common", "./cuda", "./headers"],
     "archive": "libcp2kgridgpu",
 }

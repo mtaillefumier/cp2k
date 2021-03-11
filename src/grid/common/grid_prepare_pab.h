@@ -5,15 +5,16 @@
 /*  SPDX-License-Identifier: GPL-2.0-or-later                                 */
 /*----------------------------------------------------------------------------*/
 
+#ifndef GRID_PREPARE_PAB_H
+#define GRID_PREPARE_PAB_H
+
 #include "../common/grid_common.h"
 #include "../common/grid_constants.h"
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 
-#if defined(__CUDACC__)
-#define GRID_DEVICE __device__
-#else
+#ifndef GRID_DEVICE
 #define GRID_DEVICE
 #endif
 
@@ -23,9 +24,9 @@
  *        Without thread safety it's simply: cab[idx(b) * n + idx(a)] += value;
  * \author Ole Schuett
  ******************************************************************************/
-GRID_DEVICE static inline void prep_term(const orbital a, const orbital b,
-                                         const double value, const int n,
-                                         double *cab);
+GRID_DEVICE static void prep_term(const orbital a, const orbital b,
+                                  const double value, const int n,
+                                  double *cab);
 
 /*******************************************************************************
  * \brief Implementation of function GRID_FUNC_AB, ie. identity transformation.
@@ -428,5 +429,4 @@ static prepare_ldiffs prepare_get_ldiffs(const enum grid_func func) {
 
   return ldiffs;
 }
-
-// EOF
+#endif

@@ -7,9 +7,7 @@
 #ifndef GRID_COMMON_H
 #define GRID_COMMON_H
 
-#if defined(__CUDACC__)
-#define GRID_HOST_DEVICE __host__ __device__
-#else
+#ifndef GRID_HOST_DEVICE
 #define GRID_HOST_DEVICE
 #endif
 

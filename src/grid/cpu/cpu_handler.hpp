@@ -13,11 +13,6 @@
 #include <cmath>
 #include <vector>
 
-#ifdef __GRID_CUDA
-#include <cublas_v2.h>
-#include <cuda.h>
-#endif
-
 extern "C" {
 #include "../common/grid_constants.h"
 }
@@ -516,16 +511,12 @@ private:
                     upper_corner[2] = x.xmax;
                     position1[2] = x.x;
                     if (add == true) {
-                        // the function will internally take care of the local vx global
-                        //  * grid
                         this->grid_.add_sub_grid(
                             lower_corner, // lower corner of the portion of cube (in the full grid)
                             upper_corner, // upper corner of the portion of cube (in the full grid)
                             position1, // starting position subblock inside the cube
                             this->cube_); // the grid to add data from
                     } else {
-                        // the function will internally take care of the local vx global
-                        //  * grid
                         this->grid_.extract_sub_grid(
                             lower_corner,
                             upper_corner,
