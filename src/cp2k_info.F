@@ -238,6 +238,9 @@ CONTAINS
       flags = TRIM(flags)//" spla_gemm_offloading"
 #endif
 
+#if defined(__DLAF)
+     flags = TRIM(flags)//" DLA_Future_Cholesky"
+#endif
    END FUNCTION cp2k_flags
 
 ! **************************************************************************************************

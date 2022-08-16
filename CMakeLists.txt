@@ -71,7 +71,7 @@ if(NOT DEFINED CMAKE_CUDA_STANDARD)
 endif()
 
 # set language and standard
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 
 find_package(PkgConfig)
 
@@ -156,6 +156,11 @@ set(CP2K_USE_SPLA
 set(CP2K_USE_LIBXSMM
   ON
   CACHE BOOL "Use libxsmm for small gemms (supports x86 platforms)")
+
+set(CP2K_USE_DLAF
+	ON
+	CACHE BOOL "Use dla future implementation of Cholesky on GPU and CPU")
+
 set(SCALAPACK_VENDOR_LIST "MKL" "SCI" "GENERIC")
 
 set(SCALAPACK_VENDOR
@@ -216,7 +221,11 @@ if ((CP2K_USE_ACCEL MATCHES "CUDA") OR (CP2K_USE_ACCEL MATCHES "HIP"))
     BOOL
     "enable the dbm accelerated (mostly GPU) backend. It is only effective when general gpu support is enabled."
     )
-
+  set(CP2K_USE_CHOLESKY_GPU
+	  ON 
+	  CACHE
+	  BOOL
+	  "Use DLAF GPU support")
   # set(CP2K_USE_HIP_CUDA
   #   OFF
   #   CACHE BOOL
@@ -438,6 +447,10 @@ elseif(CP2K_USE_ACCEL MATCHES "HIP")
   # we need hipfft and hipblas
 endif()
 
+if (CP2K_USE_DLAF)
+	find_package(DLAF REQUIRED)
+endif()
+
 # ==================================
 if(CP2K_USE_ELPA)
   find_package(Elpa REQUIRED)
@@ -564,8 +577,6 @@ include(CheckCompilerSupport)
 add_subdirectory(src)
 
 include(CustomTargets)
-
-#string(TIMESTAMP CP2K_TIMESTAMP "%Y-%m-%d %H:%M:%S")
 
 message(STATUS "    ")
 message(STATUS "--------------------------------------------------------------------")
@@ -710,6 +721,11 @@ if(CP2K_USE_SPGLIB)
   message(STATUS "   - libraries           : " ${LIBSPG_LIBRARIES})
 endif()
 
+if (CP2K_USE_DLAF)
+  message(STATUS " ")
+  message(STATUS "- DLAF")
+endif()
+
 message(STATUS "    ")
 message(STATUS "--------------------------------------------------------------------")
 message(STATUS "-                                                                  -")
@@ -777,6 +793,10 @@ endif()
 
 if (NOT CP2K_USE_PEXSI)
   message(STATUS "   - PEXSI")
+endif()
+
+if (NOT CP2K_USE_DLAF)
+  message(STATUS "   - DLAF")
 endif()
 
 message(STATUS "                                                                    ")

@@ -1299,6 +1299,13 @@ list(APPEND OFFLOAD_SRCS_C offload/offload_buffer.c
 list(APPEND CP2K_SRCS_C pw/fpga/fft_fpga.c
   pw/fpga/opencl_utils.c)
 
+if (CP2K_USE_DLAF)
+  list(APPEND CP2K_SRCS_C       fm/cholesky_dla.cpp)
+list(APPEND
+        CP2K_SRCS_F
+        fm/dlaf.F)
+endif()
+
 # starting list to compile cp2k without any additional features.
 list(APPEND CP2K_SRCS_C ${DBM_SRCS_C} ${GRID_SRCS_C} ${OFFLOAD_SRCS_C})
 
@@ -1415,7 +1422,9 @@ add_compile_definitions(
   $<$<STREQUAL:${BLAS_VENDOR},Apple>:__ACCELERATE>
   $<$<BOOL:${CP2K_USE_CUDA}>:__OFFLOAD_CUDA>
   $<$<BOOL:${CP2K_USE_HIP}>:__OFFLOAD_HIP>
-  $<$<COMPILE_LANGUAGE:CUDA>:__OFFLOAD_CUDA>)
+  $<$<COMPILE_LANGUAGE:CUDA>:__OFFLOAD_CUDA>
+  $<$<BOOL:${CP2K_USE_DLAF}>:__DLAF>
+  $<$<BOOL:${CP2K_USE_CHOLESKY_GPU}>:__DLAF_GPU>)
 
 link_libraries(
   $<$<BOOL:${CP2K_USE_PEXSI}>:PEXSI::pexsi>
@@ -1429,6 +1438,7 @@ link_libraries(
   $<$<BOOL:${CP2K_USE_ELPA}>:ELPA::elpa>
   $<$<BOOL:${CP2K_USE_FFTW3}>:FFTW3::fftw3>
   $<$<BOOL:${CP2K_USE_SPLA}>:SPLA::spla>
+  $<$<BOOL:${CP2K_USE_DLAF}>:DLAF::DLAF>
   $<$<BOOL:${CP2K_USE_CUDA}>:CUDA::cufft>
   $<$<BOOL:${CP2K_USE_CUDA}>:CUDA::cufftw>
   $<$<BOOL:${CP2K_USE_CUDA}>:CUDA::cublas>
@@ -1471,6 +1481,7 @@ target_link_libraries(
   $<$<BOOL:${CP2K_USE_CUDA}>:CUDA::cufftw>
   $<$<BOOL:${CP2K_USE_CUDA}>:CUDA::cublas>
   $<$<BOOL:${CP2K_USE_CUDA}>:CUDA::cudart>
+  $<$<BOOL:${CP2K_USE_DLAF}>:DLAF::DLAF>
   $<$<BOOL:${CP2K_USE_HIP}>:hip::hipfft>
   $<$<BOOL:${CP2K_USE_HIP}>:roc::hipblas>
   $<$<BOOL:${CP2K_USE_HIP}>:hip::device>

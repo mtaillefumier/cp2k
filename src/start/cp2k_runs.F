@@ -133,6 +133,9 @@ MODULE cp2k_runs
    USE rt_propagation,                  ONLY: rt_prop_setup
    USE sirius_interface,                ONLY: cp_sirius_finalize,&
                                               cp_sirius_init
+#ifdef __DLAF
+   USE dlaf,                            ONLY: cp_dlaf_init, cp_dlaf_finalize
+#endif
    USE string_utilities,                ONLY: html_entity_table,&
                                               write_html_tables
    USE swarm,                           ONLY: run_swarm
@@ -213,6 +216,10 @@ CONTAINS
       CALL pw_gpu_init()
       CALL pw_fpga_init()
 
+#ifdef __DLAF
+      CALL cp_dlaf_init()
+#endif
+
       NULLIFY (globenv, force_env)
 
       CALL cite_reference(Hutter2014)
@@ -279,7 +286,9 @@ CONTAINS
          ! TODO: refactor cp2k's startup code
          CALL dbcsr_finalize_lib()
          IF (method_name_id == do_sirius) CALL cp_sirius_finalize()
-
+#ifdef __DLAF
+         CALL cp_dlaf_finalize()
+#endif
          CALL pw_gpu_finalize()
          CALL pw_fpga_finalize()
          CALL farming_run(input_declaration, root_section, para_env, initial_variables)
@@ -294,6 +303,9 @@ CONTAINS
          CALL dbcsr_init_lib(mpi_comm, io_unit=output_unit)
 #endif
 
+#ifdef __DLAF
+         CALL cp_dlaf_init();
+#endif
          CALL pw_gpu_init()
          CALL pw_fpga_init()
          IF (method_name_id == do_sirius) CALL cp_sirius_init()
@@ -421,9 +433,10 @@ CONTAINS
 
       CALL pw_gpu_finalize()
       CALL pw_fpga_finalize()
-
+#ifdef __DLAF
+      CALL cp_dlaf_finalize()
+#endif
       CALL dbcsr_print_statistics()
-
       CALL dbm_library_print_stats(mpi_comm=mpi_comm, output_unit=output_unit)
       CALL grid_library_print_stats(mpi_comm=mpi_comm, output_unit=output_unit)
 
