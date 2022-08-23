@@ -202,46 +202,29 @@ template <typename T> void pxpotrf_dla(char uplo__, int n__, T *a__, int ia__, i
   dlaf::matrix::LayoutInfo layout = colMajorLayout(distribution, ld_);
   Matrix<T, Device::CPU> mat(std::move(distribution), layout, a__);
 
-#if defined(__DLAF_GPU)
-  using MatrixMirrorType = MatrixMirror<T,  DefaultDevice_v<dlaf::Backend::GPU>, Device::CPU>;
-#else
-  using MatrixMirrorType = MatrixMirror<T,  DefaultDevice_v<dlaf::Backend::MC>, Device::CPU>;
-#endif
+  {
+    using MatrixMirrorType = MatrixMirror<T,  dlaf::Device::Default, Device::CPU>;
+    MatrixMirrorType matrix(mat);
 
-  MatrixMirrorType matrix(mat);
-  // matrix.get().waitLocalTiles();
+    switch(uplo__) {
+     case 'U':
+     case 'u':
+       dlaf::factorization::cholesky<Backend::Default, Device::Default, T>(comm_grid, blas::Uplo::Upper, matrix.get());
+       break;
+    case 'L':
+    case 'l':
+      dlaf::factorization::cholesky<Backend::Default, Device::Default, T>(comm_grid, blas::Uplo::Lower, matrix.get());
+      break;
+    default:
+      break;
+    }
 
-  switch(uplo__) {
-   case 'U':
-   case 'u':
-#if defined(__DLAF_GPU)
-     dlaf::factorization::cholesky<Backend::GPU, Device::GPU, T>(comm_grid,
-                                                                blas::Uplo::Upper,
-                                                                matrix.get());
-#else
-     dlaf::factorization::cholesky<Backend::MC, Device::CPU, T>(comm_grid,
-                                                                blas::Uplo::Upper,
-                                                                matrix.get());
-#endif
-
-     break;
-  case 'L':
-  case 'l':
-#if defined(__DLAF_GPU)
-    dlaf::factorization::cholesky<Backend::GPU, Device::GPU, T>(comm_grid,
-                                                               blas::Uplo::Lower,
-                                                               matrix.get());
-#else
-    dlaf::factorization::cholesky<Backend::MC, Device::CPU, T>(comm_grid,
-                                                               blas::Uplo::Lower,
-                                                               matrix.get());
-#endif
-    break;
-  default:
-    break;
+    // TODO: Can this be relaxed (removed)?
+    matrix.get().waitLocalTiles();
   }
   
-  matrix.get().waitLocalTiles();
+  // TODO: Can this be relaxed (removed)?
+  mat.waitLocalTiles();
 
   DLAF_MPI_CHECK_ERROR(MPI_Barrier(world));
   
