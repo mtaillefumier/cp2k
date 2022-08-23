@@ -225,6 +225,7 @@ template <typename T> void pxpotrf_dla(char uplo__, int n__, T *a__, int ia__, i
   
   // TODO: Can this be relaxed (removed)?
   mat.waitLocalTiles();
+
   DLAF_MPI_CHECK_ERROR(MPI_Barrier(world));
   
   pika::suspend();
