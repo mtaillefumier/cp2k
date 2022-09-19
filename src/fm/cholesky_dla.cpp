@@ -9,6 +9,8 @@
 //
 
 #include <blas/util.hh>
+#include <omp.h>
+#include <mkl_service.h>
 #include <cstdlib>
 #include <iostream>
 #include <fstream>
@@ -18,6 +20,8 @@
 #include <pika/program_options.hpp>
 #include <pika/runtime.hpp>
 #include <pika/unwrap.hpp>
+
+#include "dlaf/matrix/matrix.h"
 
 #include "dlaf/auxiliary/norm.h"
 #include "dlaf/blas/tile.h"
@@ -90,18 +94,18 @@ static int get_grid_context(int *desca)
 extern "C" void dlaf_init() {
   if (!dlaf_init_) {
     using namespace pika::program_options;
-    int argc = 2;
 
-    std::string tmp = "--pika:threads=";
-    auto my_string = getenv("OMP_NUM_THREADS");
-    if(my_string == nullptr) {
-      tmp += std::to_string(1);
-    } else {
-      tmp += std::string(my_string);
-    }
+    //std::string tmp = "--pika:threads=3";
+    //auto my_string = getenv("OMP_NUM_THREADS");
+    //if(my_string == nullptr) {
+      //tmp += std::to_string(1);
+    //} else {
+      //tmp += std::string(my_string);
+    //}
 
     // TODO something wrong with passing command line arguments by hand
-    const char *argv[] = {"--pika:print-bind", tmp.c_str(), nullptr};
+    int argc = 1;
+    const char *argv[] = {"--pika:print-bind", /* tmp.c_str(),*/ nullptr};
     options_description desc_commandline("cp2k_dlaf");
     //desc_commandline.add(dlaf::miniapp::getMiniappOptionsDescription());
     desc_commandline.add(dlaf::getOptionsDescription());
@@ -115,6 +119,7 @@ extern "C" void dlaf_init() {
     const char *argv_dla[] = {"cp2k_dlaf", nullptr};
     dlaf::initialize(argc_dla, argv_dla);
     dlaf_init_ = true;
+
     pika::suspend();
   }
 }
@@ -127,8 +132,19 @@ extern "C" void dlaf_finalize() {
   dlaf_init_ = false;
 }
 
+class single_threaded_omp {
+public:
+    single_threaded_omp() : old_threads(mkl_get_max_threads()) { mkl_set_num_threads(1); }
+    ~single_threaded_omp() { mkl_set_num_threads(old_threads); }
+
+private:
+    int old_threads;
+};
+
 template <typename T> void pxpotrf_dla(char uplo__, int n__, T *a__, int ia__, int ja__, int *desca__, int &info__)
 {
+  std::cerr << "## DLA-Future cholesky start\n";
+  auto t0 = std::chrono::steady_clock::now();
 
   if (uplo__ != 'U' && uplo__ != 'u' && uplo__ != 'L' && uplo__ != 'l') {
     std::cerr << "DLA Cholesky : The UpLo parameter has a incorrect value. Please check the scalapack documentation.\n";
@@ -140,13 +156,16 @@ template <typename T> void pxpotrf_dla(char uplo__, int n__, T *a__, int ia__, i
   if (desca__[0] != 1) {
     // only treat dense matrices
     info__ = -1;
+    std::cerr << "Error: DLA Future should only treat dense matrices\n";
     return;
   }
 
   if (!dlaf_init_) {
-    std::cout << "Error: DLA Future must be initialized\n";
+    std::cerr << "Error: DLA Future must be initialized\n";
     info__ = -1;
   }
+
+  single_threaded_omp sto{};
 
   using dlaf::common::make_data;
 
@@ -175,7 +194,9 @@ template <typename T> void pxpotrf_dla(char uplo__, int n__, T *a__, int ia__, i
   int np, mp, size;
   MPI_Comm comm = get_communicator(desca__[1]);
   Communicator world(comm);
+  //std::cerr << "calling initial MPI_Barrier\n";
   DLAF_MPI_CHECK_ERROR(MPI_Barrier(world));
+  //std::cerr << "called initial MPI_Barrier\n";
   int dims[2] = {0, 0};
   int periods[2] = {0, 0};
   int coords[2] = {-1, -1};
@@ -203,33 +224,47 @@ template <typename T> void pxpotrf_dla(char uplo__, int n__, T *a__, int ia__, i
   Matrix<T, Device::CPU> mat(std::move(distribution), layout, a__);
 
   {
-    using MatrixMirrorType = MatrixMirror<T,  dlaf::Device::Default, Device::CPU>;
+#ifdef __DLAF_GPU
+    constexpr auto B = dlaf::Backend::GPU;
+    constexpr auto D = dlaf::Device::GPU;
+#else
+    constexpr auto B = dlaf::Backend::MC;
+    constexpr auto D = dlaf::Device::CPU;
+#endif
+    //using MatrixMirrorType = MatrixMirror<T,  dlaf::Device::Default, Device::CPU>;
+    using MatrixMirrorType = MatrixMirror<T, D, Device::CPU>;
     MatrixMirrorType matrix(mat);
 
     switch(uplo__) {
      case 'U':
      case 'u':
-       dlaf::factorization::cholesky<Backend::Default, Device::Default, T>(comm_grid, blas::Uplo::Upper, matrix.get());
+       dlaf::factorization::cholesky<B, D, T>(comm_grid, blas::Uplo::Upper, matrix.get());
        break;
     case 'L':
     case 'l':
-      dlaf::factorization::cholesky<Backend::Default, Device::Default, T>(comm_grid, blas::Uplo::Lower, matrix.get());
+      dlaf::factorization::cholesky<B, D, T>(comm_grid, blas::Uplo::Lower, matrix.get());
       break;
     default:
       break;
     }
 
     // TODO: Can this be relaxed (removed)?
-    matrix.get().waitLocalTiles();
+    //matrix.get().waitLocalTiles();
   }
   
   // TODO: Can this be relaxed (removed)?
-  mat.waitLocalTiles();
+  //mat.waitLocalTiles();
+  //pika::threads::get_thread_manager().wait();
 
-  DLAF_MPI_CHECK_ERROR(MPI_Barrier(world));
+  //std::cerr << "calling final MPI_Barrier\n";
+  //DLAF_MPI_CHECK_ERROR(MPI_Barrier(world));
+  //std::cerr << "called final MPI_Barrier\n";
   
   pika::suspend();
+  DLAF_MPI_CHECK_ERROR(MPI_Barrier(world));
   info__ = 0;
+  auto tdiff = std::chrono::steady_clock::now() - t0;
+  std::cerr << "## DLA-Future cholesky done in " << std::chrono::duration_cast<std::chrono::milliseconds>(tdiff).count() << "ms\n";
 }
 
 extern "C" void pdpotrf_dlaf_(char *uplo__, int n__, double *a__, int ia__, int ja__, int *desca__, int *info__)
