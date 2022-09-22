@@ -261,7 +261,7 @@ template <typename T> void pxpotrf_dla(char uplo__, int n__, T *a__, int ia__, i
   //std::cerr << "called final MPI_Barrier\n";
   
   pika::suspend();
-  DLAF_MPI_CHECK_ERROR(MPI_Barrier(world));
+  //DLAF_MPI_CHECK_ERROR(MPI_Barrier(world));
   info__ = 0;
   auto tdiff = std::chrono::steady_clock::now() - t0;
   std::cerr << "## DLA-Future cholesky done in " << std::chrono::duration_cast<std::chrono::milliseconds>(tdiff).count() << "ms\n";
