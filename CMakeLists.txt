@@ -120,6 +120,8 @@ option(CP2K_USE_METIS "enable metis library support" OFF)
 option(CP2K_USE_LIBXSMM "Use libxsmm for small gemms (supports x86 platforms)"
        ON)
 
+option(CP2K_USE_DLAF "enable dla-future cholesky and eigensolver support" OFF)
+
 cmake_dependent_option(CP2K_ENABLE_ELPA_OPENMP_SUPPORT
                        "Enable elpa openmp support" OFF "CP2K_USE_ELPA" OFF)
 
@@ -383,6 +385,10 @@ find_package(OpenMP REQUIRED COMPONENTS Fortran C CXX)
 # ==================================
 if(CP2K_USE_ELPA)
   find_package(Elpa REQUIRED)
+endif()
+
+if(CP2K_USE_DLAF)
+  find_package(DLAF REQUIRED)
 endif()
 
 if(CP2K_USE_LIBXC)

@@ -930,7 +930,8 @@ list(
   fm/cp_fm_struct.F
   fm/cp_fm_types.F
   fm/cp_fm_vect.F
-  fm/cp_linked_list_fm.F)
+  fm/cp_linked_list_fm.F
+  fm/dlaf.F)
 
 list(APPEND CP2K_SRCS_F hfxbase/hfx_compression_core_methods.F
      hfxbase/hfx_contract_block.F hfxbase/hfx_contraction_methods.F)
@@ -1327,6 +1328,10 @@ if(CP2K_USE_CUDA OR CP2K_USE_HIP)
   list(APPEND CP2K_SRCS_GPU ${GRID_SRCS_GPU} ${DBM_SRCS_GPU} ${PW_SRCS_GPU})
 endif()
 
+if(CP2K_USE_DLAF)
+  list(APPEND CP2K_SRCS_C fm/cholesky_dla.cpp)
+endif()
+
 # starting list to compile cp2k without any additional features.
 list(APPEND CP2K_SRCS_C ${DBM_SRCS_C} ${GRID_SRCS_C} ${OFFLOAD_SRCS_C})
 
@@ -1378,6 +1383,7 @@ target_link_libraries(
             $<$<BOOL:${CP2K_USE_COSMA}>:cosma::cosma>
             $<$<BOOL:${CP2K_USE_COSMA}>:costa::costa>
             DBCSR::dbcsr
+            $<$<BOOL:${CP2K_USE_DLAF}>:DLAF::DLAF>
             $<$<BOOL:${CP2K_USE_CUDA}>:CUDA::cufft>
             $<$<BOOL:${CP2K_USE_CUDA}>:CUDA::cufftw>
             $<$<BOOL:${CP2K_USE_CUDA}>:CUDA::cublas>
@@ -1442,6 +1448,7 @@ target_compile_definitions(
          $<$<BOOL:${CP2K_USE_PEXSI}>:__LIBPEXSI>
          $<$<BOOL:${CP2K_USE_COSMA}>:__COSMA>
          $<$<BOOL:${CP2K_USE_LIBXSMM}>:__LIBXSMM>
+         $<$<BOOL:${CP2K_USE_DLAF}>:__DLAF>
          $<$<STREQUAL:${CP2K_BLAS_VENDOR},MKL>:__MKL>
          $<$<STREQUAL:${CP2K_BLAS_VENDOR},Apple>:__ACCELERATE>
          $<$<BOOL:${CP2K_USE_CUDA}>:__OFFLOAD_CUDA>
