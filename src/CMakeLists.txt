@@ -930,8 +930,11 @@ list(
   fm/cp_fm_struct.F
   fm/cp_fm_types.F
   fm/cp_fm_vect.F
-  fm/cp_linked_list_fm.F
-  fm/dlaf.F)
+  fm/cp_linked_list_fm.F)
+
+if(CP2K_USE_DLAF)
+  list(APPEND CP2K_SRCS_F fm/dlaf.F)
+endif()
 
 list(APPEND CP2K_SRCS_F hfxbase/hfx_compression_core_methods.F
      hfxbase/hfx_contract_block.F hfxbase/hfx_contraction_methods.F)
