@@ -185,7 +185,7 @@ template <typename T> void pxpotrf_dla(char uplo__, int n__, T *a__, int ia__, i
 
   // TODO
   // DONE - dlaf initialization
-  //      - matrix mirror
+  // DONE - matrix mirror
   // DONE - resume suspend pika runtime
   //      - general cleanup
   // DONE - fortran interface uplo
@@ -224,44 +224,24 @@ template <typename T> void pxpotrf_dla(char uplo__, int n__, T *a__, int ia__, i
   Matrix<T, Device::CPU> mat(std::move(distribution), layout, a__);
 
   {
-#ifdef __DLAF_GPU
-    constexpr auto B = dlaf::Backend::GPU;
-    constexpr auto D = dlaf::Device::GPU;
-#else
-    constexpr auto B = dlaf::Backend::MC;
-    constexpr auto D = dlaf::Device::CPU;
-#endif
-    //using MatrixMirrorType = MatrixMirror<T,  dlaf::Device::Default, Device::CPU>;
-    using MatrixMirrorType = MatrixMirror<T, D, Device::CPU>;
-    MatrixMirrorType matrix(mat);
+    MatrixMirror<T,  dlaf::Device::Default, Device::CPU> matrix(mat);
 
     switch(uplo__) {
      case 'U':
      case 'u':
-       dlaf::factorization::cholesky<B, D, T>(comm_grid, blas::Uplo::Upper, matrix.get());
+       dlaf::factorization::cholesky<dlaf::Backend::Default, dlaf::Device::Default, T>(comm_grid, blas::Uplo::Upper, matrix.get());
        break;
     case 'L':
     case 'l':
-      dlaf::factorization::cholesky<B, D, T>(comm_grid, blas::Uplo::Lower, matrix.get());
+      dlaf::factorization::cholesky<dlaf::Backend::Default, dlaf::Device::Default, T>(comm_grid, blas::Uplo::Lower, matrix.get());
       break;
     default:
       break;
     }
-
-    // TODO: Can this be relaxed (removed)?
-    //matrix.get().waitLocalTiles();
   }
   
-  // TODO: Can this be relaxed (removed)?
-  //mat.waitLocalTiles();
-  //pika::threads::get_thread_manager().wait();
-
-  //std::cerr << "calling final MPI_Barrier\n";
-  //DLAF_MPI_CHECK_ERROR(MPI_Barrier(world));
-  //std::cerr << "called final MPI_Barrier\n";
-  
   pika::suspend();
-  //DLAF_MPI_CHECK_ERROR(MPI_Barrier(world));
+
   info__ = 0;
   auto tdiff = std::chrono::steady_clock::now() - t0;
   std::cerr << "## DLA-Future cholesky done in " << std::chrono::duration_cast<std::chrono::milliseconds>(tdiff).count() << "ms\n";
