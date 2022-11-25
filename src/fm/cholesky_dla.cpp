@@ -103,9 +103,6 @@ private:
 
 template <typename T> void pxpotrf_dla(char uplo__, int n__, T *a__, int ia__, int ja__, int *desca__, int &info__)
 {
-  std::cerr << "## DLA-Future cholesky start\n";
-  auto t0 = std::chrono::steady_clock::now();
-
   if (uplo__ != 'U' && uplo__ != 'u' && uplo__ != 'L' && uplo__ != 'l') {
     std::cerr << "DLA Cholesky : The UpLo parameter has a incorrect value. Please check the scalapack documentation.\n";
     info__ = -1;
@@ -202,8 +199,6 @@ template <typename T> void pxpotrf_dla(char uplo__, int n__, T *a__, int ia__, i
   pika::suspend();
 
   info__ = 0;
-  auto tdiff = std::chrono::steady_clock::now() - t0;
-  std::cerr << "## DLA-Future cholesky done in " << std::chrono::duration_cast<std::chrono::milliseconds>(tdiff).count() << "ms\n";
 }
 
 extern "C" void pdpotrf_dlaf_(char *uplo__, int n__, double *a__, int ia__, int ja__, int *desca__, int *info__)
