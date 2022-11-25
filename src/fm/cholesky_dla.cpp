@@ -9,6 +9,7 @@
 //
 
 #include <blas/util.hh>
+#include <cstdlib>
 #include <dlaf/communication/communicator.h>
 #include <dlaf/communication/communicator_grid.h>
 #include <dlaf/communication/error.h>
@@ -20,7 +21,6 @@
 #include <dlaf/matrix/matrix.h>
 #include <dlaf/matrix/matrix_mirror.h>
 #include <dlaf/types.h>
-#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <mpi.h>
@@ -31,8 +31,8 @@
 
 // TODO: Remove once https://github.com/eth-cscs/DLA-Future/pull/668 is
 // merged.
-#include <omp.h>
 #include <mkl_service.h>
+#include <omp.h>
 
 static bool dlaf_init_ = false;
 
@@ -57,10 +57,7 @@ static MPI_Comm get_communicator(const int grid_context) {
   return comm;
 }
 
-static int get_grid_context(int *desca)
-{
-  return desca[1];
-}
+static int get_grid_context(int *desca) { return desca[1]; }
 
 extern "C" void dlaf_init() {
   if (!dlaf_init_) {
@@ -69,7 +66,7 @@ extern "C" void dlaf_init() {
 
     pika::program_options::options_description desc("cp2k");
     desc.add(dlaf::getOptionsDescription());
-    
+
     /* pika initialization */
     pika::init_params p;
     p.rp_callback = dlaf::initResourcePartitionerHandler;
@@ -86,7 +83,7 @@ extern "C" void dlaf_init() {
 
 extern "C" void dlaf_finalize() {
   pika::resume();
-  pika::async([]{pika::finalize();});
+  pika::async([] { pika::finalize(); });
   dlaf::finalize();
   pika::stop();
   dlaf_init_ = false;
@@ -94,17 +91,21 @@ extern "C" void dlaf_finalize() {
 
 class single_threaded_omp {
 public:
-    single_threaded_omp() : old_threads(mkl_get_max_threads()) { mkl_set_num_threads(1); }
-    ~single_threaded_omp() { mkl_set_num_threads(old_threads); }
+  single_threaded_omp() : old_threads(mkl_get_max_threads()) {
+    mkl_set_num_threads(1);
+  }
+  ~single_threaded_omp() { mkl_set_num_threads(old_threads); }
 
 private:
-    int old_threads;
+  int old_threads;
 };
 
-template <typename T> void pxpotrf_dla(char uplo__, int n__, T *a__, int ia__, int ja__, int *desca__, int &info__)
-{
+template <typename T>
+void pxpotrf_dla(char uplo__, int n__, T *a__, int ia__, int ja__, int *desca__,
+                 int &info__) {
   if (uplo__ != 'U' && uplo__ != 'u' && uplo__ != 'L' && uplo__ != 'l') {
-    std::cerr << "DLA Cholesky : The UpLo parameter has a incorrect value. Please check the scalapack documentation.\n";
+    std::cerr << "DLA Cholesky : The UpLo parameter has a incorrect value. "
+                 "Please check the scalapack documentation.\n";
     info__ = -1;
     return;
   }
@@ -131,7 +132,7 @@ template <typename T> void pxpotrf_dla(char uplo__, int n__, T *a__, int ia__, i
 
   // block sizes
   int nb, mb;
-  
+
   // retrive the matrix sizes
   m = desca__[3];
   n = desca__[2];
@@ -159,16 +160,15 @@ template <typename T> void pxpotrf_dla(char uplo__, int n__, T *a__, int ia__, i
   MPI_Comm_size(comm, &size);
   Cblacs_gridinfo(desca__[1], dims, dims + 1, coords, coords + 1);
 
-  dlaf::comm::CommunicatorGrid comm_grid(world, dims[0], dims[1], dlaf::common::Ordering::RowMajor);
-  
+  dlaf::comm::CommunicatorGrid comm_grid(world, dims[0], dims[1],
+                                         dlaf::common::Ordering::RowMajor);
+
   // Allocate memory for the matrix
   dlaf::GlobalElementSize matrix_size(n, m);
   dlaf::TileElementSize block_size(nb, mb);
-  dlaf::comm::Index2D src_rank_index(0,0);
-  dlaf::matrix::Distribution distribution(matrix_size,
-                                          block_size,
-                                          comm_grid.size(),
-                                          comm_grid.rank(),
+  dlaf::comm::Index2D src_rank_index(0, 0);
+  dlaf::matrix::Distribution distribution(matrix_size, block_size,
+                                          comm_grid.size(), comm_grid.rank(),
                                           src_rank_index);
   int rank = 0;
   MPI_Comm_rank(comm, &rank);
@@ -177,46 +177,52 @@ template <typename T> void pxpotrf_dla(char uplo__, int n__, T *a__, int ia__, i
   const int ld_ = desca__[8];
 
   dlaf::matrix::LayoutInfo layout = colMajorLayout(distribution, ld_);
-  dlaf::matrix::Matrix<T, dlaf::Device::CPU> mat(std::move(distribution), layout, a__);
+  dlaf::matrix::Matrix<T, dlaf::Device::CPU> mat(std::move(distribution),
+                                                 layout, a__);
 
   {
-    dlaf::matrix::MatrixMirror<T,  dlaf::Device::Default, dlaf::Device::CPU> matrix(mat);
+    dlaf::matrix::MatrixMirror<T, dlaf::Device::Default, dlaf::Device::CPU>
+        matrix(mat);
 
-    switch(uplo__) {
-     case 'U':
-     case 'u':
-       dlaf::factorization::cholesky<dlaf::Backend::Default, dlaf::Device::Default, T>(comm_grid, blas::Uplo::Upper, matrix.get());
-       break;
+    switch (uplo__) {
+    case 'U':
+    case 'u':
+      dlaf::factorization::cholesky<dlaf::Backend::Default,
+                                    dlaf::Device::Default, T>(
+          comm_grid, blas::Uplo::Upper, matrix.get());
+      break;
     case 'L':
     case 'l':
-      dlaf::factorization::cholesky<dlaf::Backend::Default, dlaf::Device::Default, T>(comm_grid, blas::Uplo::Lower, matrix.get());
+      dlaf::factorization::cholesky<dlaf::Backend::Default,
+                                    dlaf::Device::Default, T>(
+          comm_grid, blas::Uplo::Lower, matrix.get());
       break;
     default:
       break;
     }
   }
-  
+
   pika::suspend();
 
   info__ = 0;
 }
 
-extern "C" void pdpotrf_dlaf_(char *uplo__, int n__, double *a__, int ia__, int ja__, int *desca__, int *info__)
-{
+extern "C" void pdpotrf_dlaf_(char *uplo__, int n__, double *a__, int ia__,
+                              int ja__, int *desca__, int *info__) {
   pxpotrf_dla<double>(*uplo__, n__, a__, ia__, ja__, desca__, *info__);
 }
 
-extern "C" void pspotrf_dlaf_(char *uplo__, int n__, float *a__, int ia__, int ja__, int *desca__, int *info__)
-{
+extern "C" void pspotrf_dlaf_(char *uplo__, int n__, float *a__, int ia__,
+                              int ja__, int *desca__, int *info__) {
   pxpotrf_dla<float>(*uplo__, n__, a__, ia__, ja__, desca__, *info__);
 }
 
-extern "C" void pdpotrf_dlaf(char *uplo__, int n__, double *a__, int ia__, int ja__, int *desca__, int *info__)
-{
+extern "C" void pdpotrf_dlaf(char *uplo__, int n__, double *a__, int ia__,
+                             int ja__, int *desca__, int *info__) {
   pxpotrf_dla<double>(*uplo__, n__, a__, ia__, ja__, desca__, *info__);
 }
 
-extern "C" void pspotrf_dlaf(char *uplo__, int n__, float *a__, int ia__, int ja__, int *desca__, int *info__)
-{
+extern "C" void pspotrf_dlaf(char *uplo__, int n__, float *a__, int ia__,
+                             int ja__, int *desca__, int *info__) {
   pxpotrf_dla<float>(*uplo__, n__, a__, ia__, ja__, desca__, *info__);
 }
