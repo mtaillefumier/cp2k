@@ -64,32 +64,20 @@ static int get_grid_context(int *desca)
 
 extern "C" void dlaf_init() {
   if (!dlaf_init_) {
-    using namespace pika::program_options;
-
-    //std::string tmp = "--pika:threads=3";
-    //auto my_string = getenv("OMP_NUM_THREADS");
-    //if(my_string == nullptr) {
-      //tmp += std::to_string(1);
-    //} else {
-      //tmp += std::string(my_string);
-    //}
-
-    // TODO something wrong with passing command line arguments by hand
     int argc = 1;
-    const char *argv[] = {"--pika:print-bind", /* tmp.c_str(),*/ nullptr};
-    options_description desc_commandline("cp2k_dlaf");
-    desc_commandline.add(dlaf::getOptionsDescription());
+    const char *const argv[] = {"cp2k", nullptr};
+
+    pika::program_options::options_description desc("cp2k");
+    desc.add(dlaf::getOptionsDescription());
     
-    /* pika initialization. Last parameter to be added. */
+    /* pika initialization */
     pika::init_params p;
-    p.desc_cmdline = desc_commandline;
     p.rp_callback = dlaf::initResourcePartitionerHandler;
+    p.desc_cmdline = desc;
     pika::start(nullptr, argc, argv, p);
 
     /* DLA-Future initialization */
-    const int argc_dla = 1;
-    const char *argv_dla[] = {"cp2k_dlaf", nullptr};
-    dlaf::initialize(argc_dla, argv_dla);
+    dlaf::initialize(argc, argv);
     dlaf_init_ = true;
 
     pika::suspend();
