@@ -71,8 +71,6 @@ MODULE qs_cdft_utils
                                               qs_subsys_type
    USE realspace_grid_types,            ONLY: realspace_grid_type,&
                                               rs2pw,&
-                                              rs_grid_release,&
-                                              rs_grid_retain,&
                                               rs_grid_zero,&
                                               rs_pw_transfer
 #include "./base/base_uses.f90"
@@ -205,7 +203,7 @@ CONTAINS
       END DO
       IF (cdft_control%atomic_charges) THEN
          DO iatom = 1, cdft_control%natoms
-            cdft_control%charge(iatom)%pw%cr3d = 0.0_dp
+            cdft_control%charge(iatom)%cr3d = 0.0_dp
          END DO
       END IF
       ! Allocate storage for cell adjustment coefficients and needed distance vectors
@@ -340,7 +338,6 @@ CONTAINS
          ! Form cavity by summing isolated Gaussian densities over constraint atoms
          NULLIFY (rs_cavity)
          CALL pw_env_get(pw_env, auxbas_rs_grid=rs_cavity, auxbas_pw_pool=auxbas_pw_pool)
-         CALL rs_grid_retain(rs_cavity)
          CALL rs_grid_zero(rs_cavity)
          ALLOCATE (pab(1, 1))
          nthread = 1
@@ -394,19 +391,16 @@ CONTAINS
             DEALLOCATE (cores)
          END DO
          DEALLOCATE (pab)
-         NULLIFY (becke_control%cavity%pw)
-         ALLOCATE (becke_control%cavity%pw)
-         CALL pw_pool_create_pw(auxbas_pw_pool, becke_control%cavity%pw, &
+         CALL pw_pool_create_pw(auxbas_pw_pool, becke_control%cavity, &
                                 use_data=REALDATA3D, in_space=REALSPACE)
-         CALL rs_pw_transfer(rs_cavity, becke_control%cavity%pw, rs2pw)
-         CALL rs_grid_release(rs_cavity)
+         CALL rs_pw_transfer(rs_cavity, becke_control%cavity, rs2pw)
          ! Grid points where the Gaussian density falls below eps_cavity are ignored
          ! We can calculate the smallest/largest values along z-direction outside
          ! which the cavity is zero at every point (x, y)
          ! If gradients are needed storage needs to be allocated only for grid points within
          ! these bounds
          IF (in_memory .OR. cdft_control%save_pot) THEN
-            CALL hfun_zero(becke_control%cavity%pw%cr3d, eps_cavity, just_bounds=.TRUE., bounds=bounds)
+            CALL hfun_zero(becke_control%cavity%cr3d, eps_cavity, just_bounds=.TRUE., bounds=bounds)
             ! Save bounds (first nonzero grid point indices)
             bo = group(1)%weight%pw_grid%bounds_local
             IF (bounds(2) .LT. bo(2, 3)) THEN
@@ -426,7 +420,7 @@ CONTAINS
          END IF
          ! Optional printing of cavity (meant for testing, so options currently hardcoded...)
          IF (becke_control%print_cavity) THEN
-            CALL hfun_zero(becke_control%cavity%pw%cr3d, eps_cavity, just_bounds=.FALSE.)
+            CALL hfun_zero(becke_control%cavity%cr3d, eps_cavity, just_bounds=.FALSE.)
             ALLOCATE (stride(3))
             stride = (/2, 2, 2/)
             mpi_io = .TRUE.
@@ -440,7 +434,7 @@ CONTAINS
                              "Please turn on PROGRAM_RUN_INFO to print cavity")
             CALL get_qs_env(qs_env, subsys=subsys)
             CALL qs_subsys_get(subsys, particles=particles)
-            CALL cp_pw_to_cube(becke_control%cavity%pw, unit_nr, "CAVITY", particles=particles, stride=stride, mpi_io=mpi_io)
+            CALL cp_pw_to_cube(becke_control%cavity, unit_nr, "CAVITY", particles=particles, stride=stride, mpi_io=mpi_io)
             CALL cp_print_key_finished_output(unit_nr, logger, cdft_constraint_section, "PROGRAM_RUN_INFO", mpi_io=mpi_io)
             DEALLOCATE (stride)
          END IF
@@ -854,7 +848,7 @@ CONTAINS
 
    END SUBROUTINE read_hirshfeld_constraint_section
 
-   ! **************************************************************************************************
+! **************************************************************************************************
 !> \brief Calculate fout = fun1/fun2 or fout = fun1*fun2
 !> \param fout the output 3D potential
 !> \param fun1 the first input 3D potential
@@ -867,8 +861,6 @@ CONTAINS
       REAL(KIND=dp), DIMENSION(:, :, :), INTENT(IN)      :: fun1, fun2
       LOGICAL, INTENT(IN)                                :: divide
       REAL(KIND=dp), INTENT(IN)                          :: small
-
-      CHARACTER(len=*), PARAMETER :: routineN = 'hfun_scale', routineP = moduleN//':'//routineN
 
       INTEGER                                            :: i1, i2, i3, n1, n2, n3
 
@@ -1317,15 +1309,12 @@ CONTAINS
 
    END SUBROUTINE cdft_print_weight_function
 
-   ! **************************************************************************************************
+! **************************************************************************************************
 !> \brief Prints Hirshfeld weight function and promolecule density
 !> \param qs_env ...
 ! **************************************************************************************************
    SUBROUTINE cdft_print_hirshfeld_density(qs_env)
       TYPE(qs_environment_type), POINTER                 :: qs_env
-
-      CHARACTER(len=*), PARAMETER :: routineN = 'cdft_print_hirshfeld_density', &
-         routineP = moduleN//':'//routineN
 
       CHARACTER(LEN=default_path_length)                 :: middle_name
       INTEGER                                            :: iatom, igroup, unit_nr
@@ -1384,7 +1373,7 @@ CONTAINS
             unit_nr = cp_print_key_unit_nr(logger, cdft_constraint_section, "PROGRAM_RUN_INFO", mpi_io=mpi_io, &
                                            file_position="REWIND", middle_name=middle_name, extension=".cube")
 
-            CALL cp_pw_to_cube(cdft_control%group(igroup)%hw_rho_atomic(iatom)%pw, unit_nr, &
+            CALL cp_pw_to_cube(cdft_control%group(igroup)%hw_rho_atomic(iatom), unit_nr, &
                                "CDFT Weight Function", mpi_io=mpi_io, particles=particles, &
                                stride=section_get_ivals(cdft_constraint_section, "PROGRAM_RUN_INFO%WEIGHT_FUNCTION%STRIDE"))
 

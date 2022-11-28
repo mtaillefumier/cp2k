@@ -25,7 +25,7 @@ MODULE qs_gamma2kp
    USE kinds,                           ONLY: dp
    USE kpoint_types,                    ONLY: kpoint_create,&
                                               kpoint_type
-   USE pw_types,                        ONLY: pw_p_type
+   USE pw_types,                        ONLY: pw_type
    USE qs_energy_init,                  ONLY: qs_energies_init
    USE qs_environment,                  ONLY: qs_init
    USE qs_environment_types,            ONLY: get_qs_env,&
@@ -36,8 +36,7 @@ MODULE qs_gamma2kp
    USE qs_rho_types,                    ONLY: qs_rho_get,&
                                               qs_rho_type
    USE qs_scf_initialization,           ONLY: qs_scf_env_init_basic
-   USE qs_scf_types,                    ONLY: qs_scf_env_type,&
-                                              scf_env_release
+   USE qs_scf_types,                    ONLY: qs_scf_env_type
    USE scf_control_types,               ONLY: scf_control_type
 #include "./base/base_uses.f90"
 
@@ -68,17 +67,13 @@ CONTAINS
       TYPE(cp_subsys_type), POINTER                      :: cp_subsys
       TYPE(dbcsr_p_type), DIMENSION(:, :), POINTER       :: rho_ao_kp, rho_ao_kp_gamma
       TYPE(kpoint_type), POINTER                         :: kpoint
-      TYPE(pw_p_type), DIMENSION(:), POINTER             :: rho_g_gamma, rho_g_kp, rho_r_gamma, &
+      TYPE(pw_type), DIMENSION(:), POINTER               :: rho_g_gamma, rho_g_kp, rho_r_gamma, &
                                                             rho_r_kp
       TYPE(qs_rho_type), POINTER                         :: rho, rho_gamma
       TYPE(qs_scf_env_type), POINTER                     :: scf_env
       TYPE(scf_control_type), POINTER                    :: scf_control
       TYPE(section_vals_type), POINTER                   :: force_env_section, subsys_section, &
                                                             xc_fun_section
-
-      !--------------------------------------------------------------------------------------------!
-
-      CPASSERT(.NOT. ASSOCIATED(qs_env_kp))
 
       CALL get_qs_env(qs_env, &
                       para_env=para_env, &
@@ -106,6 +101,7 @@ CONTAINS
          CALL section_vals_val_set(xc_fun_section, "_SECTION_PARAMETERS_", i_val=xc_none)
       END IF
 
+      ALLOCATE (qs_env_kp)
       CALL qs_env_create(qs_env_kp)
       CALL qs_init(qs_env_kp, para_env, cp_subsys=cp_subsys, kpoint_env=kpoint, &
                    force_env_section=force_env_section, subsys_section=subsys_section, &
@@ -119,7 +115,6 @@ CONTAINS
       CALL qs_scf_env_init_basic(qs_env_kp, scf_env)
 
       CALL set_qs_env(qs_env_kp, scf_env=scf_env)
-      CALL scf_env_release(scf_env)
 
       ! copy density matrix, n(r) and n(G) from Gamma-only to kpoint calculation
       CALL get_qs_env(qs_env, rho=rho_gamma)
@@ -128,8 +123,8 @@ CONTAINS
       CALL qs_rho_get(rho, rho_ao_kp=rho_ao_kp, rho_r=rho_r_kp, rho_g=rho_g_kp)
 
       DO ispin = 1, SIZE(rho_r_gamma)
-         rho_r_kp(ispin)%pw%cr3d(:, :, :) = rho_r_gamma(ispin)%pw%cr3d(:, :, :)
-         rho_g_kp(ispin)%pw%cc(:) = rho_g_gamma(ispin)%pw%cc(:)
+         rho_r_kp(ispin)%cr3d(:, :, :) = rho_r_gamma(ispin)%cr3d(:, :, :)
+         rho_g_kp(ispin)%cc(:) = rho_g_gamma(ispin)%cc(:)
          CALL dbcsr_add(matrix_a=rho_ao_kp(ispin, 1)%matrix, alpha_scalar=0.0_dp, &
                         matrix_b=rho_ao_kp_gamma(ispin, 1)%matrix, beta_scalar=1.0_dp)
       END DO

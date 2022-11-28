@@ -89,7 +89,7 @@ MODULE xtb_matrices
                                               qs_ks_env_type,&
                                               set_ks_env
    USE qs_mo_types,                     ONLY: get_mo_set,&
-                                              mo_set_p_type
+                                              mo_set_type
    USE qs_neighbor_list_types,          ONLY: get_iterator_info,&
                                               neighbor_list_iterate,&
                                               neighbor_list_iterator_create,&
@@ -993,7 +993,7 @@ CONTAINS
       TYPE(qs_environment_type), POINTER                 :: qs_env
       TYPE(dbcsr_type), POINTER                          :: p_matrix
 
-      CHARACTER(LEN=*), PARAMETER :: routineN = 'xtb_hab_force', routineP = moduleN//':'//routineN
+      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'xtb_hab_force'
 
       INTEGER :: atom_a, atom_b, atom_c, handle, i, iatom, ic, icol, ikind, img, ir, irow, iset, &
          j, jatom, jkind, jset, katom, kkind, la, lb, ldsab, lmaxa, lmaxb, maxder, maxs, n1, n2, &
@@ -1549,7 +1549,6 @@ CONTAINS
       TYPE(dbcsr_p_type), DIMENSION(:, :), POINTER       :: ks_matrix, matrix_h, matrix_p, matrix_s
       TYPE(dbcsr_type), POINTER                          :: mo_coeff, s_matrix
       TYPE(dft_control_type), POINTER                    :: dft_control
-      TYPE(mo_set_p_type), DIMENSION(:), POINTER         :: mo_array
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
       TYPE(qs_energy_type), POINTER                      :: energy
       TYPE(qs_kind_type), DIMENSION(:), POINTER          :: qs_kind_set
@@ -1747,15 +1746,18 @@ CONTAINS
       ! here we compute dE/dC if needed. Assumes dE/dC is H_{ks}C
       IF (qs_env%requires_mo_derivs .AND. .NOT. just_energy) THEN
          CPASSERT(SIZE(ks_matrix, 2) == 1)
-         CALL get_qs_env(qs_env, mo_derivs=mo_derivs, mos=mo_array)
-         DO ispin = 1, SIZE(mo_derivs)
-            CALL get_mo_set(mo_set=mo_array(ispin)%mo_set, mo_coeff_b=mo_coeff)
-            IF (.NOT. mo_array(ispin)%mo_set%use_mo_coeff_b) THEN
-               CPABORT("")
-            END IF
-            CALL dbcsr_multiply('n', 'n', 1.0_dp, ks_matrix(ispin, 1)%matrix, mo_coeff, &
-                                0.0_dp, mo_derivs(ispin)%matrix)
-         END DO
+         BLOCK
+            TYPE(mo_set_type), DIMENSION(:), POINTER         :: mo_array
+            CALL get_qs_env(qs_env, mo_derivs=mo_derivs, mos=mo_array)
+            DO ispin = 1, SIZE(mo_derivs)
+               CALL get_mo_set(mo_set=mo_array(ispin), mo_coeff_b=mo_coeff)
+               IF (.NOT. mo_array(ispin)%use_mo_coeff_b) THEN
+                  CPABORT("")
+               END IF
+               CALL dbcsr_multiply('n', 'n', 1.0_dp, ks_matrix(ispin, 1)%matrix, mo_coeff, &
+                                   0.0_dp, mo_derivs(ispin)%matrix)
+            END DO
+         END BLOCK
       END IF
 
       CALL timestop(handle)

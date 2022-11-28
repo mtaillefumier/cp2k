@@ -40,7 +40,7 @@ MODULE qs_2nd_kernel_ao
                                               pw_env_type
    USE pw_pool_types,                   ONLY: pw_pool_give_back_pw,&
                                               pw_pool_type
-   USE pw_types,                        ONLY: pw_p_type
+   USE pw_types,                        ONLY: pw_type
    USE qs_environment_types,            ONLY: get_qs_env,&
                                               qs_environment_type
    USE qs_integrate_potential,          ONLY: integrate_v_rspace
@@ -81,9 +81,6 @@ CONTAINS
       TYPE(cp_fm_p_type), DIMENSION(:), INTENT(IN)       :: c0, c1
       TYPE(dbcsr_p_type), DIMENSION(:), INTENT(INOUT)    :: dm
 
-      CHARACTER(LEN=*), PARAMETER :: routineN = 'build_dm_response', &
-         routineP = moduleN//':'//routineN
-
       INTEGER                                            :: ispin, ncol, nspins
 
       nspins = SIZE(dm, 1)
@@ -94,13 +91,9 @@ CONTAINS
          CALL cp_dbcsr_plus_fm_fm_t(dm(ispin)%matrix, &
                                     matrix_v=c0(ispin)%matrix, &
                                     matrix_g=c1(ispin)%matrix, &
-                                    ncol=ncol, alpha=1.0_dp, &
-                                    keep_sparsity=.TRUE.)
-         CALL cp_dbcsr_plus_fm_fm_t(dm(ispin)%matrix, &
-                                    matrix_v=c1(ispin)%matrix, &
-                                    matrix_g=c0(ispin)%matrix, &
-                                    ncol=ncol, alpha=1.0_dp, &
-                                    keep_sparsity=.TRUE.)
+                                    ncol=ncol, alpha=2.0_dp, &
+                                    keep_sparsity=.TRUE., &
+                                    symmetry_mode=1)
       END DO
 
    END SUBROUTINE build_dm_response
@@ -194,7 +187,7 @@ CONTAINS
       TYPE(qs_p_env_type), INTENT(IN)                    :: p_env
       LOGICAL, INTENT(IN), OPTIONAL                      :: recalc_integrals
 
-      CHARACTER(LEN=*), PARAMETER :: routineN = 'apply_hfx_ao', routineP = moduleN//':'//routineN
+      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'apply_hfx_ao'
 
       INTEGER                                            :: handle, ispin, nspins
       LOGICAL                                            :: my_recalc_integrals
@@ -288,9 +281,9 @@ CONTAINS
       TYPE(dft_control_type), POINTER                    :: dft_control
       TYPE(linres_control_type), POINTER                 :: linres_control
       TYPE(pw_env_type), POINTER                         :: pw_env
-      TYPE(pw_p_type), DIMENSION(:), POINTER             :: rho1_aux_g, rho1_aux_r, tau1_aux_r, &
-                                                            v_xc, v_xc_tau
       TYPE(pw_pool_type), POINTER                        :: auxbas_pw_pool
+      TYPE(pw_type), DIMENSION(:), POINTER               :: rho1_aux_g, rho1_aux_r, tau1_aux_r, &
+                                                            v_xc, v_xc_tau
       TYPE(qs_ks_env_type), POINTER                      :: ks_env
       TYPE(qs_rho_type), POINTER                         :: rho_aux
       TYPE(section_vals_type), POINTER                   :: xc_section
@@ -344,14 +337,14 @@ CONTAINS
 
          CALL cp_fm_get_info(admm_env%A, nrow_global=nao_aux, ncol_global=nao)
          DO ispin = 1, nspins
-            v_xc(ispin)%pw%cr3d = v_xc(ispin)%pw%cr3d*v_xc(ispin)%pw%pw_grid%dvol
+            v_xc(ispin)%cr3d = v_xc(ispin)%cr3d*v_xc(ispin)%pw_grid%dvol
             CALL dbcsr_set(work_hmat%matrix, 0.0_dp)
-            CALL integrate_v_rspace(v_rspace=v_xc(ispin)%pw, hmat=work_hmat, qs_env=qs_env, &
+            CALL integrate_v_rspace(v_rspace=v_xc(ispin), hmat=work_hmat, qs_env=qs_env, &
                                     calculate_forces=my_calc_forces, basis_type="AUX_FIT", &
                                     task_list_external=task_list_aux_fit, pmat=rho_ao_aux(ispin))
             IF (ASSOCIATED(v_xc_tau)) THEN
-               v_xc_tau(ispin)%pw%cr3d = v_xc_tau(ispin)%pw%cr3d*v_xc_tau(ispin)%pw%pw_grid%dvol
-               CALL integrate_v_rspace(v_rspace=v_xc_tau(ispin)%pw, hmat=work_hmat, qs_env=qs_env, &
+               v_xc_tau(ispin)%cr3d = v_xc_tau(ispin)%cr3d*v_xc_tau(ispin)%pw_grid%dvol
+               CALL integrate_v_rspace(v_rspace=v_xc_tau(ispin), hmat=work_hmat, qs_env=qs_env, &
                                        compute_tau=.TRUE., &
                                        calculate_forces=my_calc_forces, basis_type="AUX_FIT", &
                                        task_list_external=task_list_aux_fit, pmat=rho_ao_aux(ispin))
@@ -364,8 +357,7 @@ CONTAINS
          DEALLOCATE (work_hmat%matrix)
 
          DO ispin = 1, nspins
-            CALL pw_pool_give_back_pw(auxbas_pw_pool, v_xc(ispin)%pw)
-            DEALLOCATE (v_xc(ispin)%pw)
+            CALL pw_pool_give_back_pw(auxbas_pw_pool, v_xc(ispin))
          END DO
          DEALLOCATE (v_xc)
 

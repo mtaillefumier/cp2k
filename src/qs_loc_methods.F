@@ -103,7 +103,7 @@ MODULE qs_loc_methods
    USE qs_kind_types,                   ONLY: qs_kind_type
    USE qs_loc_types,                    ONLY: get_qs_loc_env,&
                                               localized_wfn_control_type,&
-                                              qs_loc_env_new_type
+                                              qs_loc_env_type
    USE qs_loc_utils,                    ONLY: jacobi_rotation_pipek
    USE qs_localization_methods,         ONLY: approx_l1_norm_sd,&
                                               crazy_rotations,&
@@ -116,7 +116,7 @@ MODULE qs_loc_methods
    USE qs_mo_methods,                   ONLY: make_basis_simple,&
                                               make_basis_sm
    USE qs_mo_types,                     ONLY: get_mo_set,&
-                                              mo_set_p_type
+                                              mo_set_type
    USE qs_moments,                      ONLY: build_local_moment_matrix
    USE qs_neighbor_list_types,          ONLY: neighbor_list_set_p_type
    USE qs_subsys_types,                 ONLY: qs_subsys_get,&
@@ -173,7 +173,7 @@ CONTAINS
                                  nextra, nmo, vectors_2, guess_mos)
 
       INTEGER, INTENT(IN)                                :: method
-      TYPE(qs_loc_env_new_type), POINTER                 :: qs_loc_env
+      TYPE(qs_loc_env_type), POINTER                     :: qs_loc_env
       TYPE(cp_fm_type), INTENT(IN)                       :: vectors
       TYPE(dbcsr_p_type), DIMENSION(:, :), POINTER       :: op_sm_set
       TYPE(cp_fm_p_type), DIMENSION(:, :), POINTER       :: zij_fm_set
@@ -325,7 +325,7 @@ CONTAINS
                                  ispin, print_loc_section)
       TYPE(qs_environment_type), POINTER                 :: qs_env
       INTEGER, INTENT(IN)                                :: method
-      TYPE(qs_loc_env_new_type), POINTER                 :: qs_loc_env
+      TYPE(qs_loc_env_type), POINTER                     :: qs_loc_env
       TYPE(cp_fm_type), INTENT(IN)                       :: vectors
       TYPE(cp_fm_p_type), DIMENSION(:, :), POINTER       :: zij_fm_set
       INTEGER, INTENT(IN)                                :: ispin
@@ -371,6 +371,7 @@ CONTAINS
 
       !   Copy the overlap sparse matrix in a full matrix
       CALL mpools_get(qs_env%mpools, ao_ao_fm_pools=ao_ao_fm_pools)
+      ALLOCATE (ov_fm)
       CALL fm_pool_create_fm(ao_ao_fm_pools(1)%pool, ov_fm, name=" ")
       CALL copy_dbcsr_to_fm(matrix_s(1)%matrix, ov_fm)
 
@@ -447,7 +448,7 @@ CONTAINS
 ! **************************************************************************************************
    SUBROUTINE centers_spreads_berry(qs_loc_env, zij, nmoloc, cell, weights, ispin, &
                                     print_loc_section, only_initial_out)
-      TYPE(qs_loc_env_new_type), POINTER                 :: qs_loc_env
+      TYPE(qs_loc_env_type), POINTER                     :: qs_loc_env
       TYPE(cp_fm_p_type), INTENT(INOUT)                  :: zij(:, :)
       INTEGER, INTENT(IN)                                :: nmoloc
       TYPE(cell_type), POINTER                           :: cell
@@ -558,7 +559,7 @@ CONTAINS
    SUBROUTINE centers_spreads_pipek(qs_loc_env, zij_fm_set, particle_set, ispin, &
                                     print_loc_section)
 
-      TYPE(qs_loc_env_new_type), POINTER                 :: qs_loc_env
+      TYPE(qs_loc_env_type), POINTER                     :: qs_loc_env
       TYPE(cp_fm_p_type), DIMENSION(:, :), POINTER       :: zij_fm_set
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
       INTEGER, INTENT(IN)                                :: ispin
@@ -649,7 +650,7 @@ CONTAINS
                             ext_mo_coeff)
 
       TYPE(qs_environment_type), POINTER                 :: qs_env
-      TYPE(qs_loc_env_new_type), POINTER                 :: qs_loc_env
+      TYPE(qs_loc_env_type), POINTER                     :: qs_loc_env
       TYPE(section_vals_type), POINTER                   :: print_loc_section
       INTEGER, INTENT(IN), OPTIONAL                      :: myspin
       TYPE(cp_fm_type), INTENT(IN), OPTIONAL             :: ext_mo_coeff
@@ -681,7 +682,7 @@ CONTAINS
       TYPE(dbcsr_type), POINTER                          :: refmatrix, tmatrix
       TYPE(dft_control_type), POINTER                    :: dft_control
       TYPE(localized_wfn_control_type), POINTER          :: localized_wfn_control
-      TYPE(mo_set_p_type), DIMENSION(:), POINTER         :: mos
+      TYPE(mo_set_type), DIMENSION(:), POINTER           :: mos
       TYPE(neighbor_list_set_p_type), DIMENSION(:), &
          POINTER                                         :: sab_orb
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
@@ -759,7 +760,7 @@ CONTAINS
 
       DO ispin = s_spin, l_spin
 
-         CALL get_mo_set(mo_set=mos(ispin)%mo_set, nao=nao, nmo=nmo)
+         CALL get_mo_set(mo_set=mos(ispin), nao=nao, nmo=nmo)
          loc_method = localized_wfn_control%localization_method
 
          SELECT CASE (localized_wfn_control%operator_type)
@@ -772,7 +773,7 @@ CONTAINS
                CALL cp_fm_struct_create(tmp_fm_struct, nrow_global=nmosub, &
                                         ncol_global=nmosub, para_env=para_env, context=ext_mo_coeff%matrix_struct%context)
             ELSE
-               CALL get_mo_set(mo_set=mos(ispin)%mo_set, mo_coeff=mo_coeff)
+               CALL get_mo_set(mo_set=mos(ispin), mo_coeff=mo_coeff)
                CALL cp_fm_struct_create(tmp_fm_struct, nrow_global=nmosub, &
                                         ncol_global=nmosub, para_env=para_env, context=mo_coeff%matrix_struct%context)
             END IF
@@ -792,7 +793,7 @@ CONTAINS
             IF (localized_wfn_control%do_mixed) THEN
                IF (nextra > 0) THEN
                   norextra = nmo - nmosub
-                  CALL get_mo_set(mo_set=mos(ispin)%mo_set, mo_coeff=mo_coeff)
+                  CALL get_mo_set(mo_set=mos(ispin), mo_coeff=mo_coeff)
                   CALL cp_fm_struct_create(tmp_fm_struct, nrow_global=nao, &
                                            ncol_global=norextra, para_env=para_env, context=mo_coeff%matrix_struct%context)
                   CALL cp_fm_create(vectors_2, tmp_fm_struct)
@@ -922,7 +923,7 @@ CONTAINS
 
          ! give back the localized orbitals
          IF (.NOT. PRESENT(ext_mo_coeff)) THEN
-            CALL get_mo_set(mo_set=mos(ispin)%mo_set, mo_coeff=mo_coeff)
+            CALL get_mo_set(mo_set=mos(ispin), mo_coeff=mo_coeff)
          END IF
 
          lb = localized_wfn_control%lu_bound_states(1, ispin)
@@ -1186,7 +1187,7 @@ CONTAINS
 !> \param ispin ...
 ! **************************************************************************************************
    SUBROUTINE print_wannier_centers(qs_loc_env, print_key, center, logger, ispin)
-      TYPE(qs_loc_env_new_type), POINTER                 :: qs_loc_env
+      TYPE(qs_loc_env_type), POINTER                     :: qs_loc_env
       TYPE(section_vals_type), POINTER                   :: print_key
       REAL(KIND=dp), INTENT(IN)                          :: center(:, :)
       TYPE(cp_logger_type), POINTER                      :: logger
@@ -1244,7 +1245,7 @@ CONTAINS
 !> \param unit_conv ...
 ! **************************************************************************************************
    SUBROUTINE print_wannier_traj(qs_loc_env, print_key, center, iunit, init_traj, unit_conv)
-      TYPE(qs_loc_env_new_type), POINTER                 :: qs_loc_env
+      TYPE(qs_loc_env_type), POINTER                     :: qs_loc_env
       TYPE(section_vals_type), POINTER                   :: print_key
       REAL(KIND=dp), INTENT(IN)                          :: center(:, :)
       INTEGER, INTENT(IN)                                :: iunit
@@ -1327,12 +1328,10 @@ CONTAINS
 
       ! I might not actually need the qs_env
       TYPE(qs_environment_type), POINTER                 :: qs_env
-      TYPE(qs_loc_env_new_type), POINTER                 :: qs_loc_env
+      TYPE(qs_loc_env_type), POINTER                     :: qs_loc_env
       TYPE(section_vals_type), POINTER                   :: print_loc_section
       INTEGER, INTENT(IN)                                :: ispin
 
-      CHARACTER(len=*), PARAMETER :: routineN = 'centers_second_moments_loc', &
-         routineP = moduleN//':'//routineN
       INTEGER, PARAMETER                                 :: norder = 2
       LOGICAL, PARAMETER :: debug_this_subroutine = .FALSE.
 
@@ -1476,12 +1475,10 @@ CONTAINS
    SUBROUTINE centers_second_moments_berry(qs_env, qs_loc_env, print_loc_section, ispin)
 
       TYPE(qs_environment_type), POINTER                 :: qs_env
-      TYPE(qs_loc_env_new_type), POINTER                 :: qs_loc_env
+      TYPE(qs_loc_env_type), POINTER                     :: qs_loc_env
       TYPE(section_vals_type), POINTER                   :: print_loc_section
       INTEGER, INTENT(IN)                                :: ispin
 
-      CHARACTER(len=*), PARAMETER :: routineN = 'centers_second_moments_berry', &
-         routineP = moduleN//':'//routineN
       INTEGER, PARAMETER                                 :: taylor_order = 1
       LOGICAL, PARAMETER :: debug_this_subroutine = .FALSE.
 

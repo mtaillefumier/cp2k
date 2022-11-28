@@ -1,9 +1,9 @@
-# --------------------------------------------------------------------------------------------------
-# CP2K: A general program to perform molecular dynamics simulations Copyright
-# 2000-2022 CP2K developers group <https://cp2k.org>
-#
-# SPDX-License-Identifier: GPL-2.0-or-later
-# --------------------------------------------------------------------------------------------------
+#!-------------------------------------------------------------------------------------------------!
+#!   CP2K: A general program to perform molecular dynamics simulations                             !
+#!   Copyright 2000-2022 CP2K developers group <https://cp2k.org>                                  !
+#!                                                                                                 !
+#!   SPDX-License-Identifier: GPL-2.0-or-later                                                     !
+#!-------------------------------------------------------------------------------------------------!
 
 # Copyright (c) 2022- ETH Zurich
 #
@@ -25,7 +25,7 @@ if(CP2K_SCALAPACK_VENDOR STREQUAL "GENERIC")
     message("                                                                 ")
     message(
       WARNING
-        "You may want to use mkl implementation of scalapack. To do this add -DSCALAPACK_VENDOR=MKL to the cmake command line"
+        "You may want to use mkl implementation of scalapack. To do this add -DCP2K_SCALAPACK_VENDOR=MKL to the cmake command line"
     )
   endif()
 
@@ -36,7 +36,7 @@ if(CP2K_SCALAPACK_VENDOR STREQUAL "GENERIC")
     message("                                                                 ")
     message(
       WARNING
-        "You may want to use Cray implementation of scalapack. To do this add -DSCALAPACK_VENDOR=SCI to the cmake command line"
+        "You may want to use Cray implementation of scalapack. To do this add -DCP2K_SCALAPACK_VENDOR=SCI to the cmake command line"
     )
     message("                                                                 ")
     message("                                                                 ")

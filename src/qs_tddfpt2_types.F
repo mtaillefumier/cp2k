@@ -51,7 +51,6 @@ MODULE qs_tddfpt2_types
                                               REALDATA3D,&
                                               REALSPACE,&
                                               RECIPROCALSPACE,&
-                                              pw_p_type,&
                                               pw_type
    USE qs_environment_types,            ONLY: get_qs_env,&
                                               qs_environment_type
@@ -164,11 +163,11 @@ MODULE qs_tddfpt2_types
       !> group-specific copy of a Coulomb/xc-potential on a real-space grid
       TYPE(pw_type), DIMENSION(:), POINTER             :: A_ia_rspace_sub
       !> group-specific copy of a reciprocal-space grid
-      TYPE(pw_p_type), DIMENSION(:), POINTER             :: wpw_gspace_sub
+      TYPE(pw_type), DIMENSION(:), POINTER             :: wpw_gspace_sub
       !> group-specific copy of a real-space grid
-      TYPE(pw_p_type), DIMENSION(:), POINTER             :: wpw_rspace_sub
+      TYPE(pw_type), DIMENSION(:), POINTER             :: wpw_rspace_sub
       !> group-specific copy of a real-space grid for the kinetic energy density
-      TYPE(pw_p_type), DIMENSION(:), POINTER             :: wpw_tau_rspace_sub
+      TYPE(pw_type), DIMENSION(:), POINTER             :: wpw_tau_rspace_sub
       !
       ! *** globally distributed matrices required to compute exact exchange terms ***
       !
@@ -299,7 +298,7 @@ CONTAINS
 
       ALLOCATE (work_matrices%S_C0(nspins))
       DO ispin = 1, nspins
-         NULLIFY (work_matrices%S_C0(ispin)%matrix)
+         ALLOCATE (work_matrices%S_C0(ispin)%matrix)
          CALL fm_pool_create_fm(work_matrices%fm_pool_ao_mo_occ(ispin)%pool, work_matrices%S_C0(ispin)%matrix)
 
          CALL cp_dbcsr_sm_fm_multiply(matrix_s(1)%matrix, gs_mos(ispin)%mos_occ, work_matrices%S_C0(ispin)%matrix, &
@@ -378,6 +377,7 @@ CONTAINS
       END DO
 
       NULLIFY (work_matrices%rho_orb_struct_sub)
+      ALLOCATE (work_matrices%rho_orb_struct_sub)
       CALL qs_rho_create(work_matrices%rho_orb_struct_sub)
       CALL qs_rho_set(work_matrices%rho_orb_struct_sub, rho_ao=rho_ia_ao)
       CALL qs_rho_rebuild(work_matrices%rho_orb_struct_sub, qs_env, rebuild_ao=.FALSE., &
@@ -392,6 +392,7 @@ CONTAINS
                                              dbcsr_dist=sub_env%dbcsr_dist, sab=sub_env%sab_orb)
          END DO
          NULLIFY (work_matrices%rho_xc_struct_sub)
+         ALLOCATE (work_matrices%rho_xc_struct_sub)
          CALL qs_rho_create(work_matrices%rho_xc_struct_sub)
          CALL qs_rho_set(work_matrices%rho_xc_struct_sub, rho_ao=rho_xc_ao)
          CALL qs_rho_rebuild(work_matrices%rho_xc_struct_sub, qs_env, rebuild_ao=.FALSE., &
@@ -408,6 +409,7 @@ CONTAINS
                                              dbcsr_dist=sub_env%dbcsr_dist, sab=sub_env%sab_aux_fit)
          END DO
 
+         ALLOCATE (work_matrices%rho_aux_fit_struct_sub)
          CALL qs_rho_create(work_matrices%rho_aux_fit_struct_sub)
          CALL qs_rho_set(work_matrices%rho_aux_fit_struct_sub, rho_ao=rho_ia_ao)
          CALL qs_rho_rebuild(work_matrices%rho_aux_fit_struct_sub, qs_env, rebuild_ao=.FALSE., &
@@ -423,13 +425,11 @@ CONTAINS
          CALL pw_pool_create_pw(auxbas_pw_pool, work_matrices%A_ia_rspace_sub(ispin), &
                                 use_data=REALDATA3D, in_space=REALSPACE)
 
-         ALLOCATE (work_matrices%wpw_gspace_sub(ispin)%pw, work_matrices%wpw_rspace_sub(ispin)%pw, &
-                   work_matrices%wpw_tau_rspace_sub(ispin)%pw)
-         CALL pw_pool_create_pw(auxbas_pw_pool, work_matrices%wpw_gspace_sub(ispin)%pw, &
+         CALL pw_pool_create_pw(auxbas_pw_pool, work_matrices%wpw_gspace_sub(ispin), &
                                 use_data=COMPLEXDATA1D, in_space=RECIPROCALSPACE)
-         CALL pw_pool_create_pw(auxbas_pw_pool, work_matrices%wpw_rspace_sub(ispin)%pw, &
+         CALL pw_pool_create_pw(auxbas_pw_pool, work_matrices%wpw_rspace_sub(ispin), &
                                 use_data=REALDATA3D, in_space=REALSPACE)
-         CALL pw_pool_create_pw(auxbas_pw_pool, work_matrices%wpw_tau_rspace_sub(ispin)%pw, &
+         CALL pw_pool_create_pw(auxbas_pw_pool, work_matrices%wpw_tau_rspace_sub(ispin), &
                                 use_data=REALDATA3D, in_space=REALSPACE)
       END DO
 
@@ -574,7 +574,7 @@ CONTAINS
 
       ALLOCATE (work_matrices%S_C0(nspins))
       DO ispin = 1, nspins
-         NULLIFY (work_matrices%S_C0(ispin)%matrix)
+         ALLOCATE (work_matrices%S_C0(ispin)%matrix)
          CALL fm_pool_create_fm(work_matrices%fm_pool_ao_mo_occ(ispin)%pool, work_matrices%S_C0(ispin)%matrix)
 
          CALL cp_dbcsr_sm_fm_multiply(matrix_s(1)%matrix, gs_mos(ispin)%mos_occ, work_matrices%S_C0(ispin)%matrix, &
@@ -711,20 +711,23 @@ CONTAINS
       IF (ASSOCIATED(sub_env%pw_env)) THEN
          CALL pw_env_get(sub_env%pw_env, auxbas_pw_pool=auxbas_pw_pool)
          DO ispin = SIZE(work_matrices%wpw_rspace_sub), 1, -1
-            CALL pw_pool_give_back_pw(auxbas_pw_pool, work_matrices%wpw_rspace_sub(ispin)%pw)
-            CALL pw_pool_give_back_pw(auxbas_pw_pool, work_matrices%wpw_tau_rspace_sub(ispin)%pw)
-            CALL pw_pool_give_back_pw(auxbas_pw_pool, work_matrices%wpw_gspace_sub(ispin)%pw)
+            CALL pw_pool_give_back_pw(auxbas_pw_pool, work_matrices%wpw_rspace_sub(ispin))
+            CALL pw_pool_give_back_pw(auxbas_pw_pool, work_matrices%wpw_tau_rspace_sub(ispin))
+            CALL pw_pool_give_back_pw(auxbas_pw_pool, work_matrices%wpw_gspace_sub(ispin))
             CALL pw_pool_give_back_pw(auxbas_pw_pool, work_matrices%A_ia_rspace_sub(ispin))
-            DEALLOCATE (work_matrices%wpw_rspace_sub(ispin)%pw, work_matrices%wpw_tau_rspace_sub(ispin)%pw, &
-                        work_matrices%wpw_gspace_sub(ispin)%pw)
          END DO
          DEALLOCATE (work_matrices%A_ia_rspace_sub, work_matrices%wpw_gspace_sub, &
                      work_matrices%wpw_rspace_sub, work_matrices%wpw_tau_rspace_sub)
       END IF
 
-      IF (ASSOCIATED(work_matrices%rho_aux_fit_struct_sub)) &
+      IF (ASSOCIATED(work_matrices%rho_aux_fit_struct_sub)) THEN
          CALL qs_rho_release(work_matrices%rho_aux_fit_struct_sub)
-      CALL qs_rho_release(work_matrices%rho_orb_struct_sub)
+         DEALLOCATE (work_matrices%rho_aux_fit_struct_sub)
+      END IF
+      IF (ASSOCIATED(work_matrices%rho_orb_struct_sub)) THEN
+         CALL qs_rho_release(work_matrices%rho_orb_struct_sub)
+         DEALLOCATE (work_matrices%rho_orb_struct_sub)
+      END IF
 
       IF (ASSOCIATED(work_matrices%A_ia_munu_sub)) THEN
          DO ispin = SIZE(work_matrices%A_ia_munu_sub), 1, -1
@@ -800,8 +803,14 @@ CONTAINS
       IF (ASSOCIATED(work_matrices%S_eigenvalues)) &
          DEALLOCATE (work_matrices%S_eigenvalues)
       ! Ewald
-      CALL ewald_env_release(work_matrices%ewald_env)
-      CALL ewald_pw_release(work_matrices%ewald_pw)
+      IF (ASSOCIATED(work_matrices%ewald_env)) THEN
+         CALL ewald_env_release(work_matrices%ewald_env)
+         DEALLOCATE (work_matrices%ewald_env)
+      END IF
+      IF (ASSOCIATED(work_matrices%ewald_pw)) THEN
+         CALL ewald_pw_release(work_matrices%ewald_pw)
+         DEALLOCATE (work_matrices%ewald_pw)
+      END IF
       ! GAPW
       IF (ASSOCIATED(work_matrices%local_rho_set)) THEN
          CALL local_rho_set_release(work_matrices%local_rho_set)
@@ -813,7 +822,10 @@ CONTAINS
          CALL hartree_local_release(work_matrices%hartree_local)
       END IF
       ! GAPW_XC
-      CALL qs_rho_release(work_matrices%rho_xc_struct_sub)
+      IF (ASSOCIATED(work_matrices%rho_xc_struct_sub)) THEN
+         CALL qs_rho_release(work_matrices%rho_xc_struct_sub)
+         DEALLOCATE (work_matrices%rho_xc_struct_sub)
+      END IF
 
       CALL timestop(handle)
 

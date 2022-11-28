@@ -1,3 +1,10 @@
+#!-------------------------------------------------------------------------------------------------!
+#!   CP2K: A general program to perform molecular dynamics simulations                             !
+#!   Copyright 2000-2022 CP2K developers group <https://cp2k.org>                                  !
+#!                                                                                                 !
+#!   SPDX-License-Identifier: GPL-2.0-or-later                                                     !
+#!-------------------------------------------------------------------------------------------------!
+
 #
 # CMake recipes https://github.com/eth-cscs/cmake-recipes
 #
@@ -454,6 +461,6 @@ if(MKL_FOUND AND NOT TARGET CP2K_MKL::blas)
   set(CP2K_BLAS_VENDOR "MKL")
   set(CP2K_MKL_SCALAPACK_VENDOR TRUE)
   mark_as_advanced(CP2K_BLAS_VENDOR)
-  mark_as_advanced(CP2K_NKL_FOUND)
+  mark_as_advanced(CP2K_MKL_FOUND)
   mark_as_advanced(CP2K_MKL_SCALAPACK_VENDOR)
 endif()

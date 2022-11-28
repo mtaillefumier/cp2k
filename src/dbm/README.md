@@ -5,7 +5,7 @@ written in C. For the time being only features required by [DBT](../dbt/) are im
 
 ## Storage
 
-The DBM uses [coordinate lists](https://en.wikipedia.org/wiki/Sparse_matrix#Coordinate_list_(COO))
+The DBM uses [coordinate lists](<https://en.wikipedia.org/wiki/Sparse_matrix#Coordinate_list_(COO)>)
 as internal storage format.
 An existing block is represented by the following data structure:
 
@@ -17,11 +17,15 @@ typedef struct {
 } dbm_block_t;
 ```
 
-To allow for efficient OpenMP parallelism the blocks are
-[sharded](https://en.wikipedia.org/wiki/Shard_(database_architecture)) via round-robin:
+To allow for efficient OpenMP parallelism the blocks are [sharded](<https://en.wikipedia.org/wiki/Shard_(database_architecture)>)
+across threads similar to how they are distributed across MPI ranks:
 
 ```C
-const int ishard = row % matrix->nshards;
+int dbm_get_shard_index(const dbm_matrix_t *matrix, const int row, const int col) {
+  const int shard_row = row % matrix->dist->rows.nshards;
+  const int shard_col = col % matrix->dist->cols.nshards;
+  return shard_row * matrix->dist->cols.nshards + shard_col;
+}
 ```
 
 ## MPI Communication
@@ -45,7 +49,6 @@ The last stage of the multiplication are the backends for specific hardware, e.g
 They are passed batches of task for processing. Each task describes a single block
 multiplication. A simplest backend implementation looks like this:
 
-<!-- markdownlint-disable MD013 -->
 ```C
 for (int itask = 0; itask < ntasks; itask++) {
   const dbm_task_t task = batch[itask];
@@ -58,7 +61,6 @@ for (int itask = 0; itask < ntasks; itask++) {
   dgemm(transa, transb, task.m, task.n, task.k, alpha, data_a, lda, data_b, ldb, 1.0, data_c, ldc);
 }
 ```
-<!-- markdownlint-enable MD013 -->
 
 ## MiniApp
 

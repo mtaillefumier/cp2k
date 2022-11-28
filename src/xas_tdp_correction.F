@@ -72,7 +72,7 @@ MODULE xas_tdp_correction
    USE qs_mo_types,                     ONLY: deallocate_mo_set,&
                                               duplicate_mo_set,&
                                               get_mo_set,&
-                                              mo_set_p_type,&
+                                              mo_set_type,&
                                               reassign_allocated_mos
    USE util,                            ONLY: get_limit
    USE xas_tdp_kernel,                  ONLY: contract2_AO_to_doMO,&
@@ -108,7 +108,7 @@ CONTAINS
       TYPE(xas_tdp_control_type), POINTER                :: xas_tdp_control
       TYPE(qs_environment_type), POINTER                 :: qs_env
 
-      CHARACTER(len=*), PARAMETER :: routineN = 'GW2X_shift', routineP = moduleN//':'//routineN
+      CHARACTER(len=*), PARAMETER                        :: routineN = 'GW2X_shift'
 
       INTEGER :: ex_idx, exat, first_domo(2), handle, i, ido_mo, iloc, ilocat, ispin, jspin, &
          locat, nao, natom, ndo_mo, nhomo(2), nlumo(2), nonloc, nspins, start_sgf
@@ -131,10 +131,10 @@ CONTAINS
       TYPE(dbt_type), ALLOCATABLE, DIMENSION(:)          :: ja_X, oI_Y
       TYPE(dbt_type), ALLOCATABLE, DIMENSION(:, :)       :: mo_template
       TYPE(dft_control_type), POINTER                    :: dft_control
-      TYPE(mo_set_p_type), DIMENSION(:), POINTER         :: backup_mos, mos
+      TYPE(mo_set_type), DIMENSION(:), POINTER           :: mos
       TYPE(section_vals_type), POINTER                   :: xc_fun_empty, xc_fun_original, xc_section
 
-      NULLIFY (xc_fun_empty, xc_fun_original, xc_section, backup_mos, mos, dft_control, dbcsr_work, &
+      NULLIFY (xc_fun_empty, xc_fun_original, xc_section, mos, dft_control, dbcsr_work, &
                fock_matrix, matrix_ks, para_env, mo_coeff, blacs_env, nsgf_blk)
 
       CALL cite_reference(Shigeta2001)
@@ -171,7 +171,7 @@ CONTAINS
       ALLOCATE (lumo_struct(nspins), lumo_coeffs(nspins))
 
       DO ispin = 1, nspins
-         CALL get_mo_set(mos(ispin)%mo_set, homo=nhomo(ispin), nao=nao)
+         CALL get_mo_set(mos(ispin), homo=nhomo(ispin), nao=nao)
          nlumo(ispin) = nao - nhomo(ispin)
 
          CALL cp_fm_struct_create(lumo_struct(ispin)%struct, para_env=para_env, context=blacs_env, &
@@ -197,7 +197,7 @@ CONTAINS
          ALLOCATE (homo_coeffs(ispin)%matrix)
          CALL cp_fm_create(homo_coeffs(ispin)%matrix, homo_struct(ispin)%struct)
 
-         CALL get_mo_set(mos(ispin)%mo_set, mo_coeff=mo_coeff)
+         CALL get_mo_set(mos(ispin), mo_coeff=mo_coeff)
          CALL cp_fm_to_fm_submat(mo_coeff, homo_coeffs(ispin)%matrix, nrow=nao, ncol=nonloc, s_firstrow=1, &
                                  s_firstcol=xas_tdp_control%n_search + 1, t_firstrow=1, t_firstcol=locat + 1)
 
@@ -219,74 +219,77 @@ CONTAINS
       IF (ASSOCIATED(xas_tdp_env%fock_matrix)) THEN
          fock_matrix => xas_tdp_env%fock_matrix
       ELSE
+         BLOCK
+            TYPE(mo_set_type), DIMENSION(:), ALLOCATABLE :: backup_mos
 
-         ALLOCATE (xas_tdp_env%fock_matrix(nspins))
-         fock_matrix => xas_tdp_env%fock_matrix
+            ALLOCATE (xas_tdp_env%fock_matrix(nspins))
+            fock_matrix => xas_tdp_env%fock_matrix
 
-         ! remove the xc_functionals and set HF fraction to 1
-         xc_section => section_vals_get_subs_vals(qs_env%input, "DFT%XC")
-         xc_fun_original => section_vals_get_subs_vals(xc_section, "XC_FUNCTIONAL")
-         CALL section_vals_retain(xc_fun_original)
-         CALL section_vals_create(xc_fun_empty, xc_fun_original%section)
-         CALL section_vals_set_subs_vals(xc_section, "XC_FUNCTIONAL", xc_fun_empty)
-         CALL section_vals_release(xc_fun_empty)
-         og_hfx_frac = qs_env%x_data(1, 1)%general_parameter%fraction
-         qs_env%x_data(:, :)%general_parameter%fraction = 1.0_dp
+            ! remove the xc_functionals and set HF fraction to 1
+            xc_section => section_vals_get_subs_vals(qs_env%input, "DFT%XC")
+            xc_fun_original => section_vals_get_subs_vals(xc_section, "XC_FUNCTIONAL")
+            CALL section_vals_retain(xc_fun_original)
+            CALL section_vals_create(xc_fun_empty, xc_fun_original%section)
+            CALL section_vals_set_subs_vals(xc_section, "XC_FUNCTIONAL", xc_fun_empty)
+            CALL section_vals_release(xc_fun_empty)
+            og_hfx_frac = qs_env%x_data(1, 1)%general_parameter%fraction
+            qs_env%x_data(:, :)%general_parameter%fraction = 1.0_dp
 
-         !In case of ADMM, we need to re-create the admm XC section for the new hfx_fraction
-         !We also need to make a backup of the MOs as theiy are modified
-         CALL get_qs_env(qs_env, dft_control=dft_control, admm_env=admm_env)
-         IF (dft_control%do_admm) THEN
-            IF (ASSOCIATED(admm_env%xc_section_primary)) CALL section_vals_release(admm_env%xc_section_primary)
-            IF (ASSOCIATED(admm_env%xc_section_aux)) CALL section_vals_release(admm_env%xc_section_aux)
-            CALL create_admm_xc_section(qs_env%x_data, xc_section, admm_env)
+            !In case of ADMM, we need to re-create the admm XC section for the new hfx_fraction
+            !We also need to make a backup of the MOs as theiy are modified
+            CALL get_qs_env(qs_env, dft_control=dft_control, admm_env=admm_env)
+            IF (dft_control%do_admm) THEN
+               IF (ASSOCIATED(admm_env%xc_section_primary)) CALL section_vals_release(admm_env%xc_section_primary)
+               IF (ASSOCIATED(admm_env%xc_section_aux)) CALL section_vals_release(admm_env%xc_section_aux)
+               CALL create_admm_xc_section(qs_env%x_data, xc_section, admm_env)
 
-            ALLOCATE (backup_mos(SIZE(mos)))
-            DO i = 1, SIZE(mos)
-               CALL duplicate_mo_set(backup_mos(i)%mo_set, mos(i)%mo_set)
-            END DO
-         END IF
+               ALLOCATE (backup_mos(SIZE(mos)))
+               DO i = 1, SIZE(mos)
+                  CALL duplicate_mo_set(backup_mos(i), mos(i))
+               END DO
+            END IF
 
-         ALLOCATE (dbcsr_work(nspins))
-         DO ispin = 1, nspins
-            ALLOCATE (dbcsr_work(ispin)%matrix)
-            CALL dbcsr_copy(dbcsr_work(ispin)%matrix, matrix_ks(ispin)%matrix)
-         END DO
-
-         !both spins treated internally
-         CALL qs_ks_build_kohn_sham_matrix(qs_env, calculate_forces=.FALSE., just_energy=.FALSE.)
-
-         DO ispin = 1, nspins
-            ALLOCATE (fock_matrix(ispin)%matrix)
-            CALL dbcsr_copy(fock_matrix(ispin)%matrix, matrix_ks(ispin)%matrix, name="FOCK MATRIX")
-            CALL dbcsr_release(matrix_ks(ispin)%matrix)
-            CALL dbcsr_copy(matrix_ks(ispin)%matrix, dbcsr_work(ispin)%matrix)
-         END DO
-         CALL dbcsr_deallocate_matrix_set(dbcsr_work)
-
-         !In case of ADMM, we want to correct for eigenvalues
-         IF (dft_control%do_admm) THEN
+            ALLOCATE (dbcsr_work(nspins))
             DO ispin = 1, nspins
-               CALL admm_correct_for_eigenvalues(ispin, admm_env, fock_matrix(ispin)%matrix)
+               ALLOCATE (dbcsr_work(ispin)%matrix)
+               CALL dbcsr_copy(dbcsr_work(ispin)%matrix, matrix_ks(ispin)%matrix)
             END DO
-         END IF
 
-         !restore xc and HF fraction
-         CALL section_vals_set_subs_vals(xc_section, "XC_FUNCTIONAL", xc_fun_original)
-         CALL section_vals_release(xc_fun_original)
-         qs_env%x_data(:, :)%general_parameter%fraction = og_hfx_frac
+            !both spins treated internally
+            CALL qs_ks_build_kohn_sham_matrix(qs_env, calculate_forces=.FALSE., just_energy=.FALSE.)
 
-         IF (dft_control%do_admm) THEN
-            IF (ASSOCIATED(admm_env%xc_section_primary)) CALL section_vals_release(admm_env%xc_section_primary)
-            IF (ASSOCIATED(admm_env%xc_section_aux)) CALL section_vals_release(admm_env%xc_section_aux)
-            CALL create_admm_xc_section(qs_env%x_data, xc_section, admm_env)
-
-            DO i = 1, SIZE(mos)
-               CALL reassign_allocated_mos(mos(i)%mo_set, backup_mos(i)%mo_set)
-               CALL deallocate_mo_set(backup_mos(i)%mo_set)
+            DO ispin = 1, nspins
+               ALLOCATE (fock_matrix(ispin)%matrix)
+               CALL dbcsr_copy(fock_matrix(ispin)%matrix, matrix_ks(ispin)%matrix, name="FOCK MATRIX")
+               CALL dbcsr_release(matrix_ks(ispin)%matrix)
+               CALL dbcsr_copy(matrix_ks(ispin)%matrix, dbcsr_work(ispin)%matrix)
             END DO
-            DEALLOCATE (backup_mos)
-         END IF
+            CALL dbcsr_deallocate_matrix_set(dbcsr_work)
+
+            !In case of ADMM, we want to correct for eigenvalues
+            IF (dft_control%do_admm) THEN
+               DO ispin = 1, nspins
+                  CALL admm_correct_for_eigenvalues(ispin, admm_env, fock_matrix(ispin)%matrix)
+               END DO
+            END IF
+
+            !restore xc and HF fraction
+            CALL section_vals_set_subs_vals(xc_section, "XC_FUNCTIONAL", xc_fun_original)
+            CALL section_vals_release(xc_fun_original)
+            qs_env%x_data(:, :)%general_parameter%fraction = og_hfx_frac
+
+            IF (dft_control%do_admm) THEN
+               IF (ASSOCIATED(admm_env%xc_section_primary)) CALL section_vals_release(admm_env%xc_section_primary)
+               IF (ASSOCIATED(admm_env%xc_section_aux)) CALL section_vals_release(admm_env%xc_section_aux)
+               CALL create_admm_xc_section(qs_env%x_data, xc_section, admm_env)
+
+               DO i = 1, SIZE(mos)
+                  CALL reassign_allocated_mos(mos(i), backup_mos(i))
+                  CALL deallocate_mo_set(backup_mos(i))
+               END DO
+               DEALLOCATE (backup_mos)
+            END IF
+         END BLOCK
       END IF
 
       !4,5) Build pseudo-canonical MOs if needed + get related Fock matrix elements
@@ -953,9 +956,6 @@ CONTAINS
       TYPE(xas_tdp_env_type), POINTER                    :: xas_tdp_env
       TYPE(qs_environment_type), POINTER                 :: qs_env
 
-      CHARACTER(len=*), PARAMETER :: routineN = 'get_full_pqX_from_3c_ex', &
-         routineP = moduleN//':'//routineN
-
       INTEGER                                            :: i, ind(3), natom, nblk_ri, nsgf_x
       INTEGER, ALLOCATABLE, DIMENSION(:)                 :: orb_blk_size, proc_dist_1, proc_dist_2, &
                                                             proc_dist_3
@@ -1068,8 +1068,7 @@ CONTAINS
       TYPE(xas_tdp_control_type), POINTER                :: xas_tdp_control
       TYPE(qs_environment_type), POINTER                 :: qs_env
 
-      CHARACTER(len=*), PARAMETER :: routineN = 'contract_AOs_to_MOs', &
-         routineP = moduleN//':'//routineN
+      CHARACTER(len=*), PARAMETER :: routineN = 'contract_AOs_to_MOs'
 
       INTEGER                                            :: bo(2), handle, i, ispin, jspin, &
                                                             nblk_aos, nblk_mos(2), nblk_occ(2), &
@@ -1423,8 +1422,7 @@ CONTAINS
       REAL(dp), DIMENSION(:), INTENT(IN)                 :: occ_evals, virt_evals
       REAL(dp), INTENT(in)                               :: omega, c_ss
 
-      CHARACTER(len=*), PARAMETER :: routineN = 'calc_ss_oov_contrib', &
-         routineP = moduleN//':'//routineN
+      CHARACTER(len=*), PARAMETER :: routineN = 'calc_ss_oov_contrib'
 
       INTEGER                                            :: a, boff(3), bsize(3), handle, idx1, &
                                                             idx2, idx3, ind(3), j, k, nocc
@@ -1506,8 +1504,7 @@ CONTAINS
       REAL(dp), INTENT(in)                               :: omega, c_os
       INTEGER, INTENT(IN)                                :: a_offset
 
-      CHARACTER(len=*), PARAMETER :: routineN = 'calc_os_oov_contrib', &
-         routineP = moduleN//':'//routineN
+      CHARACTER(len=*), PARAMETER :: routineN = 'calc_os_oov_contrib'
 
       INTEGER                                            :: a, boff(3), bsize(3), handle, idx1, &
                                                             idx2, idx3, ind(3), j, k
@@ -1588,8 +1585,7 @@ CONTAINS
       REAL(dp), DIMENSION(:), INTENT(IN)                 :: occ_evals, virt_evals
       REAL(dp), INTENT(in)                               :: omega, c_ss
 
-      CHARACTER(len=*), PARAMETER :: routineN = 'calc_ss_ovv_contrib', &
-         routineP = moduleN//':'//routineN
+      CHARACTER(len=*), PARAMETER :: routineN = 'calc_ss_ovv_contrib'
 
       INTEGER                                            :: a, b, boff(3), bsize(3), handle, idx1, &
                                                             idx2, idx3, ind(3), j, nocc
@@ -1673,8 +1669,7 @@ CONTAINS
       REAL(dp), INTENT(in)                               :: omega, c_os
       INTEGER, INTENT(IN)                                :: a_offset, b_offset
 
-      CHARACTER(len=*), PARAMETER :: routineN = 'calc_os_ovv_contrib', &
-         routineP = moduleN//':'//routineN
+      CHARACTER(len=*), PARAMETER :: routineN = 'calc_os_ovv_contrib'
 
       INTEGER                                            :: a, b, boff(3), bsize(3), handle, idx1, &
                                                             idx2, idx3, ind(3), j

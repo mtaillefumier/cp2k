@@ -58,7 +58,6 @@ MODULE ec_orth_solver
                                               REALDATA3D,&
                                               REALSPACE,&
                                               RECIPROCALSPACE,&
-                                              pw_p_type,&
                                               pw_type
    USE qs_environment_types,            ONLY: get_qs_env,&
                                               qs_environment_type
@@ -121,7 +120,7 @@ CONTAINS
       REAL(KIND=dp), INTENT(IN)                          :: eps_filter
       INTEGER, INTENT(IN)                                :: iounit
 
-      CHARACTER(len=*), PARAMETER :: routineN = 'preconditioner', routineP = moduleN//':'//routineN
+      CHARACTER(len=*), PARAMETER                        :: routineN = 'preconditioner'
 
       INTEGER                                            :: handle, i, ispin, max_iter, nao, nspins
       LOGICAL                                            :: converged
@@ -370,7 +369,7 @@ CONTAINS
       INTEGER, INTENT(IN)                                :: iounit
       LOGICAL, INTENT(OUT)                               :: should_stop
 
-      CHARACTER(len=*), PARAMETER :: routineN = 'ec_response_ao', routineP = moduleN//':'//routineN
+      CHARACTER(len=*), PARAMETER                        :: routineN = 'ec_response_ao'
 
       INTEGER                                            :: handle, i, ispin, max_iter_lanczos, nao, &
                                                             nspins, s_sqrt_method, s_sqrt_order
@@ -869,7 +868,7 @@ CONTAINS
          POINTER                                         :: matrix_wz
       REAL(KIND=dp), INTENT(IN)                          :: eps_filter
 
-      CHARACTER(len=*), PARAMETER :: routineN = 'ec_wz_matrix', routineP = moduleN//':'//routineN
+      CHARACTER(len=*), PARAMETER                        :: routineN = 'ec_wz_matrix'
 
       INTEGER                                            :: handle, ispin, nspins
       REAL(KIND=dp)                                      :: scaling
@@ -960,7 +959,7 @@ CONTAINS
          POINTER                                         :: matrix_b, matrix_Ax
       REAL(KIND=dp), INTENT(IN)                          :: eps_filter
 
-      CHARACTER(len=*), PARAMETER :: routineN = 'hessian_op1', routineP = moduleN//':'//routineN
+      CHARACTER(len=*), PARAMETER                        :: routineN = 'hessian_op1'
 
       INTEGER                                            :: handle
 
@@ -1015,8 +1014,7 @@ CONTAINS
          POINTER                                         :: matrix_Ax
       REAL(KIND=dp), INTENT(IN)                          :: eps_filter
 
-      CHARACTER(len=*), PARAMETER :: routineN = 'build_hessian_op', &
-         routineP = moduleN//':'//routineN
+      CHARACTER(len=*), PARAMETER                        :: routineN = 'build_hessian_op'
 
       INTEGER                                            :: handle, ispin, nspins
       REAL(KIND=dp)                                      :: chksum
@@ -1130,7 +1128,7 @@ CONTAINS
       TYPE(dbcsr_type), INTENT(IN)                       :: matrix_s_sqrt_inv
       REAL(KIND=dp), INTENT(IN)                          :: eps_filter
 
-      CHARACTER(len=*), PARAMETER :: routineN = 'hessian_op2', routineP = moduleN//':'//routineN
+      CHARACTER(len=*), PARAMETER                        :: routineN = 'hessian_op2'
 
       INTEGER                                            :: handle, ispin, nspins
       REAL(KIND=dp)                                      :: ekin_mol
@@ -1139,13 +1137,13 @@ CONTAINS
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: matrix_G, matrix_s, rho1_ao, rho_ao
       TYPE(dft_control_type), POINTER                    :: dft_control
       TYPE(pw_env_type), POINTER                         :: pw_env
-      TYPE(pw_p_type), DIMENSION(:), POINTER             :: rho1_g, rho1_r, rho_r, tau1_r, v_xc, &
-                                                            v_xc_tau
       TYPE(pw_poisson_type), POINTER                     :: poisson_env
       TYPE(pw_pool_p_type), DIMENSION(:), POINTER        :: pw_pools
       TYPE(pw_pool_type), POINTER                        :: auxbas_pw_pool
       TYPE(pw_type)                                      :: rho_tot_gspace, v_hartree_gspace, &
                                                             v_hartree_rspace
+      TYPE(pw_type), DIMENSION(:), POINTER               :: rho1_g, rho1_r, rho_r, tau1_r, v_xc, &
+                                                            v_xc_tau
       TYPE(qs_kpp1_env_type), POINTER                    :: kpp1_env
       TYPE(qs_rho_type), POINTER                         :: rho, rho_aux
       TYPE(section_vals_type), POINTER                   :: input, xc_section, xc_section_aux
@@ -1217,9 +1215,9 @@ CONTAINS
                          xc_section=xc_section)
 
       DO ispin = 1, nspins
-         CALL pw_scale(v_xc(ispin)%pw, v_xc(ispin)%pw%pw_grid%dvol)
+         CALL pw_scale(v_xc(ispin), v_xc(ispin)%pw_grid%dvol)
          IF (ASSOCIATED(v_xc_tau)) THEN
-            CALL pw_scale(v_xc_tau(ispin)%pw, v_xc_tau(ispin)%pw%pw_grid%dvol)
+            CALL pw_scale(v_xc_tau(ispin), v_xc_tau(ispin)%pw_grid%dvol)
          END IF
       END DO
 
@@ -1241,7 +1239,7 @@ CONTAINS
       ! take trial density to build G^{H}[B]
       CALL pw_zero(rho_tot_gspace)
       DO ispin = 1, nspins
-         CALL pw_axpy(rho1_g(ispin)%pw, rho_tot_gspace)
+         CALL pw_axpy(rho1_g(ispin), rho_tot_gspace)
       END DO
 
       ! get Hartree potential from rho_tot_gspace
@@ -1252,23 +1250,23 @@ CONTAINS
 
       ! Add v_xc + v_H
       DO ispin = 1, nspins
-         CALL pw_axpy(v_hartree_rspace, v_xc(ispin)%pw)
+         CALL pw_axpy(v_hartree_rspace, v_xc(ispin))
       END DO
       IF (nspins == 1) THEN
-         CALL pw_scale(v_xc(1)%pw, 2.0_dp)
-         IF (ASSOCIATED(v_xc_tau)) CALL pw_scale(v_xc_tau(1)%pw, 2.0_dp)
+         CALL pw_scale(v_xc(1), 2.0_dp)
+         IF (ASSOCIATED(v_xc_tau)) CALL pw_scale(v_xc_tau(1), 2.0_dp)
       END IF
 
       DO ispin = 1, nspins
          ! Integrate with ground-state density matrix, in non-orthogonal basis
-         CALL integrate_v_rspace(v_rspace=v_xc(ispin)%pw, &
+         CALL integrate_v_rspace(v_rspace=v_xc(ispin), &
                                  pmat=rho_ao(ispin), &
                                  hmat=p_env%kpp1(ispin), &
                                  qs_env=qs_env, &
                                  calculate_forces=.FALSE., &
                                  basis_type="ORB")
          IF (ASSOCIATED(v_xc_tau)) THEN
-            CALL integrate_v_rspace(v_rspace=v_xc_tau(ispin)%pw, &
+            CALL integrate_v_rspace(v_rspace=v_xc_tau(ispin), &
                                     pmat=rho_ao(ispin), &
                                     hmat=p_env%kpp1(ispin), &
                                     qs_env=qs_env, &
@@ -1328,14 +1326,12 @@ CONTAINS
       CALL pw_pool_give_back_pw(auxbas_pw_pool, v_hartree_rspace)
       CALL pw_pool_give_back_pw(auxbas_pw_pool, rho_tot_gspace)
       DO ispin = 1, nspins
-         CALL pw_pool_give_back_pw(auxbas_pw_pool, v_xc(ispin)%pw)
-         DEALLOCATE (v_xc(ispin)%pw)
+         CALL pw_pool_give_back_pw(auxbas_pw_pool, v_xc(ispin))
       END DO
       DEALLOCATE (v_xc)
       IF (ASSOCIATED(v_xc_tau)) THEN
          DO ispin = 1, nspins
-            CALL pw_pool_give_back_pw(auxbas_pw_pool, v_xc_tau(ispin)%pw)
-            DEALLOCATE (v_xc_tau(ispin)%pw)
+            CALL pw_pool_give_back_pw(auxbas_pw_pool, v_xc_tau(ispin))
          END DO
          DEALLOCATE (v_xc_tau)
       END IF
@@ -1370,7 +1366,7 @@ CONTAINS
       LOGICAL                                            :: anticomm
       REAL(KIND=dp), OPTIONAL                            :: alpha, beta
 
-      CHARACTER(LEN=*), PARAMETER :: routineN = 'commutator', routineP = moduleN//':'//routineN
+      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'commutator'
 
       INTEGER                                            :: handle, ispin
       REAL(KIND=dp)                                      :: facc, myalpha, mybeta
@@ -1438,7 +1434,7 @@ CONTAINS
          POINTER                                         :: matrix_io
       REAL(KIND=dp), INTENT(IN)                          :: eps_filter
 
-      CHARACTER(len=*), PARAMETER :: routineN = 'projector', routineP = moduleN//':'//routineN
+      CHARACTER(len=*), PARAMETER                        :: routineN = 'projector'
 
       INTEGER                                            :: handle, ispin, nspins
       TYPE(cp_para_env_type), POINTER                    :: para_env
@@ -1504,8 +1500,7 @@ CONTAINS
       TYPE(dbcsr_type)                                   :: matrix, matrix_trafo
       REAL(KIND=dp)                                      :: eps_filter
 
-      CHARACTER(LEN=*), PARAMETER :: routineN = 'transform_m_orth', &
-         routineP = moduleN//':'//routineN
+      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'transform_m_orth'
 
       INTEGER                                            :: handle
       TYPE(dbcsr_type)                                   :: matrix_tmp, matrix_work

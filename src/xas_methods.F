@@ -85,8 +85,7 @@ MODULE xas_methods
                                               qs_print_cubes
    USE qs_loc_types,                    ONLY: localized_wfn_control_type,&
                                               qs_loc_env_create,&
-                                              qs_loc_env_new_type,&
-                                              qs_loc_env_release
+                                              qs_loc_env_type
    USE qs_loc_utils,                    ONLY: qs_loc_control_init,&
                                               qs_loc_env_init,&
                                               set_loc_centers,&
@@ -96,7 +95,7 @@ MODULE xas_methods
    USE qs_mo_io,                        ONLY: write_mo_set_to_output_unit
    USE qs_mo_methods,                   ONLY: calculate_subspace_eigenvalues
    USE qs_mo_types,                     ONLY: get_mo_set,&
-                                              mo_set_p_type,&
+                                              mo_set_type,&
                                               set_mo_set
    USE qs_neighbor_list_types,          ONLY: neighbor_list_set_p_type
    USE qs_operators_ao,                 ONLY: p_xyz_ao,&
@@ -108,7 +107,6 @@ MODULE xas_methods
                                               scf_env_release
    USE scf_control_types,               ONLY: scf_c_create,&
                                               scf_c_read_parameters,&
-                                              scf_c_release,&
                                               scf_control_type
    USE xas_control,                     ONLY: read_xas_control,&
                                               write_xas_control,&
@@ -181,10 +179,10 @@ CONTAINS
       TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: matrix_ks, op_sm, ostrength_sm
       TYPE(dbcsr_type), POINTER                          :: mo_coeff_b
-      TYPE(mo_set_p_type), DIMENSION(:), POINTER         :: mos
+      TYPE(mo_set_type), DIMENSION(:), POINTER           :: mos
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
       TYPE(qs_kind_type), DIMENSION(:), POINTER          :: qs_kind_set
-      TYPE(qs_loc_env_new_type), POINTER                 :: qs_loc_env
+      TYPE(qs_loc_env_type), POINTER                     :: qs_loc_env
       TYPE(qs_scf_env_type), POINTER                     :: scf_env
       TYPE(scf_control_type), POINTER                    :: scf_control
       TYPE(section_vals_type), POINTER                   :: dft_section, loc_section, &
@@ -233,12 +231,11 @@ CONTAINS
             WRITE (UNIT=output_unit, FMT="(/,T5,A)") &
                "Create and initialize the xas environment"
          END IF
+         ALLOCATE (xas_env)
          CALL xas_env_create(xas_env)
          CALL xas_env_init(xas_env, qs_env, dft_section, logger)
          xas_control => dft_control%xas_control
          CALL set_qs_env(qs_env, xas_env=xas_env)
-         CALL xas_env_release(xas_env)
-         CALL get_qs_env(qs_env, xas_env=xas_env)
       END IF
 
 !   Initialize the type of calculation
@@ -256,7 +253,7 @@ CONTAINS
                "Get eigenstates and eigenvalues from ground state MOs"
          END IF
          DO ispin = 1, dft_control%nspins
-            CALL get_mo_set(mos(ispin)%mo_set, mo_coeff=mo_coeff, nao=nao, nmo=nmo, &
+            CALL get_mo_set(mos(ispin), mo_coeff=mo_coeff, nao=nao, nmo=nmo, &
                             eigenvalues=eigenvalues, homo=homo)
             CALL calculate_subspace_eigenvalues(mo_coeff, &
                                                 matrix_ks(ispin)%matrix, eigenvalues, &
@@ -274,7 +271,7 @@ CONTAINS
       my_homo = 0
       my_nelectron = 0
       DO ispin = 1, dft_control%nspins
-         CALL get_mo_set(mos(ispin)%mo_set, nelectron=my_nelectron(ispin), maxocc=maxocc, &
+         CALL get_mo_set(mos(ispin), nelectron=my_nelectron(ispin), maxocc=maxocc, &
                          homo=my_homo(ispin), uniform_occupation=my_uocc(ispin))
       END DO
 
@@ -296,7 +293,7 @@ CONTAINS
                        spin_channel=my_spin)
 
 !   Set of states among which there is the state to be excited
-      CALL get_mo_set(mos(my_spin)%mo_set, nao=nao, homo=homo)
+      CALL get_mo_set(mos(my_spin), nao=nao, homo=homo)
       IF (xas_control%nexc_search < 0) xas_control%nexc_search = homo
       nexc_search = xas_control%nexc_search
 
@@ -324,7 +321,7 @@ CONTAINS
 
       CPASSERT(ASSOCIATED(groundstate_coeff))
       DO ispin = 1, nspins
-         CALL get_mo_set(mos(ispin)%mo_set, mo_coeff=mo_coeff, mo_coeff_b=mo_coeff_b, nmo=nmo)
+         CALL get_mo_set(mos(ispin), mo_coeff=mo_coeff, mo_coeff_b=mo_coeff_b, nmo=nmo)
          CALL cp_fm_to_fm(mo_coeff, groundstate_coeff(ispin)%matrix, nmo, 1, 1)
          IF (ASSOCIATED(mo_coeff_b)) THEN
 
@@ -365,10 +362,10 @@ CONTAINS
             END IF
 
             DO ispin = 1, dft_control%nspins
-               CALL set_mo_set(mos(ispin)%mo_set, homo=my_homo(ispin), &
+               CALL set_mo_set(mos(ispin), homo=my_homo(ispin), &
                                uniform_occupation=my_uocc(ispin), nelectron=my_nelectron(ispin))
-               CALL get_mo_set(mos(ispin)%mo_set, mo_coeff=mo_coeff, nmo=nmo)
-               CALL cp_fm_to_fm(groundstate_coeff(ispin)%matrix, mos(ispin)%mo_set%mo_coeff, nmo, 1, 1)
+               CALL get_mo_set(mos(ispin), mo_coeff=mo_coeff, nmo=nmo)
+               CALL cp_fm_to_fm(groundstate_coeff(ispin)%matrix, mos(ispin)%mo_coeff, nmo, 1, 1)
             END DO
 
             IF (output_unit > 0) THEN
@@ -379,6 +376,8 @@ CONTAINS
             END IF
 
             CALL xas_env_release(qs_env%xas_env)
+            DEALLOCATE (qs_env%xas_env)
+            NULLIFY (qs_env%xas_env)
 
             CALL cp_print_key_finished_output(output_unit, logger, xas_section, &
                                               "PRINT%PROGRAM_RUN_INFO")
@@ -395,7 +394,7 @@ CONTAINS
                        state_of_atom=state_of_atom, nexc_states=nexc_states)
 
       IF (skip_scf) THEN
-         CALL get_mo_set(mos(my_spin)%mo_set, mo_coeff=mo_coeff)
+         CALL get_mo_set(mos(my_spin), mo_coeff=mo_coeff)
          CALL cp_fm_to_fm(mo_coeff, all_vectors, ncol=nexc_search, &
                           source_start=1, target_start=1)
       END IF
@@ -424,7 +423,7 @@ CONTAINS
             state_to_be_excited = state_of_atom(iat, istate)
 
             ! Take the state_to_be_excited vector from the full set and copy into excvec_coeff
-            CALL get_mo_set(mos(my_spin)%mo_set, nmo=nmo)
+            CALL get_mo_set(mos(my_spin), nmo=nmo)
             CALL get_xas_env(xas_env, occ_estate=occ_estate, xas_nelectron=xas_nelectron)
             tmp = xas_nelectron + 1.0_dp - occ_estate
             IF (nmo < tmp) &
@@ -439,7 +438,7 @@ CONTAINS
                                      state_to_be_excited, istate)
             END IF
             CALL set_xas_env(xas_env=xas_env, xas_estate=state_to_be_excited)
-            CALL get_mo_set(mos(my_spin)%mo_set, mo_coeff=mo_coeff)
+            CALL get_mo_set(mos(my_spin), mo_coeff=mo_coeff)
             CPASSERT(ASSOCIATED(excvec_coeff))
             CALL cp_fm_get_submatrix(mo_coeff, vecbuffer, 1, state_to_be_excited, &
                                      nao, 1, transpose=.TRUE.)
@@ -471,21 +470,20 @@ CONTAINS
                      CALL qs_scf_env_initialize(qs_env, scf_env, scf_control, scf_section)
                      !     Moved here from qs_scf_env_initialize to be able to have more scf_env
                      CALL set_xas_env(xas_env, scf_env=scf_env)
-                     CALL scf_env_release(scf_env)
-                     CALL get_xas_env(xas_env=xas_env, scf_env=scf_env)
                   ELSE
                      CALL qs_scf_env_initialize(qs_env, scf_env, scf_control, scf_section)
                   END IF
 
                   DO ispin = 1, SIZE(mos)
-                     IF (ASSOCIATED(mos(ispin)%mo_set%mo_coeff_b)) THEN !fm->dbcsr
-                        CALL copy_fm_to_dbcsr(mos(ispin)%mo_set%mo_coeff, &
-                                              mos(ispin)%mo_set%mo_coeff_b) !fm->dbcsr
+                     IF (ASSOCIATED(mos(ispin)%mo_coeff_b)) THEN !fm->dbcsr
+                        CALL copy_fm_to_dbcsr(mos(ispin)%mo_coeff, &
+                                              mos(ispin)%mo_coeff_b) !fm->dbcsr
                      END IF !fm->dbcsr
                   END DO !fm->dbcsr
 
                   IF (.NOT. scf_env%skip_diis) THEN
                      IF (.NOT. ASSOCIATED(scf_env%scf_diis_buffer)) THEN
+                        ALLOCATE (scf_env%scf_diis_buffer)
                         CALL qs_diis_b_create(scf_env%scf_diis_buffer, nbuffer=scf_control%max_diis)
                      END IF
                      CALL qs_diis_b_clear(scf_env%scf_diis_buffer)
@@ -506,12 +504,12 @@ CONTAINS
 
                ! Write last wavefunction to screen
                IF (SIZE(mos) > 1) THEN
-                  CALL write_mo_set_to_output_unit(mos(1)%mo_set, atomic_kind_set, qs_kind_set, particle_set, &
+                  CALL write_mo_set_to_output_unit(mos(1), atomic_kind_set, qs_kind_set, particle_set, &
                                                    dft_section, 4, 0, final_mos=.FALSE., spin="XAS ALPHA")
-                  CALL write_mo_set_to_output_unit(mos(2)%mo_set, atomic_kind_set, qs_kind_set, particle_set, &
+                  CALL write_mo_set_to_output_unit(mos(2), atomic_kind_set, qs_kind_set, particle_set, &
                                                    dft_section, 4, 0, final_mos=.FALSE., spin="XAS BETA")
                ELSE
-                  CALL write_mo_set_to_output_unit(mos(1)%mo_set, atomic_kind_set, qs_kind_set, particle_set, &
+                  CALL write_mo_set_to_output_unit(mos(1), atomic_kind_set, qs_kind_set, particle_set, &
                                                    dft_section, 4, 0, final_mos=.FALSE., spin="XAS")
                END IF
 
@@ -536,12 +534,13 @@ CONTAINS
                ! it should be a better initial guess
                CALL get_qs_env(qs_env, mos=mos)
                DO ispin = 1, nspins
-                  CALL get_mo_set(mos(ispin)%mo_set, mo_coeff=mo_coeff, nmo=nmo)
-                  CALL cp_fm_to_fm(groundstate_coeff(ispin)%matrix, mos(ispin)%mo_set%mo_coeff, nmo, 1, 1)
+                  CALL get_mo_set(mos(ispin), mo_coeff=mo_coeff, nmo=nmo)
+                  CALL cp_fm_to_fm(groundstate_coeff(ispin)%matrix, mos(ispin)%mo_coeff, nmo, 1, 1)
                END DO
                IF (iat == nexc_atoms) THEN
                   CALL scf_env_cleanup(scf_env)
                   CALL scf_env_release(xas_env%scf_env)
+                  DEALLOCATE (xas_env%scf_env)
                END IF
             END IF
 
@@ -557,10 +556,10 @@ CONTAINS
       END IF
 
       DO ispin = 1, dft_control%nspins
-         CALL set_mo_set(mos(ispin)%mo_set, homo=my_homo(ispin), &
+         CALL set_mo_set(mos(ispin), homo=my_homo(ispin), &
                          uniform_occupation=my_uocc(ispin), nelectron=my_nelectron(ispin))
-         CALL get_mo_set(mos(ispin)%mo_set, mo_coeff=mo_coeff, nmo=nmo)
-         CALL cp_fm_to_fm(groundstate_coeff(ispin)%matrix, mos(ispin)%mo_set%mo_coeff, nmo, 1, 1)
+         CALL get_mo_set(mos(ispin), mo_coeff=mo_coeff, nmo=nmo)
+         CALL cp_fm_to_fm(groundstate_coeff(ispin)%matrix, mos(ispin)%mo_coeff, nmo, 1, 1)
       END DO
 
       IF (output_unit > 0) THEN
@@ -571,6 +570,8 @@ CONTAINS
       END IF
 
       CALL xas_env_release(qs_env%xas_env)
+      DEALLOCATE (qs_env%xas_env)
+      NULLIFY (qs_env%xas_env)
 
       CALL cp_print_key_finished_output(output_unit, logger, xas_section, &
                                         "PRINT%PROGRAM_RUN_INFO")
@@ -616,12 +617,12 @@ CONTAINS
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: matrix_s
       TYPE(dft_control_type), POINTER                    :: dft_control
       TYPE(gto_basis_set_type), POINTER                  :: orb_basis_set
-      TYPE(mo_set_p_type), DIMENSION(:), POINTER         :: mos
+      TYPE(mo_set_type), DIMENSION(:), POINTER           :: mos
       TYPE(neighbor_list_set_p_type), DIMENSION(:), &
          POINTER                                         :: sab_orb
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
       TYPE(qs_kind_type), DIMENSION(:), POINTER          :: qs_kind_set
-      TYPE(qs_loc_env_new_type), POINTER                 :: qs_loc_env
+      TYPE(qs_loc_env_type), POINTER                     :: qs_loc_env
       TYPE(qs_matrix_pools_type), POINTER                :: mpools
       TYPE(scf_control_type), POINTER                    :: scf_control
       TYPE(section_vals_type), POINTER                   :: loc_section, xas_section
@@ -646,21 +647,21 @@ CONTAINS
                       dbcsr_dist=dbcsr_dist)
 
       xas_section => section_vals_get_subs_vals(dft_section, "XAS")
+      ALLOCATE (dft_control%xas_control)
       CALL xas_control_create(dft_control%xas_control)
       CALL read_xas_control(dft_control%xas_control, xas_section)
       CALL write_xas_control(dft_control%xas_control, dft_section)
       xas_control => dft_control%xas_control
+      ALLOCATE (scf_control)
       CALL scf_c_create(scf_control)
       CALL scf_c_read_parameters(scf_control, xas_section)
       CALL set_xas_env(xas_env, scf_control=scf_control)
-      CALL scf_c_release(scf_control)
-      CALL get_xas_env(xas_env, scf_control=scf_control)
 
       my_spin = xas_control%spin_channel
       nexc_search = xas_control%nexc_search
       IF (nexc_search < 0) THEN
          ! ground state occupation
-         CALL get_mo_set(mos(my_spin)%mo_set, nmo=nmo, lfomo=lfomo)
+         CALL get_mo_set(mos(my_spin), nmo=nmo, lfomo=lfomo)
          nexc_search = lfomo - 1
       END IF
       nexc_atoms = xas_control%nexc_atoms
@@ -672,7 +673,7 @@ CONTAINS
       CALL mpools_get(mpools, ao_mo_fm_pools=xas_env%ao_mo_fm_pools)
 
       NULLIFY (mo_coeff)
-      CALL get_mo_set(mos(my_spin)%mo_set, nao=nao, homo=homo, nmo=nmo, mo_coeff=mo_coeff, nelectron=nelectron)
+      CALL get_mo_set(mos(my_spin), nao=nao, homo=homo, nmo=nmo, mo_coeff=mo_coeff, nelectron=nelectron)
 
       nvirtual2 = 0
       IF (xas_control%added_mos .GT. 0) THEN
@@ -802,8 +803,8 @@ CONTAINS
       NULLIFY (tmp_fm_struct)
       ALLOCATE (xas_env%groundstate_coeff(nspins))
       DO ispin = 1, nspins
-         NULLIFY (xas_env%groundstate_coeff(ispin)%matrix)
-         CALL get_mo_set(mos(ispin)%mo_set, nao=nao, nmo=nmo)
+         ALLOCATE (xas_env%groundstate_coeff(ispin)%matrix)
+         CALL get_mo_set(mos(ispin), nao=nao, nmo=nmo)
          CALL fm_pool_create_fm(xas_env%ao_mo_fm_pools(ispin)%pool, &
                                 xas_env%groundstate_coeff(ispin)%matrix, &
                                 name="xas_env%mo0"//TRIM(ADJUSTL(cp_to_string(ispin))))
@@ -890,10 +891,9 @@ CONTAINS
 
       ! Define the qs_loc_env : to find centers, spread and possibly localize them
       IF (.NOT. (ASSOCIATED(xas_env%qs_loc_env))) THEN
+         ALLOCATE (qs_loc_env)
          CALL qs_loc_env_create(qs_loc_env)
          CALL set_xas_env(xas_env=xas_env, qs_loc_env=qs_loc_env)
-         CALL qs_loc_env_release(qs_loc_env)
-         CALL get_xas_env(xas_env=xas_env, qs_loc_env=qs_loc_env)
          loc_section => section_vals_get_subs_vals(xas_section, "LOCALIZE")
 
          CALL qs_loc_control_init(qs_loc_env, loc_section, do_homo=.TRUE., &
@@ -1052,7 +1052,7 @@ CONTAINS
       TYPE(cp_fm_type), POINTER                          :: all_vectors, excvec_coeff
       TYPE(cp_logger_type), POINTER                      :: logger
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: op_sm, ostrength_sm
-      TYPE(mo_set_p_type), DIMENSION(:), POINTER         :: mos
+      TYPE(mo_set_type), DIMENSION(:), POINTER           :: mos
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
 
       NULLIFY (logger)
@@ -1070,7 +1070,7 @@ CONTAINS
       CALL get_xas_env(xas_env=xas_env, all_vectors=all_vectors, xas_estate=xas_estate, &
                        all_evals=all_evals, dip_fm_set=dip_fm_set, excvec_coeff=excvec_coeff, &
                        ostrength_sm=ostrength_sm, nvirtual=nvirtual, spin_channel=my_spin)
-      CALL get_mo_set(mos(my_spin)%mo_set, homo=homo, lfomo=lfomo, nmo=nmo)
+      CALL get_mo_set(mos(my_spin), homo=homo, lfomo=lfomo, nmo=nmo)
 
       nabs = nvirtual - lfomo + 1
       ALLOCATE (sp_em(6, homo))
@@ -1103,7 +1103,7 @@ CONTAINS
          END IF
       END IF
 
-      CALL get_mo_set(mos(my_spin)%mo_set, lfomo=lfomo)
+      CALL get_mo_set(mos(my_spin), lfomo=lfomo)
       ! write the spectrum, if the file exists it is appended
       IF (.NOT. xas_control%xas_method == xas_dscf) THEN
          length = (.NOT. xas_control%dipole_form == xas_dip_vel)
@@ -1228,7 +1228,7 @@ CONTAINS
       TYPE(xas_control_type)                             :: xas_control
       TYPE(qs_environment_type), POINTER                 :: qs_env
       TYPE(section_vals_type), POINTER                   :: xas_section
-      TYPE(mo_set_p_type), DIMENSION(:), POINTER         :: mos
+      TYPE(mo_set_type), DIMENSION(:), INTENT(IN)        :: mos
       TYPE(cp_fm_type), INTENT(IN)                       :: all_vectors
       INTEGER, INTENT(IN)                                :: iatom
       LOGICAL, INTENT(IN)                                :: append_cube
@@ -1252,7 +1252,7 @@ CONTAINS
       END IF
       my_spin = xas_control%spin_channel
 
-      CALL get_mo_set(mos(my_spin)%mo_set, homo=homo)
+      CALL get_mo_set(mos(my_spin), homo=homo)
       istate0 = 0
 
       my_pos = "REWIND"
@@ -1282,7 +1282,7 @@ CONTAINS
 
       TYPE(qs_environment_type), POINTER                 :: qs_env
       TYPE(section_vals_type), POINTER                   :: xas_section
-      TYPE(mo_set_p_type), DIMENSION(:), POINTER         :: mos
+      TYPE(mo_set_type), DIMENSION(:), INTENT(IN)        :: mos
       INTEGER, INTENT(IN)                                :: iatom
 
       CHARACTER(LEN=default_string_length)               :: xas_mittle
@@ -1300,7 +1300,7 @@ CONTAINS
                       qs_kind_set=qs_kind_set)
 
       DO ispin = 1, 2
-         CALL calculate_projected_dos(mos(ispin)%mo_set, atomic_kind_set, qs_kind_set, particle_set, qs_env, &
+         CALL calculate_projected_dos(mos(ispin), atomic_kind_set, qs_kind_set, particle_set, qs_env, &
                                       xas_section, ispin, xas_mittle)
       END DO
 
@@ -1333,7 +1333,7 @@ CONTAINS
 
       TYPE(cp_fm_p_type), DIMENSION(:, :), POINTER       :: fm_set
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: op_sm
-      TYPE(mo_set_p_type), DIMENSION(:), POINTER         :: mos
+      TYPE(mo_set_type), DIMENSION(:), INTENT(IN)        :: mos
       TYPE(cp_fm_type), INTENT(IN)                       :: excvec, all_vectors
       REAL(dp), DIMENSION(:), POINTER                    :: all_evals
       REAL(dp), DIMENSION(:, :), POINTER                 :: sp_em, sp_ab
@@ -1345,10 +1345,9 @@ CONTAINS
       TYPE(cp_fm_type)                                   :: fm_work
 
       CPASSERT(ASSOCIATED(fm_set))
-      CPASSERT(ASSOCIATED(mos))
       NULLIFY (eigenvalues, occupation_numbers)
 
-      CALL get_mo_set(mos(my_spin)%mo_set, eigenvalues=eigenvalues, occupation_numbers=occupation_numbers, &
+      CALL get_mo_set(mos(my_spin), eigenvalues=eigenvalues, occupation_numbers=occupation_numbers, &
                       nao=nao, nmo=nmo, homo=homo, lfomo=lfomo)
 
       CALL cp_fm_create(fm_work, all_vectors%matrix_struct)
@@ -1506,7 +1505,7 @@ CONTAINS
       TYPE(cp_2d_r_p_type), DIMENSION(:), POINTER        :: stogto_overlap
       TYPE(cp_fm_type), POINTER                          :: mo_coeff
       TYPE(cp_logger_type), POINTER                      :: logger
-      TYPE(mo_set_p_type), DIMENSION(:), POINTER         :: mos
+      TYPE(mo_set_type), DIMENSION(:), POINTER           :: mos
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
       TYPE(qs_kind_type), DIMENSION(:), POINTER          :: qs_kind_set
 
@@ -1534,7 +1533,7 @@ CONTAINS
                        stogto_overlap=stogto_overlap, nexc_atoms=nexc_atoms, &
                        spin_channel=my_spin, nexc_search=nexc_search, nexc_states=nexc_states)
 
-      CALL get_mo_set(mos(my_spin)%mo_set, mo_coeff=mo_coeff, maxocc=maxocc, nao=nao, homo=homo)
+      CALL get_mo_set(mos(my_spin), mo_coeff=mo_coeff, maxocc=maxocc, nao=nao, homo=homo)
 
       ! scratch array for the state
       ALLOCATE (vecbuffer(1, nao))

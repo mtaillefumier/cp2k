@@ -10,6 +10,7 @@
 
 #include <blas/util.hh>
 #include <cstdlib>
+
 #include <dlaf/communication/communicator.h>
 #include <dlaf/communication/communicator_grid.h>
 #include <dlaf/communication/error.h>
@@ -76,7 +77,6 @@ extern "C" void dlaf_init() {
     /* DLA-Future initialization */
     dlaf::initialize(argc, argv);
     dlaf_init_ = true;
-
     pika::suspend();
   }
 }
@@ -132,7 +132,6 @@ void pxpotrf_dla(char uplo__, int n__, T *a__, int ia__, int ja__, int *desca__,
 
   // block sizes
   int nb, mb;
-
   // retrive the matrix sizes
   m = desca__[3];
   n = desca__[2];

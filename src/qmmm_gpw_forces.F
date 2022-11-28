@@ -55,7 +55,6 @@ MODULE qmmm_gpw_forces
                                               pw_pools_give_back_pws
    USE pw_types,                        ONLY: REALDATA3D,&
                                               REALSPACE,&
-                                              pw_p_type,&
                                               pw_type
    USE qmmm_gaussian_types,             ONLY: qmmm_gaussian_p_type,&
                                               qmmm_gaussian_type
@@ -120,9 +119,9 @@ CONTAINS
       TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dft_control_type), POINTER                    :: dft_control
       TYPE(pw_env_type), POINTER                         :: pw_env
-      TYPE(pw_p_type), DIMENSION(:), POINTER             :: rho_r
       TYPE(pw_pool_p_type), DIMENSION(:), POINTER        :: pw_pools
       TYPE(pw_pool_type), POINTER                        :: auxbas_pool
+      TYPE(pw_type), DIMENSION(:), POINTER               :: rho_r
       TYPE(pw_type), POINTER                             :: rho0_s_gs, rho_core, rho_tot_r, &
                                                             rho_tot_r2
       TYPE(qs_energy_type), POINTER                      :: energy
@@ -245,7 +244,7 @@ CONTAINS
          IF (need_f) THEN
             !
             DO ispin = 1, SIZE(rho_r)
-               CALL pw_axpy(rho_r(ispin)%pw, rho_tot_r)
+               CALL pw_axpy(rho_r(ispin), rho_tot_r)
             END DO
             IF (iw > 0) WRITE (iw, '(T2,"QMMM|",1X,A)') "Evaluating forces on MM atoms due to the:"
             ! Electrostatic Interaction type...
@@ -430,12 +429,12 @@ CONTAINS
       INTEGER, DIMENSION(:), POINTER                     :: pos_of_x
       LOGICAL                                            :: shells
       REAL(KIND=dp), DIMENSION(:, :), POINTER            :: tmp
-      TYPE(pw_p_type), DIMENSION(:), POINTER             :: grids
+      TYPE(pw_type), ALLOCATABLE, DIMENSION(:)           :: grids
 
 ! Statements
 
       CALL timeset(routineN, handle)
-      NULLIFY (grids, tmp)
+      NULLIFY (tmp)
       CPASSERT(ASSOCIATED(mm_particles))
       CPASSERT(ASSOCIATED(qmmm_env%mm_atom_chrg))
       CPASSERT(ASSOCIATED(qmmm_env%mm_atom_index))
@@ -444,44 +443,44 @@ CONTAINS
       ngrids = SIZE(pw_pools)
       CALL pw_pools_create_pws(aug_pools, grids, use_data=REALDATA3D, in_space=REALSPACE)
       DO igrid = 1, ngrids
-         CALL pw_zero(grids(igrid)%pw)
+         CALL pw_zero(grids(igrid))
       END DO
       ! Collocate Density on multigrids
       lb = rho%pw_grid%bounds_local(1, :)
       ub = rho%pw_grid%bounds_local(2, :)
-      grids(auxbas_grid)%pw%cr3d(lb(1):ub(1), &
-                                 lb(2):ub(2), &
-                                 lb(3):ub(3)) = rho%cr3d
+      grids(auxbas_grid)%cr3d(lb(1):ub(1), &
+                              lb(2):ub(2), &
+                              lb(3):ub(3)) = rho%cr3d
       ! copy the boundaries
       DO i = lb(1), ub(1)
-         grids(auxbas_grid)%pw%cr3d(i, ub(2) + 1, ub(3) + 1) = rho%cr3d(i, lb(2), lb(3))
+         grids(auxbas_grid)%cr3d(i, ub(2) + 1, ub(3) + 1) = rho%cr3d(i, lb(2), lb(3))
       END DO
       DO k = lb(3), ub(3)
          DO i = lb(1), ub(1)
-            grids(auxbas_grid)%pw%cr3d(i, ub(2) + 1, k) = rho%cr3d(i, lb(2), k)
+            grids(auxbas_grid)%cr3d(i, ub(2) + 1, k) = rho%cr3d(i, lb(2), k)
          END DO
       END DO
       DO j = lb(2), ub(2)
          DO i = lb(1), ub(1)
-            grids(auxbas_grid)%pw%cr3d(i, j, ub(3) + 1) = rho%cr3d(i, j, lb(3))
+            grids(auxbas_grid)%cr3d(i, j, ub(3) + 1) = rho%cr3d(i, j, lb(3))
          END DO
       END DO
-      pos_of_x => grids(auxbas_grid)%pw%pw_grid%para%pos_of_x
-      group = grids(auxbas_grid)%pw%pw_grid%para%group
-      me = grids(auxbas_grid)%pw%pw_grid%para%my_pos
+      pos_of_x => grids(auxbas_grid)%pw_grid%para%pos_of_x
+      group = grids(auxbas_grid)%pw_grid%para%group
+      me = grids(auxbas_grid)%pw_grid%para%my_pos
       glb = rho%pw_grid%bounds(1, :)
       gub = rho%pw_grid%bounds(2, :)
       IF ((pos_of_x(glb(1)) .EQ. me) .AND. (pos_of_x(gub(1)) .EQ. me)) THEN
          DO k = lb(3), ub(3)
             DO j = lb(2), ub(2)
-               grids(auxbas_grid)%pw%cr3d(ub(1) + 1, j, k) = rho%cr3d(lb(1), j, k)
+               grids(auxbas_grid)%cr3d(ub(1) + 1, j, k) = rho%cr3d(lb(1), j, k)
             END DO
-            grids(auxbas_grid)%pw%cr3d(ub(1) + 1, ub(2) + 1, k) = rho%cr3d(lb(1), lb(2), k)
+            grids(auxbas_grid)%cr3d(ub(1) + 1, ub(2) + 1, k) = rho%cr3d(lb(1), lb(2), k)
          END DO
          DO j = lb(2), ub(2)
-            grids(auxbas_grid)%pw%cr3d(ub(1) + 1, j, ub(3) + 1) = rho%cr3d(lb(1), j, lb(3))
+            grids(auxbas_grid)%cr3d(ub(1) + 1, j, ub(3) + 1) = rho%cr3d(lb(1), j, lb(3))
          END DO
-         grids(auxbas_grid)%pw%cr3d(ub(1) + 1, ub(2) + 1, ub(3) + 1) = rho%cr3d(lb(1), lb(2), lb(3))
+         grids(auxbas_grid)%cr3d(ub(1) + 1, ub(2) + 1, ub(3) + 1) = rho%cr3d(lb(1), lb(2), lb(3))
       ELSE IF (pos_of_x(glb(1)) .EQ. me) THEN
          ALLOCATE (tmp(rho%pw_grid%bounds_local(1, 2):rho%pw_grid%bounds_local(2, 2), &
                        rho%pw_grid%bounds_local(1, 3):rho%pw_grid%bounds_local(2, 3)), &
@@ -502,21 +501,21 @@ CONTAINS
 
          DO k = lb(3), ub(3)
             DO j = lb(2), ub(2)
-               grids(auxbas_grid)%pw%cr3d(ub(1) + 1, j, k) = tmp(j, k)
+               grids(auxbas_grid)%cr3d(ub(1) + 1, j, k) = tmp(j, k)
             END DO
-            grids(auxbas_grid)%pw%cr3d(ub(1) + 1, ub(2) + 1, k) = tmp(lb(2), k)
+            grids(auxbas_grid)%cr3d(ub(1) + 1, ub(2) + 1, k) = tmp(lb(2), k)
          END DO
          DO j = lb(2), ub(2)
-            grids(auxbas_grid)%pw%cr3d(ub(1) + 1, j, ub(3) + 1) = tmp(j, lb(3))
+            grids(auxbas_grid)%cr3d(ub(1) + 1, j, ub(3) + 1) = tmp(j, lb(3))
          END DO
-         grids(auxbas_grid)%pw%cr3d(ub(1) + 1, ub(2) + 1, ub(3) + 1) = tmp(lb(2), lb(3))
+         grids(auxbas_grid)%cr3d(ub(1) + 1, ub(2) + 1, ub(3) + 1) = tmp(lb(2), lb(3))
       END IF
       IF (ASSOCIATED(tmp)) THEN
          DEALLOCATE (tmp)
       END IF
       ! Further setup of parallelization scheme
       IF (qmmm_env%par_scheme == do_par_atom) THEN
-         CALL mp_sum(grids(auxbas_grid)%pw%cr3d, para_env%group)
+         CALL mp_sum(grids(auxbas_grid)%cr3d, para_env%group)
       END IF
       ! RealSpace Interpolation
       CALL section_vals_val_get(interp_section, "kind", i_val=kind_interp)
@@ -524,8 +523,8 @@ CONTAINS
       CASE (spline3_nopbc_interp, spline3_pbc_interp)
          ! Spline Interpolator
          DO Igrid = auxbas_grid, SIZE(grids) - 1
-            CALL pw_restrict_s3(grids(Igrid)%pw, &
-                                grids(Igrid + 1)%pw, &
+            CALL pw_restrict_s3(grids(Igrid), &
+                                grids(Igrid + 1), &
                                 aug_pools(Igrid + 1)%pool, &
                                 param_section=interp_section)
          END DO
@@ -602,7 +601,7 @@ CONTAINS
                                            eps_mm_rspace, auxbas_grid, coarser_grid, pgfs, potentials, Forces, &
                                            aug_pools, mm_cell, dOmmOqm, periodic, per_potentials, iw, par_scheme, &
                                            qmmm_spherical_cutoff, shells)
-      TYPE(pw_p_type), DIMENSION(:), POINTER             :: grids
+      TYPE(pw_type), DIMENSION(:), INTENT(IN)            :: grids
       TYPE(particle_type), DIMENSION(:), POINTER         :: mm_particles
       REAL(KIND=dp), DIMENSION(:), POINTER               :: mm_charges
       INTEGER, DIMENSION(:), POINTER                     :: mm_atom_index
@@ -654,8 +653,8 @@ CONTAINS
             alpha = alpha*alpha
             height = pgf%Ak(IGauss)
             ilevel = pgf%grid_level(IGauss)
-            dvol = grids(ilevel)%pw%pw_grid%dvol
-            bo = grids(ilevel)%pw%pw_grid%bounds_local
+            dvol = grids(ilevel)%pw_grid%dvol
+            bo = grids(ilevel)%pw_grid%bounds_local
             ALLOCATE (xdat(2, bo(1, 1):bo(2, 1)))
             ALLOCATE (ydat(2, bo(1, 2):bo(2, 2)))
             ALLOCATE (zdat(2, bo(1, 3):bo(2, 3)))
@@ -690,7 +689,7 @@ CONTAINS
                                               rp=ra, &
                                               scale=-1.0_dp, &
                                               W=W, &
-                                              pwgrid=grids(ilevel)%pw, &
+                                              pwgrid=grids(ilevel), &
                                               cube_info=cube_info(ilevel), &
                                               eps_mm_rspace=eps_mm_rspace, &
                                               xdat=xdat, &
@@ -710,7 +709,7 @@ CONTAINS
                                                        zetp=alpha, &
                                                        rp=ra, &
                                                        W=W, &
-                                                       pwgrid=grids(ilevel)%pw, &
+                                                       pwgrid=grids(ilevel), &
                                                        cube_info=cube_info(ilevel), &
                                                        eps_mm_rspace=eps_mm_rspace, &
                                                        aug_pools=aug_pools, &
@@ -731,7 +730,7 @@ CONTAINS
       CALL timeset(routineNb//"_R", handle2)
       IF (periodic) THEN
          CALL qmmm_forces_with_gaussian_LG(pgfs=pgfs, &
-                                           cgrid=grids(coarser_grid)%pw, &
+                                           cgrid=grids(coarser_grid), &
                                            num_mm_atoms=num_mm_atoms, &
                                            mm_charges=mm_charges, &
                                            mm_atom_index=mm_atom_index, &
@@ -749,7 +748,7 @@ CONTAINS
                                            shells=shells)
       ELSE
          CALL qmmm_forces_with_gaussian_LR(pgfs=pgfs, &
-                                           cgrid=grids(coarser_grid)%pw, &
+                                           cgrid=grids(coarser_grid), &
                                            num_mm_atoms=num_mm_atoms, &
                                            mm_charges=mm_charges, &
                                            mm_atom_index=mm_atom_index, &
@@ -799,7 +798,7 @@ CONTAINS
                                            mm_particles, para_env, coarser_grid_level, Forces, per_potentials, &
                                            aug_pools, mm_cell, dOmmOqm, iw, par_scheme, qmmm_spherical_cutoff, shells)
       TYPE(qmmm_gaussian_p_type), DIMENSION(:), POINTER  :: pgfs
-      TYPE(pw_type), POINTER                             :: cgrid
+      TYPE(pw_type), INTENT(IN)                          :: cgrid
       INTEGER, INTENT(IN)                                :: num_mm_atoms
       REAL(KIND=dp), DIMENSION(:), POINTER               :: mm_charges
       INTEGER, DIMENSION(:), POINTER                     :: mm_atom_index
@@ -1155,7 +1154,7 @@ CONTAINS
                                            mm_particles, para_env, coarser_grid_level, Forces, potentials, &
                                            aug_pools, mm_cell, dOmmOqm, iw, par_scheme, qmmm_spherical_cutoff, shells)
       TYPE(qmmm_gaussian_p_type), DIMENSION(:), POINTER  :: pgfs
-      TYPE(pw_type), POINTER                             :: cgrid
+      TYPE(pw_type), INTENT(IN)                          :: cgrid
       INTEGER, INTENT(IN)                                :: num_mm_atoms
       REAL(KIND=dp), DIMENSION(:), POINTER               :: mm_charges
       INTEGER, DIMENSION(:), POINTER                     :: mm_atom_index
@@ -1479,7 +1478,7 @@ CONTAINS
       REAL(KIND=dp), INTENT(IN)                          :: zetp
       REAL(KIND=dp), DIMENSION(3), INTENT(IN)            :: rp
       REAL(KIND=dp), INTENT(IN)                          :: W
-      TYPE(pw_type), POINTER                             :: pwgrid
+      TYPE(pw_type), INTENT(IN)                          :: pwgrid
       TYPE(cube_info_type), INTENT(IN)                   :: cube_info
       REAL(KIND=dp), INTENT(IN)                          :: eps_mm_rspace
       TYPE(pw_pool_p_type), DIMENSION(:), POINTER        :: aug_pools
@@ -1497,19 +1496,18 @@ CONTAINS
       REAL(KIND=dp), DIMENSION(2)                        :: energy
       REAL(KIND=dp), DIMENSION(3)                        :: Err, force, myrp
       REAL(KIND=dp), DIMENSION(:), POINTER               :: xdat, ydat, zdat
-      TYPE(pw_p_type), DIMENSION(:), POINTER             :: grids
+      TYPE(pw_type), ALLOCATABLE, DIMENSION(:)           :: grids
 
       DATA Icount/0/
       ! Statements
       CALL timeset(routineN, handle)
-      NULLIFY (grids)
       !Statements
       ngrids = SIZE(aug_pools)
       CALL pw_pools_create_pws(aug_pools, grids, use_data=REALDATA3D, in_space=REALSPACE)
       DO igrid = 1, ngrids
-         CALL pw_zero(grids(igrid)%pw)
+         CALL pw_zero(grids(igrid))
       END DO
-      bo2 = grids(auxbas_grid)%pw%pw_grid%bounds
+      bo2 = grids(auxbas_grid)%pw_grid%bounds
       ALLOCATE (xdat(bo2(1, 1):bo2(2, 1)))
       ALLOCATE (ydat(bo2(1, 2):bo2(2, 2)))
       ALLOCATE (zdat(bo2(1, 3):bo2(2, 3)))
@@ -1519,12 +1517,12 @@ CONTAINS
          DO k = 1, 2
             myrp = rp
             myrp(i) = myrp(i) + (-1.0_dp)**k*Dx
-            CALL pw_zero(grids(ilevel)%pw)
+            CALL pw_zero(grids(ilevel))
             CALL collocate_gf_rspace_NoPBC(zetp=zetp, &
                                            rp=myrp, &
                                            scale=-1.0_dp, &
                                            W=W, &
-                                           pwgrid=grids(ilevel)%pw, &
+                                           pwgrid=grids(ilevel), &
                                            cube_info=cube_info, &
                                            eps_mm_rspace=eps_mm_rspace, &
                                            xdat=xdat, &
@@ -1534,7 +1532,7 @@ CONTAINS
                                            n_rep_real=n_rep_real, &
                                            mm_cell=mm_cell)
 
-            energy(k) = pw_integral_ab(pwgrid, grids(ilevel)%pw)
+            energy(k) = pw_integral_ab(pwgrid, grids(ilevel))
          END DO
          force(i) = (energy(2) - energy(1))/(2.0_dp*Dx)
       END DO
@@ -1596,7 +1594,7 @@ CONTAINS
 
       TYPE(qmmm_gaussian_p_type), DIMENSION(:), POINTER  :: pgfs
       TYPE(pw_pool_p_type), DIMENSION(:), POINTER        :: aug_pools
-      TYPE(pw_type), POINTER                             :: rho
+      TYPE(pw_type), INTENT(IN)                          :: rho
       REAL(KIND=dp), DIMENSION(:), POINTER               :: mm_charges
       INTEGER, DIMENSION(:), POINTER                     :: mm_atom_index
       TYPE(particle_type), DIMENSION(:), POINTER         :: mm_particles
@@ -1617,15 +1615,14 @@ CONTAINS
       REAL(KIND=dp), DIMENSION(2)                        :: energy
       REAL(KIND=dp), DIMENSION(3)                        :: Err
       REAL(KIND=dp), DIMENSION(:, :), POINTER            :: Num_Forces
-      TYPE(pw_p_type), DIMENSION(:), POINTER             :: grids
+      TYPE(pw_type), ALLOCATABLE, DIMENSION(:)           :: grids
 
       ALLOCATE (Num_Forces(3, num_mm_atoms))
-      NULLIFY (grids)
       CALL timeset(routineN, handle)
       ngrids = SIZE(aug_pools)
       CALL pw_pools_create_pws(aug_pools, grids, use_data=REALDATA3D, in_space=REALSPACE)
       DO igrid = 1, ngrids
-         CALL pw_zero(grids(igrid)%pw)
+         CALL pw_zero(grids(igrid))
       END DO
       Atoms: DO I = 1, num_mm_atoms
          IndMM = mm_atom_index(I)
@@ -1634,10 +1631,10 @@ CONTAINS
             energy = 0.0_dp
             Diff: DO K = 1, 2
                mm_particles(IndMM)%r(J) = Coord_save + (-1)**K*Dx
-               CALL pw_zero(grids(coarser_grid_level)%pw)
+               CALL pw_zero(grids(coarser_grid_level))
 
                CALL qmmm_elec_with_gaussian_LG(pgfs=pgfs, &
-                                               cgrid=grids(coarser_grid_level)%pw, &
+                                               cgrid=grids(coarser_grid_level), &
                                                mm_charges=mm_charges, &
                                                mm_atom_index=mm_atom_index, &
                                                mm_particles=mm_particles, &
@@ -1649,7 +1646,7 @@ CONTAINS
                                                qmmm_spherical_cutoff=qmmm_spherical_cutoff, &
                                                shells=shells)
 
-               energy(K) = pw_integral_ab(rho, grids(coarser_grid_level)%pw)
+               energy(K) = pw_integral_ab(rho, grids(coarser_grid_level))
             END DO Diff
             IF (iw > 0) &
                WRITE (iw, '(A,I6,A,I3,A,2F15.9)') &
@@ -1711,7 +1708,7 @@ CONTAINS
 
       TYPE(qmmm_gaussian_p_type), DIMENSION(:), POINTER  :: pgfs
       TYPE(pw_pool_p_type), DIMENSION(:), POINTER        :: aug_pools
-      TYPE(pw_type), POINTER                             :: rho
+      TYPE(pw_type), INTENT(IN)                          :: rho
       REAL(KIND=dp), DIMENSION(:), POINTER               :: mm_charges
       INTEGER, DIMENSION(:), POINTER                     :: mm_atom_index
       TYPE(particle_type), DIMENSION(:), POINTER         :: mm_particles
@@ -1732,15 +1729,14 @@ CONTAINS
       REAL(KIND=dp), DIMENSION(2)                        :: energy
       REAL(KIND=dp), DIMENSION(3)                        :: Err
       REAL(KIND=dp), DIMENSION(:, :), POINTER            :: Num_Forces
-      TYPE(pw_p_type), DIMENSION(:), POINTER             :: grids
+      TYPE(pw_type), ALLOCATABLE, DIMENSION(:)           :: grids
 
       ALLOCATE (Num_Forces(3, num_mm_atoms))
-      NULLIFY (grids)
       CALL timeset(routineN, handle)
       ngrids = SIZE(aug_pools)
       CALL pw_pools_create_pws(aug_pools, grids, use_data=REALDATA3D, in_space=REALSPACE)
       DO igrid = 1, ngrids
-         CALL pw_zero(grids(igrid)%pw)
+         CALL pw_zero(grids(igrid))
       END DO
       Atoms: DO I = 1, num_mm_atoms
          IndMM = mm_atom_index(I)
@@ -1749,10 +1745,10 @@ CONTAINS
             energy = 0.0_dp
             Diff: DO K = 1, 2
                mm_particles(IndMM)%r(J) = Coord_save + (-1)**K*Dx
-               CALL pw_zero(grids(coarser_grid_level)%pw)
+               CALL pw_zero(grids(coarser_grid_level))
 
                CALL qmmm_elec_with_gaussian_LR(pgfs=pgfs, &
-                                               grid=grids(coarser_grid_level)%pw, &
+                                               grid=grids(coarser_grid_level), &
                                                mm_charges=mm_charges, &
                                                mm_atom_index=mm_atom_index, &
                                                mm_particles=mm_particles, &
@@ -1764,7 +1760,7 @@ CONTAINS
                                                qmmm_spherical_cutoff=qmmm_spherical_cutoff, &
                                                shells=shells)
 
-               energy(K) = pw_integral_ab(rho, grids(coarser_grid_level)%pw)
+               energy(K) = pw_integral_ab(rho, grids(coarser_grid_level))
             END DO Diff
             IF (iw > 0) &
                WRITE (iw, '(A,I6,A,I3,A,2F15.9)') &

@@ -25,8 +25,7 @@ MODULE mixed_main
    USE message_passing,                 ONLY: mp_comm_split
    USE mixed_environment,               ONLY: mixed_init
    USE mixed_environment_types,         ONLY: mixed_env_create,&
-                                              mixed_environment_type,&
-                                              set_mixed_env
+                                              mixed_environment_type
 #include "./base/base_uses.f90"
 
    IMPLICIT NONE
@@ -52,7 +51,7 @@ CONTAINS
    SUBROUTINE mixed_create_force_env(mixed_env, root_section, para_env, &
                                      force_env_section, n_subforce_eval, use_motion_section)
 
-      TYPE(mixed_environment_type), POINTER              :: mixed_env
+      TYPE(mixed_environment_type), INTENT(OUT)          :: mixed_env
       TYPE(section_vals_type), POINTER                   :: root_section
       TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(section_vals_type), POINTER                   :: force_env_section
@@ -172,7 +171,6 @@ CONTAINS
       END DO
 
       ! *** initializations for the setup of the MIXED environment ***
-      CALL set_mixed_env(mixed_env)
       CALL mixed_init(mixed_env, root_section, para_env, force_env_section, &
                       use_motion_section)
       CALL timestop(handle)

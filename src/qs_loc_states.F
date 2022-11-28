@@ -35,8 +35,8 @@ MODULE qs_loc_states
                                               centers_second_moments_loc,&
                                               qs_loc_driver
    USE qs_loc_molecules,                ONLY: wfc_to_molecule
-   USE qs_loc_types,                    ONLY: qs_loc_env_new_type
-   USE qs_mo_types,                     ONLY: mo_set_p_type
+   USE qs_loc_types,                    ONLY: qs_loc_env_type
+   USE qs_mo_types,                     ONLY: mo_set_type
    USE wannier_states,                  ONLY: construct_wannier_states
    USE wannier_states_types,            ONLY: wannier_centres_type
 #include "./base/base_uses.f90"
@@ -69,7 +69,7 @@ CONTAINS
                                     wf_r, wf_g, particles, coeff, evals, marked_states)
 
       TYPE(qs_environment_type), POINTER                 :: qs_env
-      TYPE(qs_loc_env_new_type), POINTER                 :: qs_loc_env
+      TYPE(qs_loc_env_type), POINTER                     :: qs_loc_env
       TYPE(section_vals_type), POINTER                   :: loc_section
       TYPE(cp_fm_p_type), DIMENSION(:), POINTER          :: mo_local
       TYPE(pw_type), INTENT(INOUT)                       :: wf_r
@@ -88,7 +88,7 @@ CONTAINS
       TYPE(cp_logger_type), POINTER                      :: logger
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: ks_rmpv, matrix_s
       TYPE(dft_control_type), POINTER                    :: dft_control
-      TYPE(mo_set_p_type), DIMENSION(:), POINTER         :: mos
+      TYPE(mo_set_type), DIMENSION(:), POINTER           :: mos
       TYPE(molecule_type), DIMENSION(:), POINTER         :: molecule_set
       TYPE(section_vals_type), POINTER                   :: loc_print_section
       TYPE(wannier_centres_type), DIMENSION(:), POINTER  :: wc

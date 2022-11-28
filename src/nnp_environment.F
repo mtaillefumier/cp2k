@@ -34,8 +34,7 @@ MODULE nnp_environment
                                               parser_release,&
                                               parser_reset
    USE cp_subsys_methods,               ONLY: cp_subsys_create
-   USE cp_subsys_types,                 ONLY: cp_subsys_release,&
-                                              cp_subsys_set,&
+   USE cp_subsys_types,                 ONLY: cp_subsys_set,&
                                               cp_subsys_type
    USE distribution_1d_types,           ONLY: distribution_1d_release,&
                                               distribution_1d_type
@@ -95,7 +94,7 @@ CONTAINS
       TYPE(section_vals_type), INTENT(INOUT), POINTER    :: force_env_section, subsys_section
       LOGICAL, INTENT(IN)                                :: use_motion_section
 
-      CHARACTER(len=*), PARAMETER :: routineN = 'nnp_init', routineP = moduleN//':'//routineN
+      CHARACTER(len=*), PARAMETER                        :: routineN = 'nnp_init'
 
       INTEGER                                            :: handle
       LOGICAL                                            :: explicit, use_ref_cell
@@ -142,7 +141,6 @@ CONTAINS
 
       CALL cell_release(cell)
       CALL cell_release(cell_ref)
-      CALL cp_subsys_release(subsys)
 
       CALL timestop(handle)
 
@@ -166,8 +164,7 @@ CONTAINS
       LOGICAL, INTENT(IN)                                :: use_ref_cell
       TYPE(section_vals_type), INTENT(IN), POINTER       :: subsys_section
 
-      CHARACTER(len=*), PARAMETER :: routineN = 'nnp_init_subsys', &
-         routineP = moduleN//':'//routineN
+      CHARACTER(len=*), PARAMETER                        :: routineN = 'nnp_init_subsys'
 
       INTEGER                                            :: handle, natom
       TYPE(atomic_kind_type), DIMENSION(:), POINTER      :: atomic_kind_set
@@ -247,7 +244,7 @@ CONTAINS
    SUBROUTINE nnp_init_model(nnp_env)
       TYPE(nnp_type), INTENT(INOUT), POINTER             :: nnp_env
 
-      CHARACTER(len=*), PARAMETER :: routineN = 'nnp_init_model', routineP = moduleN//':'//routineN
+      CHARACTER(len=*), PARAMETER                        :: routineN = 'nnp_init_model'
       INTEGER, PARAMETER                                 :: def_str_len = 256, &
                                                             default_path_length = 256
 
@@ -265,12 +262,12 @@ CONTAINS
       REAL(KIND=dp), DIMENSION(7)                        :: test_array
       REAL(KIND=dp), DIMENSION(:), POINTER               :: work
       TYPE(cp_logger_type), POINTER                      :: logger
-      TYPE(cp_parser_type), POINTER                      :: parser
+      TYPE(cp_parser_type)                               :: parser
       TYPE(section_vals_type), POINTER                   :: bias_section, model_section
 
       CALL timeset(routineN, handle)
 
-      NULLIFY (parser, logger)
+      NULLIFY (logger)
 
       logger => cp_get_default_logger()
 

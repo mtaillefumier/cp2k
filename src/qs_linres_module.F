@@ -89,10 +89,9 @@ MODULE qs_linres_module
                                               epr_env_type,&
                                               issc_env_type,&
                                               linres_control_create,&
-                                              linres_control_release,&
                                               linres_control_type,&
                                               nmr_env_type
-   USE qs_mo_types,                     ONLY: mo_set_p_type
+   USE qs_mo_types,                     ONLY: mo_set_type
    USE qs_p_env_methods,                ONLY: p_env_create,&
                                               p_env_psi0_changed
    USE qs_p_env_types,                  ONLY: p_env_release,&
@@ -126,8 +125,6 @@ CONTAINS
    SUBROUTINE dcdr_linres(qs_env, p_env)
       TYPE(qs_environment_type), POINTER                 :: qs_env
       TYPE(qs_p_env_type)                                :: p_env
-
-      CHARACTER(len=*), PARAMETER :: routineN = 'dcdr_linres', routineP = moduleN//':'//routineN
 
       INTEGER                                            :: beta, latom
       TYPE(dcdr_env_type)                                :: dcdr_env
@@ -329,7 +326,7 @@ CONTAINS
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: matrix_ks, rho_ao
       TYPE(dft_control_type), POINTER                    :: dft_control
       TYPE(linres_control_type), POINTER                 :: linres_control
-      TYPE(mo_set_p_type), DIMENSION(:), POINTER         :: mos
+      TYPE(mo_set_type), DIMENSION(:), POINTER           :: mos
       TYPE(qs_rho_type), POINTER                         :: rho
       TYPE(section_vals_type), POINTER                   :: loc_section
 
@@ -339,10 +336,10 @@ CONTAINS
                                     extension=".linresLog")
       NULLIFY (dft_control, linres_control, loc_section, rho, mos, matrix_ks, rho_ao)
 
+      ALLOCATE (linres_control)
       CALL linres_control_create(linres_control)
       CALL set_qs_env(qs_env=qs_env, linres_control=linres_control)
-      CALL linres_control_release(linres_control)
-      CALL get_qs_env(qs_env=qs_env, linres_control=linres_control, &
+      CALL get_qs_env(qs_env=qs_env, &
                       dft_control=dft_control, matrix_ks=matrix_ks, mos=mos, rho=rho)
       CALL qs_rho_get(rho, rho_ao=rho_ao)
 
@@ -360,7 +357,7 @@ CONTAINS
          CALL linres_localize(qs_env, linres_control, dft_control%nspins)
 
          DO ispin = 1, dft_control%nspins
-            CALL calculate_density_matrix(mos(ispin)%mo_set, rho_ao(ispin)%matrix)
+            CALL calculate_density_matrix(mos(ispin), rho_ao(ispin)%matrix)
          END DO
          ! ** update qs_env%rho
          CALL qs_rho_update_rho(rho, qs_env=qs_env)
@@ -482,7 +479,6 @@ CONTAINS
       !
       !Initialize the current environment
       do_qmmm = .FALSE.
-      current_env%ref_count = 0
       IF (qs_env%qmmm) do_qmmm = .TRUE.
       current_env%do_qmmm = do_qmmm
       !current_env%prop='nmr'
@@ -493,13 +489,11 @@ CONTAINS
       IF (current_env%all_pert_op_done) THEN
          !Initialize the nmr environment
          IF (nmr_present) THEN
-            nmr_env%ref_count = 0
             CALL nmr_env_init(nmr_env, qs_env)
          END IF
          !
          !Initialize the epr environment
          IF (epr_present) THEN
-            epr_env%ref_count = 0
             CALL epr_env_init(epr_env, qs_env)
             CALL epr_g_zke(epr_env, qs_env)
             CALL epr_nablavks(epr_env, qs_env)
@@ -548,7 +542,7 @@ CONTAINS
          END IF
       END IF
       ! Finalized the current environment
-      CALL current_env_cleanup(current_env, qs_env)
+      CALL current_env_cleanup(current_env)
 
    END SUBROUTINE nmr_epr_linres
 
@@ -582,7 +576,6 @@ CONTAINS
       !
       !Initialize the current environment
       do_qmmm = .FALSE.
-      current_env%ref_count = 0
       IF (qs_env%qmmm) do_qmmm = .TRUE.
       current_env%do_qmmm = do_qmmm
       !current_env%prop='issc'
@@ -590,7 +583,6 @@ CONTAINS
       !CALL current_response(current_env,p_env,qs_env)
       !
       !Initialize the issc environment
-      issc_env%ref_count = 0
       CALL issc_env_init(issc_env, qs_env)
       !
       ! Loop over atoms

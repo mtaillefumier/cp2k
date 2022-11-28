@@ -75,13 +75,13 @@ MODULE xas_tp_scf
    USE qs_loc_methods,                  ONLY: qs_loc_driver
    USE qs_loc_types,                    ONLY: get_qs_loc_env,&
                                               localized_wfn_control_type,&
-                                              qs_loc_env_new_type
+                                              qs_loc_env_type
    USE qs_mixing_utils,                 ONLY: self_consistency_check
    USE qs_mo_io,                        ONLY: write_mo_set_to_restart
    USE qs_mo_methods,                   ONLY: calculate_subspace_eigenvalues
    USE qs_mo_occupation,                ONLY: set_mo_occupation
    USE qs_mo_types,                     ONLY: get_mo_set,&
-                                              mo_set_p_type
+                                              mo_set_type
    USE qs_ot_eigensolver,               ONLY: ot_eigensolver
    USE qs_rho_methods,                  ONLY: qs_rho_update_rho
    USE qs_rho_types,                    ONLY: qs_rho_get,&
@@ -93,8 +93,7 @@ MODULE xas_tp_scf
    USE qs_scf_methods,                  ONLY: scf_env_density_mixing
    USE qs_scf_output,                   ONLY: qs_scf_print_summary
    USE qs_scf_types,                    ONLY: general_diag_method_nr,&
-                                              qs_scf_env_type,&
-                                              scf_env_release
+                                              qs_scf_env_type
    USE scf_control_types,               ONLY: scf_control_type
    USE xas_control,                     ONLY: xas_control_type
    USE xas_env_types,                   ONLY: get_xas_env,&
@@ -156,7 +155,7 @@ CONTAINS
       TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: matrix_ks, matrix_s
       TYPE(dbcsr_p_type), DIMENSION(:, :), POINTER       :: rho_ao_kp
-      TYPE(mo_set_p_type), DIMENSION(:), POINTER         :: mos
+      TYPE(mo_set_type), DIMENSION(:), POINTER           :: mos
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
       TYPE(qs_charges_type), POINTER                     :: qs_charges
       TYPE(qs_energy_type), POINTER                      :: energy
@@ -177,11 +176,8 @@ CONTAINS
       converged = .TRUE.
 
       CPASSERT(ASSOCIATED(xas_env))
-      CPASSERT(xas_env%ref_count > 0)
       CPASSERT(ASSOCIATED(scf_env))
-      CPASSERT(scf_env%ref_count > 0)
       CPASSERT(ASSOCIATED(qs_env))
-      CPASSERT(qs_env%ref_count > 0)
 
       CALL get_qs_env(qs_env=qs_env, &
                       atomic_kind_set=atomic_kind_set, &
@@ -258,21 +254,21 @@ CONTAINS
                hole_spin = 2
                occ_spin = 1
             END IF
-            CALL set_mo_occupation(mo_set=mos(hole_spin)%mo_set, &
+            CALL set_mo_occupation(mo_set=mos(hole_spin), &
                                    smear=scf_control%smear, &
                                    xas_env=xas_env)
-            CALL set_mo_occupation(mo_set=mos(occ_spin)%mo_set, &
+            CALL set_mo_occupation(mo_set=mos(occ_spin), &
                                    smear=scf_control%smear)
             DO ispin = 1, nspin
                ! does not yet handle k-points
-               CALL calculate_density_matrix(mos(ispin)%mo_set, &
+               CALL calculate_density_matrix(mos(ispin), &
                                              scf_env%p_mix_new(ispin, 1)%matrix)
             END DO
             energy%kTS = 0.0_dp
             energy%efermi = 0.0_dp
             DO ispin = 1, nspin
-               energy%kTS = energy%kTS + mos(ispin)%mo_set%kTS
-               energy%efermi = energy%efermi + mos(ispin)%mo_set%mu
+               energy%kTS = energy%kTS + mos(ispin)%kTS
+               energy%efermi = energy%efermi + mos(ispin)%mu
             END DO
             energy%efermi = energy%efermi/REAL(nspin, KIND=dp)
 
@@ -431,11 +427,11 @@ CONTAINS
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: kinetic, matrix_ks, matrix_s
       TYPE(dft_control_type), POINTER                    :: dft_control
       TYPE(localized_wfn_control_type), POINTER          :: localized_wfn_control
-      TYPE(mo_set_p_type), DIMENSION(:), POINTER         :: mos
+      TYPE(mo_set_type), DIMENSION(:), POINTER           :: mos
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
       TYPE(preconditioner_type), POINTER                 :: local_preconditioner
       TYPE(qs_kind_type), DIMENSION(:), POINTER          :: qs_kind_set
-      TYPE(qs_loc_env_new_type), POINTER                 :: qs_loc_env
+      TYPE(qs_loc_env_type), POINTER                     :: qs_loc_env
       TYPE(scf_control_type), POINTER                    :: scf_control
       TYPE(section_vals_type), POINTER                   :: loc_section, print_loc_section
 
@@ -470,7 +466,7 @@ CONTAINS
                        spin_channel=my_spin, scf_control=scf_control)
       CPASSERT(ASSOCIATED(excvec_overlap))
 
-      CALL get_mo_set(mos(my_spin)%mo_set, mo_coeff=mo_coeff, nao=nao, &
+      CALL get_mo_set(mos(my_spin), mo_coeff=mo_coeff, nao=nao, &
                       eigenvalues=eigenvalues)
 
       ALLOCATE (vecbuffer(1, nao))
@@ -514,7 +510,7 @@ CONTAINS
          ! Rotate the wfn to get the eigenstate of the KS hamiltonian
          ! Only ispin=1 should be needed
          DO ispin = 1, dft_control%nspins
-            CALL get_mo_set(mos(ispin)%mo_set, mo_coeff=mo_coeff, nmo=nmo, &
+            CALL get_mo_set(mos(ispin), mo_coeff=mo_coeff, nmo=nmo, &
                             eigenvalues=eigenvalues)
             CALL calculate_subspace_eigenvalues(mo_coeff, &
                                                 matrix_ks(ispin)%matrix, eigenvalues, &
@@ -554,7 +550,7 @@ CONTAINS
             xas_estate = my_state
          END DO !  istate
 
-         CALL get_mo_set(mos(my_spin)%mo_set, mo_coeff=mo_coeff)
+         CALL get_mo_set(mos(my_spin), mo_coeff=mo_coeff)
          CALL cp_fm_get_submatrix(mo_coeff, vecbuffer, 1, xas_estate, &
                                   nao, 1, transpose=.TRUE.)
          CALL cp_fm_set_submatrix(excvec_coeff, vecbuffer2, 1, 1, &
@@ -566,7 +562,7 @@ CONTAINS
       !Calculate the virtual states from the KS matrix matrix_ks(1)
       IF (nvirtual2 .GT. 0) THEN
          NULLIFY (mo_coeff)
-         CALL get_mo_set(mos(my_spin)%mo_set, mo_coeff=mo_coeff, nmo=nmo)
+         CALL get_mo_set(mos(my_spin), mo_coeff=mo_coeff, nmo=nmo)
          IF (output_unit > 0) THEN
             WRITE (UNIT=output_unit, FMT="(/,/,T2,A,I5,A,I6,A)") " Calculation of ", nvirtual2, &
                " additional virtual states of the subspace complementary to the "// &
@@ -585,7 +581,7 @@ CONTAINS
                                   matrix_s=matrix_s(1)%matrix, &
                                   matrix_t=kinetic(1)%matrix, &
                                   convert_precond_to_dbcsr=.TRUE., &
-                                  mo_set=mos(my_spin)%mo_set, energy_gap=0.2_dp)
+                                  mo_set=mos(my_spin), energy_gap=0.2_dp)
 
          CALL get_xas_env(xas_env=xas_env, unoccupied_orbs=uno_orbs, &
                           unoccupied_evals=uno_evals, unoccupied_eps=uno_eps, unoccupied_max_iter=uno_iter)
@@ -610,7 +606,7 @@ CONTAINS
          NULLIFY (all_vectors, all_evals)
          CALL get_xas_env(xas_env=xas_env, all_vectors=all_vectors, &
                           all_evals=all_evals)
-         CALL get_mo_set(mos(my_spin)%mo_set, eigenvalues=eigenvalues, mo_coeff=mo_coeff, &
+         CALL get_mo_set(mos(my_spin), eigenvalues=eigenvalues, mo_coeff=mo_coeff, &
                          nmo=nmo)
 
          CALL cp_fm_to_fm(mo_coeff, all_vectors, ncol=nmo, &
@@ -662,7 +658,7 @@ CONTAINS
       TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: matrix_ks
       TYPE(dft_control_type), POINTER                    :: dft_control
-      TYPE(mo_set_p_type), DIMENSION(:), POINTER         :: mos
+      TYPE(mo_set_type), DIMENSION(:), POINTER           :: mos
       TYPE(qs_scf_env_type), POINTER                     :: scf_env
       TYPE(scf_control_type), POINTER                    :: scf_control
       TYPE(section_vals_type), POINTER                   :: dft_section, scf_section, xas_section
@@ -694,8 +690,6 @@ CONTAINS
          IF (.NOT. ASSOCIATED(scf_env)) THEN
             CALL qs_scf_env_initialize(qs_env, scf_env, scf_control, scf_section)
             CALL set_xas_env(xas_env, scf_env=scf_env)
-            CALL scf_env_release(scf_env)
-            CALL get_xas_env(xas_env=xas_env, scf_env=scf_env)
          ELSE
             CALL qs_scf_env_initialize(qs_env, scf_env, scf_control, scf_section)
          END IF
@@ -714,7 +708,7 @@ CONTAINS
                "Get eigenstates and eigenvalues from ground state MOs"
          END IF
          DO ispin = 1, SIZE(mos)
-            CALL get_mo_set(mos(ispin)%mo_set, mo_coeff=mo_coeff, &
+            CALL get_mo_set(mos(ispin), mo_coeff=mo_coeff, &
                             eigenvalues=eigenvalues)
             CALL calculate_subspace_eigenvalues(mo_coeff, &
                                                 matrix_ks(ispin)%matrix, eigenvalues, &
@@ -723,7 +717,7 @@ CONTAINS
       END IF
       CALL get_xas_env(xas_env=xas_env, all_vectors=all_vectors, &
                        all_evals=all_evals, nvirtual2=nvirtual2)
-      CALL get_mo_set(mos(my_spin)%mo_set, eigenvalues=eigenvalues, mo_coeff=mo_coeff, nmo=nmo)
+      CALL get_mo_set(mos(my_spin), eigenvalues=eigenvalues, mo_coeff=mo_coeff, nmo=nmo)
 
       CALL cp_fm_to_fm(mo_coeff, all_vectors, ncol=nmo, &
                        source_start=1, target_start=1)

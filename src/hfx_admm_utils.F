@@ -85,7 +85,7 @@ MODULE hfx_admm_utils
                                               pw_env_type
    USE pw_poisson_types,                ONLY: pw_poisson_type
    USE pw_pool_types,                   ONLY: pw_pool_type
-   USE pw_types,                        ONLY: pw_p_type
+   USE pw_types,                        ONLY: pw_type
    USE qs_energy_types,                 ONLY: qs_energy_type
    USE qs_environment_types,            ONLY: get_qs_env,&
                                               qs_environment_type,&
@@ -101,7 +101,7 @@ MODULE hfx_admm_utils
    USE qs_mo_types,                     ONLY: allocate_mo_set,&
                                               get_mo_set,&
                                               init_mo_set,&
-                                              mo_set_p_type
+                                              mo_set_type
    USE qs_neighbor_list_types,          ONLY: neighbor_list_set_p_type,&
                                               release_neighbor_list_sets
    USE qs_neighbor_lists,               ONLY: atom2d_build,&
@@ -159,7 +159,7 @@ CONTAINS
       TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_type), POINTER                          :: mo_coeff_b
       TYPE(dft_control_type), POINTER                    :: dft_control
-      TYPE(mo_set_p_type), DIMENSION(:), POINTER         :: mos, mos_aux_fit
+      TYPE(mo_set_type), DIMENSION(:), POINTER           :: mos, mos_aux_fit
       TYPE(qs_kind_type), DIMENSION(:), POINTER          :: qs_kind_set
       TYPE(qs_ks_env_type), POINTER                      :: ks_env
       TYPE(qs_rho_type), POINTER                         :: rho
@@ -205,7 +205,9 @@ CONTAINS
          CALL admm_init_hamiltonians(admm_env, qs_env)
 
          !The aux_fit task list and densities
+         ALLOCATE (admm_env%rho_aux_fit)
          CALL qs_rho_create(admm_env%rho_aux_fit)
+         ALLOCATE (admm_env%rho_aux_fit_buffer)
          CALL qs_rho_create(admm_env%rho_aux_fit_buffer)
          CALL admm_update_s_mstruct(admm_env, qs_env)
          IF (admm_env%do_gapw) CALL update_admm_gapw(qs_env)
@@ -216,9 +218,8 @@ CONTAINS
          !The aux_fit MOs and derivatives
          ALLOCATE (mos_aux_fit(dft_control%nspins))
          DO ispin = 1, dft_control%nspins
-            CALL get_mo_set(mo_set=mos(ispin)%mo_set, nmo=nmo, nelectron=nelectron, maxocc=maxocc)
-            NULLIFY (mos_aux_fit(ispin)%mo_set)
-            CALL allocate_mo_set(mo_set=mos_aux_fit(ispin)%mo_set, &
+            CALL get_mo_set(mo_set=mos(ispin), nmo=nmo, nelectron=nelectron, maxocc=maxocc)
+            CALL allocate_mo_set(mo_set=mos_aux_fit(ispin), &
                                  nao=nao_aux_fit, &
                                  nmo=nmo, &
                                  nelectron=nelectron, &
@@ -229,21 +230,20 @@ CONTAINS
          admm_env%mos_aux_fit => mos_aux_fit
 
          DO ispin = 1, dft_control%nspins
-            CALL get_mo_set(mo_set=mos(ispin)%mo_set, nmo=nmo)
+            CALL get_mo_set(mo_set=mos(ispin), nmo=nmo)
             CALL cp_fm_struct_create(aux_fit_fm_struct, context=blacs_env, para_env=para_env, &
                                      nrow_global=nao_aux_fit, ncol_global=nmo)
-            CALL get_mo_set(mos_aux_fit(ispin)%mo_set, mo_coeff=mo_coeff_aux_fit, mo_coeff_b=mo_coeff_b)
+            CALL get_mo_set(mos_aux_fit(ispin), mo_coeff=mo_coeff_aux_fit, mo_coeff_b=mo_coeff_b)
             IF (.NOT. ASSOCIATED(mo_coeff_aux_fit)) THEN
-               CALL init_mo_set(mos_aux_fit(ispin)%mo_set, fm_struct=aux_fit_fm_struct, &
-                                name="qs_env"//TRIM(ADJUSTL(cp_to_string(qs_env%id_nr)))// &
-                                "%mo_aux_fit"//TRIM(ADJUSTL(cp_to_string(ispin))))
+               CALL init_mo_set(mos_aux_fit(ispin), fm_struct=aux_fit_fm_struct, &
+                                name="qs_env%mo_aux_fit"//TRIM(ADJUSTL(cp_to_string(ispin))))
             END IF
             CALL cp_fm_struct_release(aux_fit_fm_struct)
 
             IF (.NOT. ASSOCIATED(mo_coeff_b)) THEN
-               CALL cp_fm_get_info(mos_aux_fit(ispin)%mo_set%mo_coeff, ncol_global=nmo)
-               CALL dbcsr_init_p(mos_aux_fit(ispin)%mo_set%mo_coeff_b)
-               CALL cp_dbcsr_m_by_n_from_row_template(mos_aux_fit(ispin)%mo_set%mo_coeff_b, &
+               CALL cp_fm_get_info(mos_aux_fit(ispin)%mo_coeff, ncol_global=nmo)
+               CALL dbcsr_init_p(mos_aux_fit(ispin)%mo_coeff_b)
+               CALL cp_dbcsr_m_by_n_from_row_template(mos_aux_fit(ispin)%mo_coeff_b, &
                                                       template=admm_env%matrix_s_aux_fit(1)%matrix, &
                                                       n=nmo, sym=dbcsr_type_no_symmetry)
             END IF
@@ -252,9 +252,8 @@ CONTAINS
          IF (qs_env%requires_mo_derivs) THEN
             ALLOCATE (admm_env%mo_derivs_aux_fit(dft_control%nspins))
             DO ispin = 1, dft_control%nspins
-               CALL get_mo_set(admm_env%mos_aux_fit(ispin)%mo_set, mo_coeff=mo_coeff_aux_fit)
-               ALLOCATE (admm_env%mo_derivs_aux_fit(ispin)%matrix)
-               CALL cp_fm_create(admm_env%mo_derivs_aux_fit(ispin)%matrix, mo_coeff_aux_fit%matrix_struct)
+               CALL get_mo_set(admm_env%mos_aux_fit(ispin), mo_coeff=mo_coeff_aux_fit)
+               CALL cp_fm_create(admm_env%mo_derivs_aux_fit(ispin), mo_coeff_aux_fit%matrix_struct)
             END DO
          END IF
 
@@ -723,7 +722,7 @@ CONTAINS
       TYPE(qs_rho_type), POINTER                         :: rho
       TYPE(qs_energy_type), POINTER                      :: energy
       LOGICAL, INTENT(in)                                :: calculate_forces, just_energy
-      TYPE(pw_p_type), DIMENSION(:), POINTER             :: v_rspace_new, v_tau_rspace
+      TYPE(pw_type), DIMENSION(:), POINTER               :: v_rspace_new, v_tau_rspace
 
       CHARACTER(LEN=*), PARAMETER                        :: routineN = 'hfx_ks_matrix'
 
@@ -742,7 +741,7 @@ CONTAINS
                                                             rho_ao_orb
       TYPE(dft_control_type), POINTER                    :: dft_control
       TYPE(hfx_type), DIMENSION(:, :), POINTER           :: x_data
-      TYPE(mo_set_p_type), DIMENSION(:), POINTER         :: mo_array
+      TYPE(mo_set_type), DIMENSION(:), POINTER           :: mo_array
       TYPE(pw_env_type), POINTER                         :: pw_env
       TYPE(pw_poisson_type), POINTER                     :: poisson_env
       TYPE(pw_pool_type), POINTER                        :: auxbas_pw_pool

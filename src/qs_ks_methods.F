@@ -86,7 +86,6 @@ MODULE qs_ks_methods
                                               REALDATA3D,&
                                               REALSPACE,&
                                               RECIPROCALSPACE,&
-                                              pw_p_type,&
                                               pw_release,&
                                               pw_type
    USE qmmm_image_charge,               ONLY: add_image_pot_to_hartree_pot,&
@@ -119,7 +118,7 @@ MODULE qs_ks_methods
         sic_explicit_orbitals, sum_up_and_integrate
    USE qs_local_rho_types,              ONLY: local_rho_type
    USE qs_mo_types,                     ONLY: get_mo_set,&
-                                              mo_set_p_type
+                                              mo_set_type
    USE qs_neighbor_list_types,          ONLY: neighbor_list_set_p_type
    USE qs_rho0_ggrid,                   ONLY: integrate_vhg0_rspace
    USE qs_rho_types,                    ONLY: qs_rho_get,&
@@ -204,12 +203,12 @@ CONTAINS
       TYPE(lri_environment_type), POINTER                :: lri_env
       TYPE(lri_kind_type), DIMENSION(:), POINTER         :: lri_v_int
       TYPE(pw_env_type), POINTER                         :: pw_env
-      TYPE(pw_p_type), DIMENSION(:), POINTER             :: rho_r, v_rspace_embed, v_rspace_new, &
-                                                            v_rspace_new_aux_fit, v_tau_rspace, &
-                                                            v_tau_rspace_aux_fit
       TYPE(pw_poisson_type), POINTER                     :: poisson_env
       TYPE(pw_pool_type), POINTER                        :: auxbas_pw_pool
       TYPE(pw_type)                                      :: rho_tot_gspace, v_hartree_gspace
+      TYPE(pw_type), DIMENSION(:), POINTER               :: rho_r, v_rspace_embed, v_rspace_new, &
+                                                            v_rspace_new_aux_fit, v_tau_rspace, &
+                                                            v_tau_rspace_aux_fit
       TYPE(pw_type), POINTER :: rho0_s_rs, rho_core, rho_nlcc, v_efield_rspace, v_hartree_rspace, &
          v_sccs_rspace, v_sic_rspace, v_spin_ddapc_rest_r, vee, vppl_rspace
       TYPE(qs_energy_type), POINTER                      :: energy
@@ -460,7 +459,7 @@ CONTAINS
          ! Compute the energy due to the external potential
          ee_ener = 0.0_dp
          DO ispin = 1, nspins
-            ee_ener = ee_ener + pw_integral_ab(rho_r(ispin)%pw, vee)
+            ee_ener = ee_ener + pw_integral_ab(rho_r(ispin), vee)
          END DO
          IF (.NOT. just_energy) THEN
             IF (gapw) THEN
@@ -616,14 +615,14 @@ CONTAINS
       IF (do_ppl .AND. calculate_forces) THEN
          CPASSERT(.NOT. gapw)
          DO ispin = 1, nspins
-            CALL integrate_ppl_rspace(rho_r(ispin)%pw, qs_env)
+            CALL integrate_ppl_rspace(rho_r(ispin), qs_env)
          END DO
       END IF
 
       IF (ASSOCIATED(rho_nlcc) .AND. calculate_forces) THEN
          DO ispin = 1, nspins
-            CALL integrate_rho_nlcc(v_rspace_new(ispin)%pw, qs_env)
-            IF (dft_control%do_admm) CALL integrate_rho_nlcc(v_rspace_new_aux_fit(ispin)%pw, qs_env)
+            CALL integrate_rho_nlcc(v_rspace_new(ispin), qs_env)
+            IF (dft_control%do_admm) CALL integrate_rho_nlcc(v_rspace_new_aux_fit(ispin), qs_env)
          END DO
       END IF
 
@@ -750,16 +749,14 @@ CONTAINS
             END DO
             IF (cdft_control%atomic_charges) THEN
                DO iatom = 1, cdft_control%natoms
-                  CALL pw_pool_give_back_pw(auxbas_pw_pool, cdft_control%charge(iatom)%pw)
-                  DEALLOCATE (cdft_control%charge(iatom)%pw)
+                  CALL pw_pool_give_back_pw(auxbas_pw_pool, cdft_control%charge(iatom))
                END DO
                DEALLOCATE (cdft_control%charge)
             END IF
             IF (cdft_control%type == outer_scf_becke_constraint .AND. &
                 cdft_control%becke_control%cavity_confine) THEN
                IF (.NOT. ASSOCIATED(cdft_control%becke_control%cavity_mat)) THEN
-                  CALL pw_pool_give_back_pw(auxbas_pw_pool, cdft_control%becke_control%cavity%pw)
-                  DEALLOCATE (cdft_control%becke_control%cavity%pw)
+                  CALL pw_pool_give_back_pw(auxbas_pw_pool, cdft_control%becke_control%cavity)
                ELSE
                   DEALLOCATE (cdft_control%becke_control%cavity_mat)
                END IF
@@ -872,7 +869,7 @@ CONTAINS
          ecore_ppl = 0._dp
          DO ispin = 1, nspins
             ecore_ppl = ecore_ppl + &
-                        SUM(vppl_rspace%cr3d*rho_r(ispin)%pw%cr3d)*vppl_rspace%pw_grid%dvol
+                        SUM(vppl_rspace%cr3d*rho_r(ispin)%cr3d)*vppl_rspace%pw_grid%dvol
          END DO
          CALL mp_sum(ecore_ppl, para_env%group)
          energy%core = energy%core + ecore_ppl
@@ -899,7 +896,7 @@ CONTAINS
                      energy%dft_plus_u + energy%kTS + &
                      energy%efield + energy%efield_core + energy%ee + &
                      energy%ee_core + energy%exc_aux_fit + energy%image_charge + &
-                     energy%sccs_pol + energy%sccs_mpc + energy%cdft + energy%exc1_aux_fit
+                     energy%sccs_pol + energy%cdft + energy%exc1_aux_fit
 
       IF (dft_control%apply_embed_pot) energy%total = energy%total + energy%embed_corr
 
@@ -931,7 +928,7 @@ CONTAINS
       INTEGER                                            :: ispin
       LOGICAL                                            :: my_skip
       TYPE(dft_control_type), POINTER                    :: dft_control
-      TYPE(pw_p_type), DIMENSION(:), POINTER             :: rho_g
+      TYPE(pw_type), DIMENSION(:), POINTER               :: rho_g
       TYPE(pw_type), POINTER                             :: rho0_s_gs, rho_core
       TYPE(qs_charges_type), POINTER                     :: qs_charges
 
@@ -956,13 +953,13 @@ CONTAINS
             CALL pw_copy(rho_core, rho_tot_gspace)
          END IF
          DO ispin = 1, dft_control%nspins
-            CALL pw_axpy(rho_g(ispin)%pw, rho_tot_gspace)
+            CALL pw_axpy(rho_g(ispin), rho_tot_gspace)
          END DO
          CALL get_qs_env(qs_env=qs_env, qs_charges=qs_charges)
          qs_charges%total_rho_gspace = pw_integrate_function(rho_tot_gspace, isign=-1)
       ELSE
          DO ispin = 1, dft_control%nspins
-            CALL pw_axpy(rho_g(ispin)%pw, rho_tot_gspace)
+            CALL pw_axpy(rho_g(ispin), rho_tot_gspace)
          END DO
       END IF
 
@@ -989,7 +986,7 @@ CONTAINS
       TYPE(dbcsr_type)                                   :: mo_derivs2_tmp1, mo_derivs2_tmp2
       TYPE(dbcsr_type), POINTER                          :: mo_coeff_b
       TYPE(dft_control_type), POINTER                    :: dft_control
-      TYPE(mo_set_p_type), DIMENSION(:), POINTER         :: mo_array
+      TYPE(mo_set_type), DIMENSION(:), POINTER           :: mo_array
 
       NULLIFY (dft_control, mo_array, mo_coeff, mo_coeff_b, occupation_numbers)
 
@@ -999,7 +996,7 @@ CONTAINS
 
       DO ispin = 1, SIZE(mo_derivs)
 
-         CALL get_mo_set(mo_set=mo_array(ispin)%mo_set, mo_coeff=mo_coeff, &
+         CALL get_mo_set(mo_set=mo_array(ispin), mo_coeff=mo_coeff, &
                          mo_coeff_b=mo_coeff_b, occupation_numbers=occupation_numbers)
          CALL dbcsr_multiply('n', 'n', 1.0_dp, ks_matrix(ispin)%matrix, mo_coeff_b, &
                              0.0_dp, mo_derivs(ispin)%matrix)
@@ -1012,14 +1009,14 @@ CONTAINS
 
             ! uniform_occupation is needed for this case, otherwise we can no
             ! reconstruct things in ot, since we irreversibly sum
-            CALL get_mo_set(mo_set=mo_array(1)%mo_set, uniform_occupation=uniform_occupation)
+            CALL get_mo_set(mo_set=mo_array(1), uniform_occupation=uniform_occupation)
             CPASSERT(uniform_occupation)
-            CALL get_mo_set(mo_set=mo_array(2)%mo_set, uniform_occupation=uniform_occupation)
+            CALL get_mo_set(mo_set=mo_array(2), uniform_occupation=uniform_occupation)
             CPASSERT(uniform_occupation)
 
             ! The beta-spin might have fewer orbitals than alpa-spin...
             ! create tempoary matrices with beta_nmo columns
-            CALL get_mo_set(mo_set=mo_array(2)%mo_set, mo_coeff_b=mo_coeff_b)
+            CALL get_mo_set(mo_set=mo_array(2), mo_coeff_b=mo_coeff_b)
             CALL dbcsr_create(mo_derivs2_tmp1, template=mo_coeff_b)
 
             ! calculate beta derivatives
@@ -1031,9 +1028,9 @@ CONTAINS
 
             ! copy into larger matrix, fills the first beta_nmo columns
             CALL dbcsr_copy_columns_hack(mo_derivs2_tmp2, mo_derivs2_tmp1, &
-                                         mo_array(2)%mo_set%nmo, 1, 1, &
-                                         para_env=mo_array(1)%mo_set%mo_coeff%matrix_struct%para_env, &
-                                         blacs_env=mo_array(1)%mo_set%mo_coeff%matrix_struct%context)
+                                         mo_array(2)%nmo, 1, 1, &
+                                         para_env=mo_array(1)%mo_coeff%matrix_struct%para_env, &
+                                         blacs_env=mo_array(1)%mo_coeff%matrix_struct%context)
 
             ! add beta contribution to alpa mo_derivs
             CALL dbcsr_add(mo_derivs(1)%matrix, mo_derivs2_tmp2, 1.0_dp, 1.0_dp)

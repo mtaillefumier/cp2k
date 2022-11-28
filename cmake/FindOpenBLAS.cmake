@@ -1,9 +1,9 @@
-# --------------------------------------------------------------------------------------------------
-# CP2K: A general program to perform molecular dynamics simulations Copyright
-# 2000-2022 CP2K developers group <https://cp2k.org>
-#
-# SPDX-License-Identifier: GPL-2.0-or-later
-# --------------------------------------------------------------------------------------------------
+#!-------------------------------------------------------------------------------------------------!
+#!   CP2K: A general program to perform molecular dynamics simulations                             !
+#!   Copyright 2000-2022 CP2K developers group <https://cp2k.org>                                  !
+#!                                                                                                 !
+#!   SPDX-License-Identifier: GPL-2.0-or-later                                                     !
+#!-------------------------------------------------------------------------------------------------!
 
 # Copyright (c) 2022- ETH Zurich
 #
@@ -17,7 +17,7 @@ find_package(PkgConfig)
 cp2k_set_default_paths(OPENBLAS "OpenBLAS")
 
 if(PKG_CONFIG_FOUND)
-  pkg_check_modules(CP2K_OPENBLAS openblas)
+  pkg_check_modules(CP2K_OPENBLAS IMPORTED_TARGET GLOBAL openblas)
 endif()
 
 # try the openblas module of openblas library Maybe we are lucky it is installed

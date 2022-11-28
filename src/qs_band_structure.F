@@ -78,7 +78,6 @@ CONTAINS
       TYPE(qs_environment_type), POINTER                 :: qs_env
 
       LOGICAL                                            :: do_kpoints, explicit
-      TYPE(qs_environment_type), POINTER                 :: qs_env_kp
       TYPE(section_vals_type), POINTER                   :: bs_input
 
       bs_input => section_vals_get_subs_vals(qs_env%input, "DFT%PRINT%BAND_STRUCTURE")
@@ -88,10 +87,13 @@ CONTAINS
          IF (do_kpoints) THEN
             CALL do_calculate_band_structure(qs_env)
          ELSE
-            NULLIFY (qs_env_kp)
-            CALL create_kp_from_gamma(qs_env, qs_env_kp)
-            CALL do_calculate_band_structure(qs_env_kp)
-            CALL qs_env_release(qs_env_kp)
+            BLOCK
+               TYPE(qs_environment_type), POINTER :: qs_env_kp
+               CALL create_kp_from_gamma(qs_env, qs_env_kp)
+               CALL do_calculate_band_structure(qs_env_kp)
+               CALL qs_env_release(qs_env_kp)
+               DEALLOCATE (qs_env_kp)
+            END BLOCK
          END IF
       END IF
 
@@ -219,7 +221,7 @@ CONTAINS
             CALL get_qs_env(qs_env, dft_control=dft_control)
             nspins = dft_control%nspins
             kp => kpoint%kp_env(1)%kpoint_env
-            CALL get_mo_set(kp%mos(1, 1)%mo_set, nmo=nmo)
+            CALL get_mo_set(kp%mos(1, 1), nmo=nmo)
             ALLOCATE (eigval(nmo), occnum(nmo))
             CALL get_kpoint_info(kpoint, nkp=nkp, kp_range=kp_range, xkp=xkp, wkp=wkp)
 
@@ -248,7 +250,7 @@ CONTAINS
                   IF (my_kpgrp) THEN
                      ikpgr = ik - kp_range(1) + 1
                      kp => kpoint%kp_env(ikpgr)%kpoint_env
-                     CALL get_mo_set(kp%mos(1, ispin)%mo_set, eigenvalues=eigenvalues, occupation_numbers=occupation_numbers)
+                     CALL get_mo_set(kp%mos(1, ispin), eigenvalues=eigenvalues, occupation_numbers=occupation_numbers)
                      eigval(1:nmo) = eigenvalues(1:nmo)
                      occnum(1:nmo) = occupation_numbers(1:nmo)
                   ELSE

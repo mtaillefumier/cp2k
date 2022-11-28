@@ -16,6 +16,9 @@ MODULE ec_methods
    USE cp_blacs_env,                    ONLY: cp_blacs_env_type
    USE cp_control_types,                ONLY: dft_control_type
    USE cp_dbcsr_operations,             ONLY: cp_dbcsr_m_by_n_from_row_template
+   USE cp_fm_struct,                    ONLY: cp_fm_struct_create,&
+                                              cp_fm_struct_release,&
+                                              cp_fm_struct_type
    USE cp_fm_types,                     ONLY: cp_fm_get_info,&
                                               cp_fm_type
    USE cp_log_handling,                 ONLY: cp_to_string
@@ -28,20 +31,18 @@ MODULE ec_methods
    USE pw_env_types,                    ONLY: pw_env_get,&
                                               pw_env_type
    USE pw_pool_types,                   ONLY: pw_pool_type
-   USE pw_types,                        ONLY: pw_p_type
+   USE pw_types,                        ONLY: pw_type
    USE qs_environment_types,            ONLY: get_qs_env,&
                                               qs_environment_type,&
                                               set_qs_env
    USE qs_kind_types,                   ONLY: get_qs_kind_set,&
                                               qs_kind_type
-   USE qs_matrix_pools,                 ONLY: mpools_create,&
-                                              mpools_rebuild_fm_pools,&
-                                              mpools_release,&
+   USE qs_matrix_pools,                 ONLY: mpools_release,&
                                               qs_matrix_pools_type
    USE qs_mo_types,                     ONLY: allocate_mo_set,&
                                               get_mo_set,&
                                               init_mo_set,&
-                                              mo_set_p_type
+                                              mo_set_type
    USE qs_rho_types,                    ONLY: qs_rho_get,&
                                               qs_rho_type
    USE xc,                              ONLY: xc_calc_2nd_deriv,&
@@ -85,9 +86,9 @@ CONTAINS
    SUBROUTINE create_kernel(qs_env, vxc, vxc_tau, rho, rho1_r, rho1_g, tau1_r, xc_section, compute_virial, virial_xc)
 
       TYPE(qs_environment_type), POINTER                 :: qs_env
-      TYPE(pw_p_type), DIMENSION(:), POINTER             :: vxc, vxc_tau
+      TYPE(pw_type), DIMENSION(:), POINTER               :: vxc, vxc_tau
       TYPE(qs_rho_type), INTENT(IN), POINTER             :: rho
-      TYPE(pw_p_type), DIMENSION(:), INTENT(IN), POINTER :: rho1_r, rho1_g, tau1_r
+      TYPE(pw_type), DIMENSION(:), INTENT(IN), POINTER   :: rho1_r, rho1_g, tau1_r
       TYPE(section_vals_type), INTENT(IN), POINTER       :: xc_section
       LOGICAL, INTENT(IN), OPTIONAL                      :: compute_virial
       REAL(KIND=dp), DIMENSION(3, 3), INTENT(INOUT), &
@@ -97,8 +98,8 @@ CONTAINS
 
       INTEGER                                            :: handle
       TYPE(pw_env_type), POINTER                         :: pw_env
-      TYPE(pw_p_type), DIMENSION(:), POINTER             :: rho_r, tau_r
       TYPE(pw_pool_type), POINTER                        :: auxbas_pw_pool
+      TYPE(pw_type), DIMENSION(:), POINTER               :: rho_r, tau_r
       TYPE(xc_derivative_set_type)                       :: deriv_set
       TYPE(xc_rho_set_type)                              :: rho_set
 
@@ -155,18 +156,19 @@ CONTAINS
       TYPE(qs_environment_type), POINTER                 :: qs_env
       TYPE(dbcsr_type)                                   :: matrix_s
 
-      CHARACTER(len=*), PARAMETER :: routineN = 'ec_mos_init', routineP = moduleN//':'//routineN
+      CHARACTER(len=*), PARAMETER                        :: routineN = 'ec_mos_init'
 
       INTEGER                                            :: handle, ispin, multiplicity, n_ao, &
                                                             nelectron, nmo, nspins
       INTEGER, DIMENSION(2)                              :: n_mo, nelectron_spin
       REAL(dp)                                           :: maxocc
       TYPE(cp_blacs_env_type), POINTER                   :: blacs_env
+      TYPE(cp_fm_struct_type), POINTER                   :: fm_struct
       TYPE(cp_fm_type), POINTER                          :: mo_coeff
       TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_type), POINTER                          :: mo_coeff_b
       TYPE(dft_control_type), POINTER                    :: dft_control
-      TYPE(mo_set_p_type), DIMENSION(:), POINTER         :: mos
+      TYPE(mo_set_type), DIMENSION(:), POINTER           :: mos
       TYPE(qs_kind_type), DIMENSION(:), POINTER          :: qs_kind_set
       TYPE(qs_matrix_pools_type), POINTER                :: my_mpools
 
@@ -224,8 +226,7 @@ CONTAINS
       ! Allocate MO set
       ALLOCATE (mos(nspins))
       DO ispin = 1, nspins
-         NULLIFY (mos(ispin)%mo_set)
-         CALL allocate_mo_set(mo_set=mos(ispin)%mo_set, &
+         CALL allocate_mo_set(mo_set=mos(ispin), &
                               nao=n_ao, &
                               nmo=n_mo(ispin), &
                               nelectron=nelectron_spin(ispin), &
@@ -236,30 +237,27 @@ CONTAINS
 
       CALL set_qs_env(qs_env, mos=mos)
 
-      ! init pools
-      NULLIFY (my_mpools)
-      CALL mpools_create(mpools=my_mpools)
-      CALL mpools_rebuild_fm_pools(mpools=my_mpools, &
-                                   mos=mos, &
-                                   blacs_env=blacs_env, &
-                                   para_env=para_env)
-
       ! finish initialization of the MOs
-      CPASSERT(ASSOCIATED(mos))
       NULLIFY (mo_coeff, mo_coeff_b)
       DO ispin = 1, SIZE(mos)
-         CALL get_mo_set(mos(ispin)%mo_set, mo_coeff=mo_coeff, mo_coeff_b=mo_coeff_b)
+         CALL get_mo_set(mos(ispin), mo_coeff=mo_coeff, mo_coeff_b=mo_coeff_b, &
+                         nmo=nmo, nao=n_ao)
+
          IF (.NOT. ASSOCIATED(mo_coeff)) THEN
-            CALL init_mo_set(mos(ispin)%mo_set, &
-                             fm_pool=my_mpools%ao_mo_fm_pools(ispin)%pool, &
-                             name="qs_env"//TRIM(ADJUSTL(cp_to_string(qs_env%id_nr)))// &
-                             "%mo"//TRIM(ADJUSTL(cp_to_string(ispin))))
+            CALL cp_fm_struct_create(fm_struct, nrow_global=n_ao, &
+                                     ncol_global=nmo, para_env=para_env, &
+                                     context=blacs_env)
+
+            CALL init_mo_set(mos(ispin), &
+                             fm_struct=fm_struct, &
+                             name="qs_env%mo"//TRIM(ADJUSTL(cp_to_string(ispin))))
+            CALL cp_fm_struct_release(fm_struct)
          END IF
 
          IF (.NOT. ASSOCIATED(mo_coeff_b)) THEN
-            CALL cp_fm_get_info(mos(ispin)%mo_set%mo_coeff, ncol_global=nmo)
-            CALL dbcsr_init_p(mos(ispin)%mo_set%mo_coeff_b)
-            CALL cp_dbcsr_m_by_n_from_row_template(mos(ispin)%mo_set%mo_coeff_b, &
+            CALL cp_fm_get_info(mos(ispin)%mo_coeff, ncol_global=nmo)
+            CALL dbcsr_init_p(mos(ispin)%mo_coeff_b)
+            CALL cp_dbcsr_m_by_n_from_row_template(mos(ispin)%mo_coeff_b, &
                                                    template=matrix_s, &
                                                    n=nmo, &
                                                    sym=dbcsr_type_no_symmetry)

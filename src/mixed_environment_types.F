@@ -25,7 +25,6 @@ MODULE mixed_environment_types
    USE cp_result_types,                 ONLY: cp_result_type
    USE cp_subsys_types,                 ONLY: cp_subsys_get,&
                                               cp_subsys_release,&
-                                              cp_subsys_retain,&
                                               cp_subsys_set,&
                                               cp_subsys_type
    USE distribution_1d_types,           ONLY: distribution_1d_type
@@ -64,7 +63,6 @@ MODULE mixed_environment_types
 !>      12/15-12/16 Mixed CDFT [Nico Holmberg]
 ! **************************************************************************************************
    TYPE mixed_environment_type
-      INTEGER                                          :: id_nr, ref_count
       TYPE(cell_type), POINTER                         :: cell_ref
       TYPE(mixed_energy_type), POINTER                 :: mixed_energy
       TYPE(cp_para_env_type), POINTER                  :: para_env
@@ -91,17 +89,6 @@ MODULE mixed_environment_types
       TYPE(qs_rho_p_type), DIMENSION(:), ALLOCATABLE   :: subsys_dens
    END TYPE mixed_environment_type
 
-! **************************************************************************************************
-!> \brief to build arrays of pointers
-!> \param mixed_env the pointer to the mixed_env
-!> \par History
-!>      11/06
-!> \author fschiff
-! **************************************************************************************************
-   TYPE mixed_environment_p_type
-      TYPE(mixed_environment_type), POINTER :: mixed_env
-   END TYPE mixed_environment_p_type
-
 ! *** Public data types ***
 
    PUBLIC :: mixed_environment_type
@@ -111,11 +98,9 @@ MODULE mixed_environment_types
    PUBLIC :: get_mixed_env, &
              set_mixed_env, &
              mixed_env_create, &
-             mixed_env_release, &
-             mixed_env_retain
+             mixed_env_release
 
    CHARACTER(len=*), PARAMETER, PRIVATE :: moduleN = 'mixed_environment_types'
-   INTEGER, PRIVATE, SAVE :: last_mixed_env_id_nr = 0
 
 CONTAINS
 
@@ -198,8 +183,8 @@ CONTAINS
 ! **************************************************************************************************
    SUBROUTINE init_mixed_env(mixed_env, para_env)
 
-      TYPE(mixed_environment_type), INTENT(OUT)          :: mixed_env
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mixed_environment_type), INTENT(INOUT)        :: mixed_env
+      TYPE(cp_para_env_type), INTENT(IN), POINTER        :: para_env
 
       NULLIFY (mixed_env%input)
       NULLIFY (mixed_env%cell_ref)
@@ -219,9 +204,6 @@ CONTAINS
       mixed_env%et_freq = -1
       CALL cp_para_env_retain(para_env)
       mixed_env%para_env => para_env
-      mixed_env%ref_count = 1
-      last_mixed_env_id_nr = last_mixed_env_id_nr + 1
-      mixed_env%id_nr = last_mixed_env_id_nr
 
    END SUBROUTINE init_mixed_env
 
@@ -246,7 +228,7 @@ CONTAINS
                             molecule_set, cell_ref, mixed_energy, subsys, &
                             input, sub_para_env, cdft_control)
 
-      TYPE(mixed_environment_type), POINTER              :: mixed_env
+      TYPE(mixed_environment_type), INTENT(INOUT)        :: mixed_env
       TYPE(atomic_kind_type), OPTIONAL, POINTER          :: atomic_kind_set(:)
       TYPE(particle_type), OPTIONAL, POINTER             :: particle_set(:)
       TYPE(distribution_1d_type), OPTIONAL, POINTER      :: local_particles, local_molecules
@@ -265,8 +247,6 @@ CONTAINS
       TYPE(molecule_list_type), POINTER                  :: molecules
       TYPE(particle_list_type), POINTER                  :: particles
 
-      CPASSERT(mixed_env%ref_count > 0)
-
       IF (PRESENT(cell_ref)) THEN
          CALL cell_retain(cell_ref)
          CALL cell_release(mixed_env%cell_ref)
@@ -279,8 +259,11 @@ CONTAINS
       END IF
       IF (PRESENT(mixed_energy)) mixed_env%mixed_energy => mixed_energy
       IF (PRESENT(subsys)) THEN
-         CALL cp_subsys_retain(subsys)
-         CALL cp_subsys_release(mixed_env%subsys)
+         IF (ASSOCIATED(mixed_env%subsys)) THEN
+         IF (.NOT. ASSOCIATED(mixed_env%subsys, subsys)) THEN
+            CALL cp_subsys_release(mixed_env%subsys)
+         END IF
+         END IF
          mixed_env%subsys => subsys
       END IF
       IF (PRESENT(sub_para_env)) THEN
@@ -329,25 +312,11 @@ CONTAINS
 !> \author fschiff 11.06
 ! **************************************************************************************************
    SUBROUTINE mixed_env_create(mixed_env, para_env)
-      TYPE(mixed_environment_type), POINTER              :: mixed_env
+      TYPE(mixed_environment_type), INTENT(OUT)          :: mixed_env
       TYPE(cp_para_env_type), POINTER                    :: para_env
 
-      ALLOCATE (mixed_env)
       CALL init_mixed_env(mixed_env, para_env=para_env)
    END SUBROUTINE mixed_env_create
-
-! **************************************************************************************************
-!> \brief retains the given mixed_env (see doc/ReferenceCounting.html)
-!> \param mixed_env the object to retain
-!> \author fschiff 11.06
-! **************************************************************************************************
-   SUBROUTINE mixed_env_retain(mixed_env)
-      TYPE(mixed_environment_type), POINTER              :: mixed_env
-
-      CPASSERT(ASSOCIATED(mixed_env))
-      CPASSERT(mixed_env%ref_count > 0)
-      mixed_env%ref_count = mixed_env%ref_count + 1
-   END SUBROUTINE mixed_env_retain
 
 ! **************************************************************************************************
 !> \brief releases the given mixed_env (see doc/ReferenceCounting.html)
@@ -355,46 +324,38 @@ CONTAINS
 !> \author fschiff 11.06
 ! **************************************************************************************************
    SUBROUTINE mixed_env_release(mixed_env)
-      TYPE(mixed_environment_type), POINTER              :: mixed_env
+      TYPE(mixed_environment_type), INTENT(INOUT)        :: mixed_env
 
       INTEGER                                            :: i, ngroups
 
-      IF (ASSOCIATED(mixed_env)) THEN
-         CPASSERT(mixed_env%ref_count > 0)
-         mixed_env%ref_count = mixed_env%ref_count - 1
-         IF (mixed_env%ref_count < 1) THEN
-            ngroups = SIZE(mixed_env%sub_para_env)
-            DO i = 1, ngroups
-               IF (ASSOCIATED(mixed_env%sub_para_env(i)%para_env)) THEN
-                  CALL cp_logger_release(mixed_env%sub_logger(i)%p)
-                  CALL cp_para_env_release(mixed_env%sub_para_env(i)%para_env)
-               END IF
-            END DO
-            DEALLOCATE (mixed_env%sub_para_env)
-            DEALLOCATE (mixed_env%sub_logger)
-            DEALLOCATE (mixed_env%energies)
-            IF (ASSOCIATED(mixed_env%par)) THEN
-               DEALLOCATE (mixed_env%par)
-            END IF
-            IF (ASSOCIATED(mixed_env%val)) THEN
-               DEALLOCATE (mixed_env%val)
-            END IF
-            CALL cell_release(mixed_env%cell_ref)
-            CALL cp_para_env_release(mixed_env%para_env)
-            CALL deallocate_mixed_energy(mixed_env%mixed_energy)
-            CALL cp_subsys_release(mixed_env%subsys)
-            CALL section_vals_release(mixed_env%input)
-            IF (ASSOCIATED(mixed_env%group_distribution)) THEN
-               DEALLOCATE (mixed_env%group_distribution)
-            END IF
-            IF (ASSOCIATED(mixed_env%cdft_control)) &
-               CALL mixed_cdft_type_release(mixed_env%cdft_control)
-            IF (ASSOCIATED(mixed_env%strength)) &
-               DEALLOCATE (mixed_env%strength)
-            DEALLOCATE (mixed_env)
+      ngroups = SIZE(mixed_env%sub_para_env)
+      DO i = 1, ngroups
+         IF (ASSOCIATED(mixed_env%sub_para_env(i)%para_env)) THEN
+            CALL cp_logger_release(mixed_env%sub_logger(i)%p)
+            CALL cp_para_env_release(mixed_env%sub_para_env(i)%para_env)
          END IF
+      END DO
+      DEALLOCATE (mixed_env%sub_para_env)
+      DEALLOCATE (mixed_env%sub_logger)
+      DEALLOCATE (mixed_env%energies)
+      IF (ASSOCIATED(mixed_env%par)) THEN
+         DEALLOCATE (mixed_env%par)
       END IF
-      NULLIFY (mixed_env)
+      IF (ASSOCIATED(mixed_env%val)) THEN
+         DEALLOCATE (mixed_env%val)
+      END IF
+      CALL cell_release(mixed_env%cell_ref)
+      CALL cp_para_env_release(mixed_env%para_env)
+      CALL deallocate_mixed_energy(mixed_env%mixed_energy)
+      CALL cp_subsys_release(mixed_env%subsys)
+      CALL section_vals_release(mixed_env%input)
+      IF (ASSOCIATED(mixed_env%group_distribution)) THEN
+         DEALLOCATE (mixed_env%group_distribution)
+      END IF
+      IF (ASSOCIATED(mixed_env%cdft_control)) &
+         CALL mixed_cdft_type_release(mixed_env%cdft_control)
+      IF (ASSOCIATED(mixed_env%strength)) &
+         DEALLOCATE (mixed_env%strength)
 
    END SUBROUTINE mixed_env_release
 

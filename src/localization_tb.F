@@ -47,14 +47,14 @@ MODULE localization_tb
    USE qs_loc_dipole,                   ONLY: loc_dipole
    USE qs_loc_states,                   ONLY: get_localization_info
    USE qs_loc_types,                    ONLY: qs_loc_env_create,&
-                                              qs_loc_env_destroy,&
-                                              qs_loc_env_new_type
+                                              qs_loc_env_release,&
+                                              qs_loc_env_type
    USE qs_loc_utils,                    ONLY: loc_write_restart,&
                                               qs_loc_control_init,&
                                               qs_loc_init,&
                                               retain_history
    USE qs_mo_types,                     ONLY: get_mo_set,&
-                                              mo_set_p_type
+                                              mo_set_type
    USE qs_subsys_types,                 ONLY: qs_subsys_get,&
                                               qs_subsys_type
 #include "./base/base_uses.f90"
@@ -96,7 +96,7 @@ CONTAINS
       TYPE(cp_fm_type), POINTER                          :: mo_coeff
       TYPE(cp_logger_type), POINTER                      :: logger
       TYPE(dft_control_type), POINTER                    :: dft_control
-      TYPE(mo_set_p_type), DIMENSION(:), POINTER         :: mos
+      TYPE(mo_set_type), DIMENSION(:), POINTER           :: mos
       TYPE(particle_list_type), POINTER                  :: particles
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
       TYPE(pw_env_type), POINTER                         :: pw_env
@@ -104,7 +104,7 @@ CONTAINS
       TYPE(pw_pool_type), POINTER                        :: auxbas_pw_pool
       TYPE(pw_type)                                      :: wf_g, wf_r
       TYPE(qs_kind_type), DIMENSION(:), POINTER          :: qs_kind_set
-      TYPE(qs_loc_env_new_type), POINTER                 :: qs_loc_env_homo
+      TYPE(qs_loc_env_type), POINTER                     :: qs_loc_env_homo
       TYPE(qs_subsys_type), POINTER                      :: subsys
       TYPE(section_vals_type), POINTER                   :: dft_section, loc_print_section, &
                                                             localize_section
@@ -168,7 +168,7 @@ CONTAINS
             ALLOCATE (occupied_evals(nspins))
             ALLOCATE (homo_localized(nspins))
             DO ispin = 1, nspins
-               CALL get_mo_set(mo_set=mos(ispin)%mo_set, mo_coeff=mo_coeff, &
+               CALL get_mo_set(mo_set=mos(ispin), mo_coeff=mo_coeff, &
                                eigenvalues=mo_eigenvalues)
                occupied_orbs(ispin)%matrix => mo_coeff
                occupied_evals(ispin)%array => mo_eigenvalues
@@ -190,6 +190,7 @@ CONTAINS
                                    in_space=RECIPROCALSPACE)
 
             NULLIFY (marked_states, qs_loc_env_homo)
+            ALLOCATE (qs_loc_env_homo)
             CALL qs_loc_env_create(qs_loc_env_homo)
             CALL qs_loc_control_init(qs_loc_env_homo, localize_section, do_homo=do_homo)
             CALL qs_loc_init(qs_env, qs_loc_env_homo, localize_section, homo_localized, do_homo, &
@@ -215,7 +216,8 @@ CONTAINS
             END IF
             CALL pw_pool_give_back_pw(auxbas_pw_pool, wf_g)
             CALL pw_pool_give_back_pw(auxbas_pw_pool, wf_r)
-            CALL qs_loc_env_destroy(qs_loc_env_homo)
+            CALL qs_loc_env_release(qs_loc_env_homo)
+            DEALLOCATE (qs_loc_env_homo)
             IF (ASSOCIATED(marked_states)) THEN
                DEALLOCATE (marked_states)
             END IF

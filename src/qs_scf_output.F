@@ -73,11 +73,11 @@ MODULE qs_scf_output
                                               deallocate_mo_set,&
                                               get_mo_set,&
                                               init_mo_set,&
-                                              mo_set_p_type,&
                                               mo_set_type
    USE qs_ot_eigensolver,               ONLY: ot_eigensolver
    USE qs_rho_types,                    ONLY: qs_rho_get,&
                                               qs_rho_type
+   USE qs_sccs,                         ONLY: print_sccs_results
    USE qs_scf_types,                    ONLY: ot_method_nr,&
                                               qs_scf_env_type,&
                                               special_diag_method_nr
@@ -141,14 +141,14 @@ CONTAINS
 ! **************************************************************************************************
    SUBROUTINE qs_scf_initial_info(output_unit, mos, dft_control)
       INTEGER                                            :: output_unit
-      TYPE(mo_set_p_type), DIMENSION(:), POINTER         :: mos
+      TYPE(mo_set_type), DIMENSION(:), INTENT(IN)        :: mos
       TYPE(dft_control_type), POINTER                    :: dft_control
 
       INTEGER                                            :: homo, ispin, nao, nelectron_spin, nmo
 
       IF (output_unit > 0) THEN
          DO ispin = 1, dft_control%nspins
-            CALL get_mo_set(mo_set=mos(ispin)%mo_set, &
+            CALL get_mo_set(mo_set=mos(ispin), &
                             homo=homo, &
                             nelectron=nelectron_spin, &
                             nao=nao, &
@@ -207,7 +207,7 @@ CONTAINS
       TYPE(dbcsr_type), POINTER                          :: matrix_ks, matrix_s
       TYPE(dft_control_type), POINTER                    :: dft_control
       TYPE(kpoint_type), POINTER                         :: kpoints
-      TYPE(mo_set_p_type), DIMENSION(:), POINTER         :: mos
+      TYPE(mo_set_type), DIMENSION(:), POINTER           :: mos
       TYPE(mo_set_type), POINTER                         :: mo_set_tmp
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
       TYPE(preconditioner_type), POINTER                 :: local_preconditioner
@@ -269,7 +269,7 @@ CONTAINS
          CALL get_qs_env(qs_env, kpoints=kpoints)
          nkp = SIZE(kpoints%kp_env)
       ELSE
-         CALL get_qs_env(qs_env, matrix_ks=ks, matrix_s=s, mos=mos)
+         CALL get_qs_env(qs_env, matrix_ks=ks, matrix_s=s)
          CPASSERT(ASSOCIATED(ks))
          CPASSERT(ASSOCIATED(s))
          nkp = 1
@@ -306,7 +306,7 @@ CONTAINS
                   CALL admm_correct_for_eigenvalues(ispin, admm_env, matrix_ks)
                END IF
 
-               CALL get_mo_set(mo_set=mos(ispin)%mo_set, &
+               CALL get_mo_set(mo_set=mos(ispin), &
                                mo_coeff=mo_coeff, &
                                eigenvalues=mo_eigenvalues, &
                                maxocc=maxocc, &
@@ -339,6 +339,7 @@ CONTAINS
                                         para_env=para_env, &
                                         nrow_global=nao, &
                                         ncol_global=nmo_tmp)
+               ALLOCATE (mo_set_tmp)
                CALL allocate_mo_set(mo_set=mo_set_tmp, &
                                     nao=nao, &
                                     nmo=nmo_tmp, &
@@ -396,7 +397,7 @@ CONTAINS
             ELSE
 
                solver_method = "TD"
-               mo_set_tmp => mos(ispin)%mo_set
+               mo_set_tmp => mos(ispin)
 
             END IF ! OT is used
 
@@ -425,6 +426,7 @@ CONTAINS
             ! Deallocate temporary objects needed for OT
             IF (scf_env%method == ot_method_nr) THEN
                CALL deallocate_mo_set(mo_set_tmp)
+               DEALLOCATE (mo_set_tmp)
                NULLIFY (matrix_ks)
                NULLIFY (matrix_s)
             END IF
@@ -550,6 +552,7 @@ CONTAINS
 !> \par History
 !>      03.2006 created [Joost VandeVondele]
 !>      10.2019 print dipole moment [SGh]
+!>      11.2022 print SCCS results [MK]
 ! **************************************************************************************************
    SUBROUTINE qs_scf_print_scf_summary(output_unit, rho, qs_charges, energy, nelectron_total, &
                                        dft_control, qmmm, qs_env, gapw, gapw_xc)
@@ -733,12 +736,8 @@ CONTAINS
                "DFT+U energy:", energy%dft_plus_u
          END IF
          IF (dft_control%do_sccs) THEN
-            WRITE (UNIT=output_unit, FMT="(/,T3,A,T56,F25.14)") &
-               "SCCS| Hartree energy of solute and solvent [Hartree]", energy%sccs_hartree
-            WRITE (UNIT=output_unit, FMT="(T3,A,T56,F25.14,/,T3,A,T61,F20.3)") &
-               "SCCS| Polarisation energy                  [Hartree]", energy%sccs_pol, &
-               "SCCS|                                      [kcal/mol]", &
-               cp_unit_from_cp2k(energy%sccs_pol, "kcalmol")
+            WRITE (UNIT=output_unit, FMT="(A)") ""
+            CALL print_sccs_results(energy, dft_control%sccs_control, output_unit)
          END IF
          IF (qmmm) THEN
             WRITE (UNIT=output_unit, FMT="(T3,A,T56,F25.14)") &
@@ -801,7 +800,7 @@ CONTAINS
       TYPE(cp_logger_type), POINTER                      :: logger
       TYPE(dbcsr_p_type), DIMENSION(:, :), POINTER       :: matrix_ks, matrix_p, matrix_s
       TYPE(dft_control_type), POINTER                    :: dft_control
-      TYPE(mo_set_p_type), DIMENSION(:), POINTER         :: mos
+      TYPE(mo_set_type), DIMENSION(:), POINTER           :: mos
       TYPE(qs_rho_type), POINTER                         :: rho
       TYPE(section_vals_type), POINTER                   :: dft_section, input, scf_section
 

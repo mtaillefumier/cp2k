@@ -127,6 +127,7 @@ CONTAINS
       ! initialize Ewald for sTDA
       IF (tddfpt_control%stda_control%do_ewald) THEN
          NULLIFY (ewald_env, ewald_pw)
+         ALLOCATE (ewald_env)
          CALL ewald_env_create(ewald_env, sub_env%para_env)
          poisson_section => section_vals_get_subs_vals(qs_env%input, "DFT%POISSON")
          CALL ewald_env_set(ewald_env, poisson_section=poisson_section)
@@ -134,6 +135,7 @@ CONTAINS
          print_section => section_vals_get_subs_vals(qs_env%input, "PRINT%GRID_INFORMATION")
          CALL get_qs_env(qs_env, cell=cell, cell_ref=cell_ref)
          CALL read_ewald_section_tb(ewald_env, ewald_section, cell_ref%hmat)
+         ALLOCATE (ewald_pw)
          CALL ewald_pw_create(ewald_pw, ewald_env, cell, cell_ref, print_section=print_section)
          work%ewald_env => ewald_env
          work%ewald_pw => ewald_pw

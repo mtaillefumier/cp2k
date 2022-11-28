@@ -95,7 +95,6 @@ MODULE qs_tddfpt2_fhxc_forces
                                               REALDATA3D,&
                                               REALSPACE,&
                                               RECIPROCALSPACE,&
-                                              pw_p_type,&
                                               pw_type
    USE qs_collocate_density,            ONLY: calculate_rho_elec
    USE qs_environment_types,            ONLY: get_qs_env,&
@@ -171,7 +170,7 @@ CONTAINS
       TYPE(full_kernel_env_type), INTENT(IN)             :: full_kernel
       LOGICAL, INTENT(IN)                                :: debug_forces
 
-      CHARACTER(LEN=*), PARAMETER :: routineN = 'fhxc_force', routineP = moduleN//':'//routineN
+      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'fhxc_force'
 
       INTEGER                                            :: handle, iounit, ispin, mspin, myfun, &
                                                             n_rep_hf, nao, nao_aux, natom, nkind, &
@@ -204,12 +203,14 @@ CONTAINS
       TYPE(oce_matrix_type), POINTER                     :: oce
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
       TYPE(pw_env_type), POINTER                         :: pw_env
-      TYPE(pw_p_type), DIMENSION(:), POINTER :: fxc_rho, fxc_tau, gxc_rho, gxc_tau, rho_g_aux, &
-         rho_r_aux, rhox_g, rhox_g_aux, rhox_r, rhox_r_aux, rhoxx_g, rhoxx_r, tau_r_aux
       TYPE(pw_poisson_type), POINTER                     :: poisson_env
       TYPE(pw_pool_type), POINTER                        :: auxbas_pw_pool
       TYPE(pw_type)                                      :: rhox_tot_gspace, xv_hartree_gspace, &
                                                             xv_hartree_rspace
+      TYPE(pw_type), DIMENSION(:), POINTER               :: fxc_rho, fxc_tau, gxc_rho, gxc_tau, &
+                                                            rho_g_aux, rho_r_aux, rhox_g, &
+                                                            rhox_g_aux, rhox_r, rhox_r_aux, &
+                                                            rhoxx_g, rhoxx_r
       TYPE(qs_force_type), DIMENSION(:), POINTER         :: force
       TYPE(qs_kind_type), DIMENSION(:), POINTER          :: qs_kind_set
       TYPE(qs_ks_env_type), POINTER                      :: ks_env
@@ -251,22 +252,15 @@ CONTAINS
          CALL cp_dbcsr_plus_fm_fm_t(matrix_px1(ispin)%matrix, &
                                     matrix_v=evect(ispin)%matrix, &
                                     matrix_g=gs_mos(ispin)%mos_occ, &
-                                    ncol=norb, alpha=focc)
-         CALL cp_dbcsr_plus_fm_fm_t(matrix_px1(ispin)%matrix, &
-                                    matrix_v=gs_mos(ispin)%mos_occ, &
-                                    matrix_g=evect(ispin)%matrix, &
-                                    ncol=norb, alpha=focc)
+                                    ncol=norb, alpha=2.0_dp*focc, symmetry_mode=1)
 
          CALL dbcsr_set(matrix_px1_asymm(ispin)%matrix, 0.0_dp)
          CALL cp_fm_get_info(evect(ispin)%matrix, ncol_global=norb)
          CALL cp_dbcsr_plus_fm_fm_t(matrix_px1_asymm(ispin)%matrix, &
-                                    matrix_v=evect(ispin)%matrix, &
-                                    matrix_g=gs_mos(ispin)%mos_occ, &
-                                    ncol=norb, alpha=-focc)
-         CALL cp_dbcsr_plus_fm_fm_t(matrix_px1_asymm(ispin)%matrix, &
                                     matrix_v=gs_mos(ispin)%mos_occ, &
                                     matrix_g=evect(ispin)%matrix, &
-                                    ncol=norb, alpha=focc)
+                                    ncol=norb, alpha=2.0_dp*focc, &
+                                    symmetry_mode=-1)
       END DO
       !
       CALL get_qs_env(qs_env, ks_env=ks_env, pw_env=pw_env, para_env=para_env)
@@ -363,10 +357,9 @@ CONTAINS
 
       ALLOCATE (rhox_r(nspins), rhox_g(nspins))
       DO ispin = 1, nspins
-         ALLOCATE (rhox_r(ispin)%pw, rhox_g(ispin)%pw)
-         CALL pw_pool_create_pw(auxbas_pw_pool, rhox_r(ispin)%pw, &
+         CALL pw_pool_create_pw(auxbas_pw_pool, rhox_r(ispin), &
                                 use_data=REALDATA3D, in_space=REALSPACE)
-         CALL pw_pool_create_pw(auxbas_pw_pool, rhox_g(ispin)%pw, &
+         CALL pw_pool_create_pw(auxbas_pw_pool, rhox_g(ispin), &
                                 use_data=COMPLEXDATA1D, in_space=RECIPROCALSPACE)
       END DO
       CALL pw_pool_create_pw(auxbas_pw_pool, rhox_tot_gspace, &
@@ -376,25 +369,24 @@ CONTAINS
       DO ispin = 1, nspins
          IF (nspins == 2) CALL dbcsr_scale(matrix_px1(ispin)%matrix, 2.0_dp)
          CALL calculate_rho_elec(ks_env=ks_env, matrix_p=matrix_px1(ispin)%matrix, &
-                                 rho=rhox_r(ispin)%pw, rho_gspace=rhox_g(ispin)%pw, &
+                                 rho=rhox_r(ispin), rho_gspace=rhox_g(ispin), &
                                  soft_valid=gapw)
-         CALL pw_axpy(rhox_g(ispin)%pw, rhox_tot_gspace)
+         CALL pw_axpy(rhox_g(ispin), rhox_tot_gspace)
          IF (nspins == 2) CALL dbcsr_scale(matrix_px1(ispin)%matrix, 0.5_dp)
       END DO
 
       IF (gapw_xc) THEN
          ALLOCATE (rhoxx_r(nspins), rhoxx_g(nspins))
          DO ispin = 1, nspins
-            NULLIFY (rhoxx_r(ispin)%pw, rhoxx_g(ispin)%pw)
-            CALL pw_pool_create_pw(auxbas_pw_pool, rhoxx_r(ispin)%pw, &
+            CALL pw_pool_create_pw(auxbas_pw_pool, rhoxx_r(ispin), &
                                    use_data=REALDATA3D, in_space=REALSPACE)
-            CALL pw_pool_create_pw(auxbas_pw_pool, rhoxx_g(ispin)%pw, &
+            CALL pw_pool_create_pw(auxbas_pw_pool, rhoxx_g(ispin), &
                                    use_data=COMPLEXDATA1D, in_space=RECIPROCALSPACE)
          END DO
          DO ispin = 1, nspins
             IF (nspins == 2) CALL dbcsr_scale(matrix_px1(ispin)%matrix, 2.0_dp)
             CALL calculate_rho_elec(ks_env=ks_env, matrix_p=matrix_px1(ispin)%matrix, &
-                                    rho=rhoxx_r(ispin)%pw, rho_gspace=rhoxx_g(ispin)%pw, &
+                                    rho=rhoxx_r(ispin), rho_gspace=rhoxx_g(ispin), &
                                     soft_valid=gapw_xc)
             IF (nspins == 2) CALL dbcsr_scale(matrix_px1(ispin)%matrix, 0.5_dp)
          END DO
@@ -481,6 +473,7 @@ CONTAINS
          END IF
          CALL qs_rho_get(rho, rho_ao=matrix_p)
          NULLIFY (rhox)
+         ALLOCATE (rhox)
          CALL qs_rho_create(rhox)
          IF (gapw_xc) THEN
             CALL qs_rho_set(rho_struct=rhox, rho_ao=matrix_px1, rho_r=rhoxx_r, rho_g=rhoxx_g, &
@@ -504,8 +497,8 @@ CONTAINS
 
          IF (nspins == 2) THEN
             DO ispin = 1, nspins
-               CALL pw_scale(gxc_rho(ispin)%pw, 0.5_dp)
-               IF (ASSOCIATED(gxc_tau)) CALL pw_scale(gxc_tau(ispin)%pw, 0.5_dp)
+               CALL pw_scale(gxc_rho(ispin), 0.5_dp)
+               IF (ASSOCIATED(gxc_tau)) CALL pw_scale(gxc_tau(ispin), 0.5_dp)
             END DO
          END IF
          IF (gapw .OR. gapw_xc) THEN
@@ -522,8 +515,8 @@ CONTAINS
             CALL dbcsr_create(matrix_fx(ispin)%matrix, template=matrix_s(1)%matrix)
             CALL dbcsr_copy(matrix_fx(ispin)%matrix, matrix_s(1)%matrix)
             CALL dbcsr_set(matrix_fx(ispin)%matrix, 0.0_dp)
-            CALL pw_scale(fxc_rho(ispin)%pw, fxc_rho(ispin)%pw%pw_grid%dvol)
-            CALL integrate_v_rspace(qs_env=qs_env, v_rspace=fxc_rho(ispin)%pw, &
+            CALL pw_scale(fxc_rho(ispin), fxc_rho(ispin)%pw_grid%dvol)
+            CALL integrate_v_rspace(qs_env=qs_env, v_rspace=fxc_rho(ispin), &
                                     pmat=matrix_px1(ispin), hmat=matrix_fx(ispin), &
                                     gapw=(gapw .OR. gapw_xc), calculate_forces=.TRUE.)
          END DO
@@ -541,9 +534,9 @@ CONTAINS
             CALL dbcsr_create(matrix_gx(ispin)%matrix, template=matrix_s(1)%matrix)
             CALL dbcsr_copy(matrix_gx(ispin)%matrix, matrix_s(1)%matrix)
             CALL dbcsr_set(matrix_gx(ispin)%matrix, 0.0_dp)
-            CALL pw_scale(gxc_rho(ispin)%pw, gxc_rho(ispin)%pw%pw_grid%dvol)
-            CALL pw_scale(gxc_rho(ispin)%pw, 0.5_dp)
-            CALL integrate_v_rspace(qs_env=qs_env, v_rspace=gxc_rho(ispin)%pw, &
+            CALL pw_scale(gxc_rho(ispin), gxc_rho(ispin)%pw_grid%dvol)
+            CALL pw_scale(gxc_rho(ispin), 0.5_dp)
+            CALL integrate_v_rspace(qs_env=qs_env, v_rspace=gxc_rho(ispin), &
                                     pmat=matrix_p(ispin), hmat=matrix_gx(ispin), &
                                     gapw=(gapw .OR. gapw_xc), calculate_forces=.TRUE.)
             CALL dbcsr_scale(matrix_gx(ispin)%matrix, 2.0_dp)
@@ -601,26 +594,26 @@ CONTAINS
                   CALL dbcsr_set(mgx(ispin)%matrix, 0.0_dp)
                END DO
 
-               NULLIFY (rho_g_aux, rho_r_aux, tau_r_aux, rhox_g_aux, rhox_r_aux)
-               CALL qs_rho_get(rho_aux_fit, rho_r=rho_r_aux, rho_g=rho_g_aux, tau_r=tau_r_aux)
+               NULLIFY (rho_g_aux, rho_r_aux, rhox_g_aux, rhox_r_aux)
+               CALL qs_rho_get(rho_aux_fit, rho_r=rho_r_aux, rho_g=rho_g_aux)
                CALL qs_rho_get(rho_aux_fit, rho_ao=matrix_p_admm)
                ! rhox_aux
                ALLOCATE (rhox_r_aux(nspins), rhox_g_aux(nspins))
                DO ispin = 1, nspins
-                  ALLOCATE (rhox_r_aux(ispin)%pw, rhox_g_aux(ispin)%pw)
-                  CALL pw_pool_create_pw(auxbas_pw_pool, rhox_r_aux(ispin)%pw, &
+                  CALL pw_pool_create_pw(auxbas_pw_pool, rhox_r_aux(ispin), &
                                          use_data=REALDATA3D, in_space=REALSPACE)
-                  CALL pw_pool_create_pw(auxbas_pw_pool, rhox_g_aux(ispin)%pw, &
+                  CALL pw_pool_create_pw(auxbas_pw_pool, rhox_g_aux(ispin), &
                                          use_data=COMPLEXDATA1D, in_space=RECIPROCALSPACE)
                END DO
                DO ispin = 1, nspins
                   CALL calculate_rho_elec(ks_env=ks_env, matrix_p=matrix_px1_admm(ispin)%matrix, &
-                                          rho=rhox_r_aux(ispin)%pw, rho_gspace=rhox_g_aux(ispin)%pw, &
+                                          rho=rhox_r_aux(ispin), rho_gspace=rhox_g_aux(ispin), &
                                           basis_type="AUX_FIT", &
                                           task_list_external=task_list_aux_fit)
                END DO
                !
                NULLIFY (rhox_aux)
+               ALLOCATE (rhox_aux)
                CALL qs_rho_create(rhox_aux)
                CALL qs_rho_set(rho_struct=rhox_aux, rho_ao=matrix_px1_admm, &
                                rho_r=rhox_r_aux, rho_g=rhox_g_aux, &
@@ -639,22 +632,21 @@ CONTAINS
                DEALLOCATE (rhox_aux)
 
                DO ispin = 1, nspins
-                  CALL pw_pool_give_back_pw(auxbas_pw_pool, rhox_r_aux(ispin)%pw)
-                  CALL pw_pool_give_back_pw(auxbas_pw_pool, rhox_g_aux(ispin)%pw)
-                  DEALLOCATE (rhox_r_aux(ispin)%pw, rhox_g_aux(ispin)%pw)
+                  CALL pw_pool_give_back_pw(auxbas_pw_pool, rhox_r_aux(ispin))
+                  CALL pw_pool_give_back_pw(auxbas_pw_pool, rhox_g_aux(ispin))
                END DO
                DEALLOCATE (rhox_r_aux, rhox_g_aux)
                IF (nspins == 2) THEN
                   DO ispin = 1, nspins
-                     CALL pw_scale(gxc_rho(ispin)%pw, 0.5_dp)
-                     IF (ASSOCIATED(gxc_tau)) CALL pw_scale(gxc_tau(ispin)%pw, 0.5_dp)
+                     CALL pw_scale(gxc_rho(ispin), 0.5_dp)
+                     IF (ASSOCIATED(gxc_tau)) CALL pw_scale(gxc_tau(ispin), 0.5_dp)
                   END DO
                END IF
                !
                IF (debug_forces) fodeb(1:3) = force(1)%rho_elec(1:3, 1)
                DO ispin = 1, nspins
-                  CALL pw_scale(fxc_rho(ispin)%pw, fxc_rho(ispin)%pw%pw_grid%dvol)
-                  CALL integrate_v_rspace(qs_env=qs_env, v_rspace=fxc_rho(ispin)%pw, &
+                  CALL pw_scale(fxc_rho(ispin), fxc_rho(ispin)%pw_grid%dvol)
+                  CALL integrate_v_rspace(qs_env=qs_env, v_rspace=fxc_rho(ispin), &
                                           hmat=mfx(ispin), &
                                           pmat=matrix_px1_admm(ispin), &
                                           basis_type="AUX_FIT", &
@@ -669,9 +661,9 @@ CONTAINS
 
                IF (debug_forces) fodeb(1:3) = force(1)%rho_elec(1:3, 1)
                DO ispin = 1, nspins
-                  CALL pw_scale(gxc_rho(ispin)%pw, gxc_rho(ispin)%pw%pw_grid%dvol)
-                  CALL pw_scale(gxc_rho(ispin)%pw, 0.5_dp)
-                  CALL integrate_v_rspace(qs_env=qs_env, v_rspace=gxc_rho(ispin)%pw, &
+                  CALL pw_scale(gxc_rho(ispin), gxc_rho(ispin)%pw_grid%dvol)
+                  CALL pw_scale(gxc_rho(ispin), 0.5_dp)
+                  CALL integrate_v_rspace(qs_env=qs_env, v_rspace=gxc_rho(ispin), &
                                           hmat=mgx(ispin), &
                                           pmat=matrix_p_admm(ispin), &
                                           basis_type="AUX_FIT", &
@@ -741,17 +733,15 @@ CONTAINS
       END IF
 
       DO ispin = 1, nspins
-         CALL pw_pool_give_back_pw(auxbas_pw_pool, rhox_r(ispin)%pw)
-         CALL pw_pool_give_back_pw(auxbas_pw_pool, rhox_g(ispin)%pw)
-         DEALLOCATE (rhox_r(ispin)%pw, rhox_g(ispin)%pw)
+         CALL pw_pool_give_back_pw(auxbas_pw_pool, rhox_r(ispin))
+         CALL pw_pool_give_back_pw(auxbas_pw_pool, rhox_g(ispin))
       END DO
       DEALLOCATE (rhox_r, rhox_g)
       CALL pw_pool_give_back_pw(auxbas_pw_pool, rhox_tot_gspace)
       IF (gapw_xc) THEN
          DO ispin = 1, nspins
-            CALL pw_pool_give_back_pw(auxbas_pw_pool, rhoxx_r(ispin)%pw)
-            CALL pw_pool_give_back_pw(auxbas_pw_pool, rhoxx_g(ispin)%pw)
-            DEALLOCATE (rhoxx_r(ispin)%pw, rhoxx_g(ispin)%pw)
+            CALL pw_pool_give_back_pw(auxbas_pw_pool, rhoxx_r(ispin))
+            CALL pw_pool_give_back_pw(auxbas_pw_pool, rhoxx_g(ispin))
          END DO
          DEALLOCATE (rhoxx_r, rhoxx_g)
       END IF
@@ -1051,9 +1041,7 @@ CONTAINS
                                          norb, alpha=-focc, beta=1.0_dp)
             !
             CALL cp_dbcsr_plus_fm_fm_t(matrix_wx1(ispin)%matrix, matrix_v=mos, matrix_g=vcvec, &
-                                       ncol=norb, alpha=1.0_dp)
-            CALL cp_dbcsr_plus_fm_fm_t(matrix_wx1(ispin)%matrix, matrix_v=vcvec, matrix_g=mos, &
-                                       ncol=norb, alpha=1.0_dp)
+                                       ncol=norb, alpha=2.0_dp, symmetry_mode=1)
          END IF
          !
          IF (myfun /= xc_none) THEN
@@ -1066,9 +1054,7 @@ CONTAINS
                                          norb, alpha=-focc, beta=1.0_dp)
             !
             CALL cp_dbcsr_plus_fm_fm_t(matrix_wx1(ispin)%matrix, matrix_v=mos, matrix_g=vcvec, &
-                                       ncol=norb, alpha=1.0_dp)
-            CALL cp_dbcsr_plus_fm_fm_t(matrix_wx1(ispin)%matrix, matrix_v=vcvec, matrix_g=mos, &
-                                       ncol=norb, alpha=1.0_dp)
+                                       ncol=norb, alpha=2.0_dp, symmetry_mode=1)
             !
             CALL cp_dbcsr_sm_fm_multiply(matrix_gx(ispin)%matrix, mos, &
                                          cpmos(ispin)%matrix, norb, alpha=focc, beta=1.0_dp)
@@ -1077,9 +1063,7 @@ CONTAINS
             CALL parallel_gemm("T", "N", norb, norb, nao, 1.0_dp, mos, vcvec, 0.0_dp, cvcmat)
             CALL parallel_gemm("N", "N", nao, norb, norb, 1.0_dp, mos, cvcmat, 0.0_dp, vcvec)
             CALL cp_dbcsr_plus_fm_fm_t(matrix_wx1(ispin)%matrix, matrix_v=mos, matrix_g=vcvec, &
-                                       ncol=norb, alpha=0.5_dp)
-            CALL cp_dbcsr_plus_fm_fm_t(matrix_wx1(ispin)%matrix, matrix_v=vcvec, matrix_g=mos, &
-                                       ncol=norb, alpha=0.5_dp)
+                                       ncol=norb, alpha=1.0_dp, symmetry_mode=1)
          END IF
          !
          IF (do_hfx) THEN
@@ -1096,9 +1080,7 @@ CONTAINS
                                          norb, alpha=-focc, beta=1.0_dp)
             !
             CALL cp_dbcsr_plus_fm_fm_t(matrix_wx1(ispin)%matrix, matrix_v=mos, matrix_g=vcvec, &
-                                       ncol=norb, alpha=1.0_dp)
-            CALL cp_dbcsr_plus_fm_fm_t(matrix_wx1(ispin)%matrix, matrix_v=vcvec, matrix_g=mos, &
-                                       ncol=norb, alpha=1.0_dp)
+                                       ncol=norb, alpha=2.0_dp, symmetry_mode=1)
          END IF
          !
          CALL cp_fm_release(vcvec)
@@ -1144,7 +1126,7 @@ CONTAINS
       TYPE(tddfpt_work_matrices)                         :: work
       LOGICAL, INTENT(IN)                                :: debug_forces
 
-      CHARACTER(len=*), PARAMETER :: routineN = 'stda_force', routineP = moduleN//':'//routineN
+      CHARACTER(len=*), PARAMETER                        :: routineN = 'stda_force'
 
       INTEGER :: atom_i, atom_j, blk, ewald_type, handle, i, ia, iatom, idimk, ikind, iounit, is, &
          ispin, jatom, jkind, jspin, nao, natom, norb, nsgf, nspins
@@ -1389,7 +1371,9 @@ CONTAINS
             CALL cp_fm_get_info(work%S_C0_C0T(ispin)%matrix, matrix_struct=fmstruct)
             CALL cp_fm_create(t0matrix, matrix_struct=fmstruct, name="T0 SCRATCH")
             CALL cp_fm_create(t1matrix, matrix_struct=fmstruct, name="T1 SCRATCH")
+            ALLOCATE (ucmatrix)
             CALL fm_pool_create_fm(work%fm_pool_ao_mo_occ(ispin)%pool, ucmatrix)
+            ALLOCATE (uxmatrix)
             CALL fm_pool_create_fm(work%fm_pool_ao_mo_occ(ispin)%pool, uxmatrix)
             ct => work%ctransformed(ispin)%matrix
             CALL cp_fm_to_fm(ct, cvec)
@@ -1412,11 +1396,11 @@ CONTAINS
             CALL parallel_gemm('N', 'N', nsgf, nsgf, nsgf, spinfac, work%S_eigenvectors, t1matrix, &
                                0.0_dp, t0matrix)
             CALL cp_dbcsr_plus_fm_fm_t(matrix_plo(ispin)%matrix, matrix_v=t0matrix, &
-                                       matrix_g=work%S_eigenvectors, ncol=nsgf, alpha=1.0_dp)
-            CALL cp_dbcsr_plus_fm_fm_t(matrix_plo(ispin)%matrix, matrix_v=work%S_eigenvectors, &
-                                       matrix_g=t0matrix, ncol=nsgf, alpha=1.0_dp)
+                                       matrix_g=work%S_eigenvectors, ncol=nsgf, alpha=2.0_dp, symmetry_mode=1)
             CALL fm_pool_give_back_fm(work%fm_pool_ao_mo_occ(ispin)%pool, ucmatrix)
+            DEALLOCATE (ucmatrix)
             CALL fm_pool_give_back_fm(work%fm_pool_ao_mo_occ(ispin)%pool, uxmatrix)
+            DEALLOCATE (uxmatrix)
             CALL cp_fm_release(t0matrix)
             CALL cp_fm_release(t1matrix)
             !
@@ -1444,9 +1428,7 @@ CONTAINS
             ! wx1
             alpha = 2.0_dp
             CALL cp_dbcsr_plus_fm_fm_t(matrix_wx1(ispin)%matrix, matrix_v=gs_mos(ispin)%mos_occ, &
-                                       matrix_g=vcvec, ncol=norb, alpha=alpha)
-            CALL cp_dbcsr_plus_fm_fm_t(matrix_wx1(ispin)%matrix, matrix_v=vcvec, &
-                                       matrix_g=gs_mos(ispin)%mos_occ, ncol=norb, alpha=alpha)
+                                       matrix_g=vcvec, ncol=norb, alpha=2.0_dp*alpha, symmetry_mode=1)
             CALL cp_fm_release(vcvec)
             CALL cp_fm_release(cvcmat)
             DEALLOCATE (atom_of_kind, kind_of)
@@ -1534,7 +1516,9 @@ CONTAINS
             CALL cp_fm_get_info(work%S_C0_C0T(ispin)%matrix, matrix_struct=fmstruct)
             CALL cp_fm_create(t0matrix, matrix_struct=fmstruct, name="T0 SCRATCH")
             CALL cp_fm_create(t1matrix, matrix_struct=fmstruct, name="T1 SCRATCH")
+            ALLOCATE (ucmatrix)
             CALL fm_pool_create_fm(work%fm_pool_ao_mo_occ(ispin)%pool, ucmatrix)
+            ALLOCATE (uxmatrix)
             CALL fm_pool_create_fm(work%fm_pool_ao_mo_occ(ispin)%pool, uxmatrix)
             ct => work%ctransformed(ispin)%matrix
             CALL cp_dbcsr_sm_fm_multiply(pdens, ct, cvec, norb, 1.0_dp, 0.0_dp)
@@ -1554,11 +1538,11 @@ CONTAINS
             CALL parallel_gemm('N', 'N', nsgf, nsgf, nsgf, -1.0_dp, work%S_eigenvectors, t1matrix, &
                                0.0_dp, t0matrix)
             CALL cp_dbcsr_plus_fm_fm_t(matrix_plo(ispin)%matrix, matrix_v=t0matrix, &
-                                       matrix_g=work%S_eigenvectors, ncol=nsgf, alpha=1.0_dp)
-            CALL cp_dbcsr_plus_fm_fm_t(matrix_plo(ispin)%matrix, matrix_v=work%S_eigenvectors, &
-                                       matrix_g=t0matrix, ncol=nsgf, alpha=1.0_dp)
+                                       matrix_g=work%S_eigenvectors, ncol=nsgf, alpha=2.0_dp, symmetry_mode=1)
             CALL fm_pool_give_back_fm(work%fm_pool_ao_mo_occ(ispin)%pool, ucmatrix)
+            DEALLOCATE (ucmatrix)
             CALL fm_pool_give_back_fm(work%fm_pool_ao_mo_occ(ispin)%pool, uxmatrix)
+            DEALLOCATE (uxmatrix)
             CALL cp_fm_release(t0matrix)
             CALL cp_fm_release(t1matrix)
 
@@ -1589,10 +1573,7 @@ CONTAINS
             END IF
             CALL cp_dbcsr_plus_fm_fm_t(matrix_wx1(ispin)%matrix, matrix_v=gs_mos(ispin)%mos_occ, &
                                        matrix_g=vcvec, &
-                                       ncol=norb, alpha=alpha)
-            CALL cp_dbcsr_plus_fm_fm_t(matrix_wx1(ispin)%matrix, matrix_v=vcvec, &
-                                       matrix_g=gs_mos(ispin)%mos_occ, &
-                                       ncol=norb, alpha=alpha)
+                                       ncol=norb, alpha=2.0_dp*alpha, symmetry_mode=1)
             CALL cp_fm_release(vcvec)
             CALL cp_fm_release(cvcmat)
             !

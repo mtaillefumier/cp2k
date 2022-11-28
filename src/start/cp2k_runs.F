@@ -7,142 +7,143 @@
 
 ! **************************************************************************************************
 MODULE cp2k_runs
-   USE atom, ONLY: atom_code
-   USE bibliography, ONLY: Hutter2014, &
-                           cite_reference
-   USE bsse, ONLY: do_bsse_calculation
-   USE cell_opt, ONLY: cp_cell_opt
-   USE cp2k_debug, ONLY: cp2k_debug_energy_and_forces
-   USE cp2k_info, ONLY: compile_date, &
-                        compile_revision, &
-                        cp2k_version, &
-                        cp2k_year
-   USE cp_control_types, ONLY: dft_control_type
-   USE cp_dbcsr_cp2k_link, ONLY: cp_dbcsr_config
-   USE cp_files, ONLY: close_file, &
-                       open_file
-   USE cp_log_handling, ONLY: cp_get_default_logger, &
-                              cp_logger_get_default_io_unit, &
-                              cp_logger_type, &
-                              cp_logger_would_log, &
-                              cp_note_level
-   USE cp_output_handling, ONLY: cp_add_iter_level, &
-                                 cp_print_key_finished_output, &
-                                 cp_print_key_unit_nr, &
-                                 cp_rm_iter_level
-   USE cp_para_env, ONLY: cp_para_env_create, &
-                          cp_para_env_release, &
-                          cp_para_env_retain
-   USE cp_para_types, ONLY: cp_para_env_type
-   USE cp_parser_methods, ONLY: parser_search_string
-   USE cp_parser_types, ONLY: cp_parser_type, &
-                              parser_create, &
-                              parser_release
-   USE cp_units, ONLY: cp_unit_set_create, &
-                       cp_unit_set_release, &
-                       cp_unit_set_type, &
-                       print_all_units
-   USE dbcsr_api, ONLY: dbcsr_finalize_lib, &
-                        dbcsr_init_lib, &
-                        dbcsr_print_config, &
-                        dbcsr_print_statistics
-   USE dbm_api, ONLY: dbm_library_print_stats
-   USE environment, ONLY: cp2k_finalize, &
-                          cp2k_init, &
-                          cp2k_read, &
-                          cp2k_setup
-   USE f77_interface, ONLY: create_force_env, &
-                            destroy_force_env, &
-                            f77_default_para_env => default_para_env, &
-                            f_env_add_defaults, &
-                            f_env_rm_defaults, &
-                            f_env_type
-   USE farming_methods, ONLY: do_deadlock, &
-                              do_nothing, &
-                              do_wait, &
-                              farming_parse_input, &
-                              get_next_job
-   USE farming_types, ONLY: deallocate_farming_env, &
-                            farming_env_type, &
-                            init_farming_env, &
-                            job_finished, &
-                            job_running
-   USE force_env_methods, ONLY: force_env_calc_energy_force
-   USE force_env_types, ONLY: force_env_get, &
-                              force_env_type
-   USE geo_opt, ONLY: cp_geo_opt
-   USE global_types, ONLY: global_environment_type, &
-                           globenv_create, &
-                           globenv_release, &
-                           globenv_retain
-   USE grid_api, ONLY: grid_library_print_stats, &
-                       grid_library_set_config
-   USE input_constants, ONLY: &
-      bsse_run, cell_opt_run, debug_run, do_atom, do_band, do_cp2k, do_embed, do_farming, &
-      do_fist, do_mixed, do_nnp, do_opt_basis, do_optimize_input, do_qmmm, do_qs, do_sirius, &
-      do_swarm, do_tamc, do_test, do_tree_mc, do_tree_mc_ana, driver_run, ehrenfest, &
-      electronic_spectra_run, energy_force_run, energy_run, geo_opt_run, linear_response_run, &
-      mol_dyn_run, mon_car_run, negf_run, none_run, pint_run, real_time_propagation, &
-      tree_mc_run, vib_anal
-   USE input_cp2k, ONLY: create_cp2k_root_section
-   USE input_cp2k_check, ONLY: check_cp2k_input
-   USE input_cp2k_global, ONLY: create_global_section
-   USE input_cp2k_read, ONLY: read_input
-   USE input_keyword_types, ONLY: keyword_release
-   USE input_parsing, ONLY: section_vals_parse
-   USE input_section_types, ONLY: &
-      section_release, section_type, section_vals_create, section_vals_get_subs_vals, &
-      section_vals_release, section_vals_retain, section_vals_type, section_vals_val_get, &
-      section_vals_write, write_section_xml
-   USE ipi_driver, ONLY: run_driver
-   USE kinds, ONLY: default_path_length, &
-                    default_string_length, &
-                    dp, &
-                    int_8
-   USE library_tests, ONLY: lib_test
-   USE machine, ONLY: default_output_unit, &
-                      m_chdir, &
-                      m_flush, &
-                      m_getcwd, &
-                      m_memory, &
-                      m_memory_max, &
-                      m_walltime
-   USE mc_run, ONLY: do_mon_car
-   USE md_run, ONLY: qs_mol_dyn
-   USE message_passing, ONLY: &
-      mp_any_source, mp_bcast, mp_comm_dup, mp_comm_free, mp_comm_split, mp_environ, mp_max, &
-      mp_recv, mp_send, mp_sum, mp_sync
-   USE mscfg_methods, ONLY: do_mol_loop, &
-                            loop_over_molecules
-   USE neb_methods, ONLY: neb
-   USE negf_methods, ONLY: do_negf
-   USE offload_api, ONLY: offload_get_chosen_device, &
-                          offload_get_device_count
-   USE optimize_basis, ONLY: run_optimize_basis
-   USE optimize_input, ONLY: run_optimize_input
-   USE pint_methods, ONLY: do_pint_run
-   USE pw_fpga, ONLY: pw_fpga_finalize, &
-                      pw_fpga_init
-   USE pw_gpu, ONLY: pw_gpu_finalize, &
-                     pw_gpu_init
-   USE qs_environment_types, ONLY: get_qs_env
-   USE qs_linres_module, ONLY: linres_calculation
-   USE qs_tddfpt_module, ONLY: tddfpt_calculation
-   USE reference_manager, ONLY: print_all_references, &
-                                print_format_html
-   USE rt_propagation, ONLY: rt_prop_setup
-   USE sirius_interface, ONLY: cp_sirius_finalize, &
-                               cp_sirius_init
+   USE atom,                            ONLY: atom_code
+   USE bibliography,                    ONLY: Hutter2014,&
+                                              cite_reference
+   USE bsse,                            ONLY: do_bsse_calculation
+   USE cell_opt,                        ONLY: cp_cell_opt
+   USE cp2k_debug,                      ONLY: cp2k_debug_energy_and_forces
+   USE cp2k_info,                       ONLY: compile_date,&
+                                              compile_revision,&
+                                              cp2k_version,&
+                                              cp2k_year
+   USE cp_control_types,                ONLY: dft_control_type
+   USE cp_dbcsr_cp2k_link,              ONLY: cp_dbcsr_config
+   USE cp_files,                        ONLY: close_file,&
+                                              open_file
+   USE cp_log_handling,                 ONLY: cp_get_default_logger,&
+                                              cp_logger_get_default_io_unit,&
+                                              cp_logger_type,&
+                                              cp_logger_would_log,&
+                                              cp_note_level
+   USE cp_output_handling,              ONLY: cp_add_iter_level,&
+                                              cp_print_key_finished_output,&
+                                              cp_print_key_unit_nr,&
+                                              cp_rm_iter_level
+   USE cp_para_env,                     ONLY: cp_para_env_create,&
+                                              cp_para_env_release,&
+                                              cp_para_env_retain
+   USE cp_para_types,                   ONLY: cp_para_env_type
+   USE cp_parser_methods,               ONLY: parser_search_string
+   USE cp_parser_types,                 ONLY: cp_parser_type,&
+                                              parser_create,&
+                                              parser_release
+   USE cp_units,                        ONLY: cp_unit_set_create,&
+                                              cp_unit_set_release,&
+                                              cp_unit_set_type,&
+                                              print_all_units
+   USE dbcsr_api,                       ONLY: dbcsr_finalize_lib,&
+                                              dbcsr_init_lib,&
+                                              dbcsr_print_config,&
+                                              dbcsr_print_statistics
+   USE dbm_api,                         ONLY: dbm_library_print_stats
+   USE environment,                     ONLY: cp2k_finalize,&
+                                              cp2k_init,&
+                                              cp2k_read,&
+                                              cp2k_setup
+   USE f77_interface,                   ONLY: create_force_env,&
+                                              destroy_force_env,&
+                                              f77_default_para_env => default_para_env,&
+                                              f_env_add_defaults,&
+                                              f_env_rm_defaults,&
+                                              f_env_type
+   USE farming_methods,                 ONLY: do_deadlock,&
+                                              do_nothing,&
+                                              do_wait,&
+                                              farming_parse_input,&
+                                              get_next_job
+   USE farming_types,                   ONLY: deallocate_farming_env,&
+                                              farming_env_type,&
+                                              init_farming_env,&
+                                              job_finished,&
+                                              job_running
+   USE force_env_methods,               ONLY: force_env_calc_energy_force
+   USE force_env_types,                 ONLY: force_env_get,&
+                                              force_env_type
+   USE geo_opt,                         ONLY: cp_geo_opt
+   USE global_types,                    ONLY: global_environment_type,&
+                                              globenv_create,&
+                                              globenv_release
+   USE grid_api,                        ONLY: grid_library_print_stats,&
+                                              grid_library_set_config
+   USE input_constants,                 ONLY: &
+        bsse_run, cell_opt_run, debug_run, do_atom, do_band, do_cp2k, do_embed, do_farming, &
+        do_fist, do_mixed, do_nnp, do_opt_basis, do_optimize_input, do_qmmm, do_qs, do_sirius, &
+        do_swarm, do_tamc, do_test, do_tree_mc, do_tree_mc_ana, driver_run, ehrenfest, &
+        electronic_spectra_run, energy_force_run, energy_run, geo_opt_run, linear_response_run, &
+        mol_dyn_run, mon_car_run, negf_run, none_run, pint_run, real_time_propagation, &
+        tree_mc_run, vib_anal
+   USE input_cp2k,                      ONLY: create_cp2k_root_section
+   USE input_cp2k_check,                ONLY: check_cp2k_input
+   USE input_cp2k_global,               ONLY: create_global_section
+   USE input_cp2k_read,                 ONLY: read_input
+   USE input_keyword_types,             ONLY: keyword_release
+   USE input_parsing,                   ONLY: section_vals_parse
+   USE input_section_types,             ONLY: &
+        section_release, section_type, section_vals_create, section_vals_get_subs_vals, &
+        section_vals_release, section_vals_retain, section_vals_type, section_vals_val_get, &
+        section_vals_write, write_section_xml
+   USE ipi_driver,                      ONLY: run_driver
+   USE kinds,                           ONLY: default_path_length,&
+                                              default_string_length,&
+                                              dp,&
+                                              int_8
+   USE library_tests,                   ONLY: lib_test
+   USE machine,                         ONLY: default_output_unit,&
+                                              m_chdir,&
+                                              m_flush,&
+                                              m_getcwd,&
+                                              m_memory,&
+                                              m_memory_max,&
+                                              m_walltime
+   USE mc_run,                          ONLY: do_mon_car
+   USE md_run,                          ONLY: qs_mol_dyn
+   USE message_passing,                 ONLY: &
+        mp_any_source, mp_bcast, mp_comm_dup, mp_comm_free, mp_comm_split, mp_environ, mp_max, &
+        mp_recv, mp_send, mp_sum, mp_sync
+   USE mscfg_methods,                   ONLY: do_mol_loop,&
+                                              loop_over_molecules
+   USE neb_methods,                     ONLY: neb
+   USE negf_methods,                    ONLY: do_negf
+   USE offload_api,                     ONLY: offload_get_chosen_device,&
+                                              offload_get_device_count
+   USE optimize_basis,                  ONLY: run_optimize_basis
+   USE optimize_input,                  ONLY: run_optimize_input
+   USE pint_methods,                    ONLY: do_pint_run
+   USE pw_fpga,                         ONLY: pw_fpga_finalize,&
+                                              pw_fpga_init
+   USE pw_gpu,                          ONLY: pw_gpu_finalize,&
+                                              pw_gpu_init
+   USE qs_environment_types,            ONLY: get_qs_env
+   USE qs_linres_module,                ONLY: linres_calculation
+   USE qs_tddfpt_module,                ONLY: tddfpt_calculation
+   USE reference_manager,               ONLY: print_all_references,&
+                                              print_format_html
+   USE rt_propagation,                  ONLY: rt_prop_setup
+   USE sirius_interface,                ONLY: cp_sirius_finalize,&
+                                              cp_sirius_init
+   USE string_utilities,                ONLY: html_entity_table,&
+                                              write_html_tables
+   USE swarm,                           ONLY: run_swarm
+   USE tamc_run,                        ONLY: qs_tamc
+   USE tmc_setup,                       ONLY: do_analyze_files,&
+                                              do_tmc
+   USE vibrational_analysis,            ONLY: vb_anal
+
 #ifdef __DLAF
    USE dlaf, ONLY: cp_dlaf_init, cp_dlaf_finalize
 #endif
-   USE string_utilities, ONLY: html_entity_table, &
-                               write_html_tables
-   USE swarm, ONLY: run_swarm
-   USE tamc_run, ONLY: qs_tamc
-   USE tmc_setup, ONLY: do_analyze_files, &
-                        do_tmc
-   USE vibrational_analysis, ONLY: vb_anal
+
 #include "../base/base_uses.f90"
 
    IMPLICIT NONE
@@ -325,7 +326,6 @@ CONTAINS
          CALL f_env_add_defaults(new_env_id, f_env, handle=f_env_handle)
          force_env => f_env%force_env
          CALL force_env_get(force_env, globenv=globenv)
-         CALL globenv_retain(globenv)
       CASE (do_test)
          CALL lib_test(root_section, para_env, globenv)
       CASE (do_tree_mc) ! TMC entry point
@@ -450,15 +450,17 @@ CONTAINS
 
       IF (prog_name_id == do_cp2k) THEN
          f_env%force_env => force_env ! for mc
-         CALL globenv_retain(globenv) !mc
-         CALL globenv_release(force_env%globenv) !mc
+         IF (ASSOCIATED(force_env%globenv)) THEN
+         IF (.NOT. ASSOCIATED(force_env%globenv, globenv)) THEN
+            CALL globenv_release(force_env%globenv) !mc
+         END IF
+         END IF
          force_env%globenv => globenv !mc
          CALL f_env_rm_defaults(f_env, ierr=ierr, &
                                 handle=f_env_handle)
          CPASSERT(ierr == 0)
          CALL destroy_force_env(new_env_id, ierr=ierr)
          CPASSERT(ierr == 0)
-         CALL globenv_release(globenv)
       ELSE
          I_was_ionode = para_env%ionode
          CALL cp2k_finalize(root_section, para_env, globenv)
@@ -510,14 +512,14 @@ CONTAINS
       REAL(KIND=dp), ALLOCATABLE, DIMENSION(:) :: waittime
       TYPE(cp_logger_type), POINTER            :: logger
       TYPE(cp_parser_type), POINTER            :: my_parser
-      TYPE(cp_unit_set_type), POINTER          :: default_units
+      TYPE(cp_unit_set_type)         :: default_units
       TYPE(farming_env_type), POINTER          :: farming_env
       TYPE(section_type), POINTER              :: g_section
       TYPE(section_vals_type), POINTER         :: g_data
 
       ! the primus of all slaves, talks to the master on topics concerning all slaves
       CALL timeset(routineN, handle)
-      NULLIFY (my_parser, g_section, g_data, default_units)
+      NULLIFY (my_parser, g_section, g_data)
 
       logger => cp_get_default_logger()
       output_unit = cp_print_key_unit_nr(logger, root_section, "FARMING%PROGRAM_RUN_INFO", &
@@ -844,6 +846,7 @@ CONTAINS
             IF (farming_env%Job(i)%output == "") THEN
                ! generate the output file
                WRITE (output_file, '(A12,I5.5)') "FARMING_OUT_", i
+               ALLOCATE (my_parser)
                CALL parser_create(my_parser, file_name=TRIM(farming_env%Job(i)%input))
                label = "&GLOBAL"
                CALL parser_search_string(my_parser, label, ignore_case=.TRUE., found=found)
@@ -863,6 +866,7 @@ CONTAINS
                   CALL section_release(g_section)
                END IF
                CALL parser_release(my_parser)
+               DEALLOCATE (my_parser)
             ELSE
                output_file = farming_env%Job(i)%output
             END IF

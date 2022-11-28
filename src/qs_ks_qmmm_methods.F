@@ -29,14 +29,12 @@ MODULE qs_ks_qmmm_methods
                                               pw_pool_type
    USE pw_types,                        ONLY: REALDATA3D,&
                                               REALSPACE,&
-                                              pw_p_type,&
                                               pw_type
    USE qmmm_types_low,                  ONLY: qmmm_env_qm_type
    USE qs_environment_types,            ONLY: get_qs_env,&
                                               qs_environment_type,&
                                               set_qs_env
-   USE qs_ks_qmmm_types,                ONLY: qs_ks_qmmm_env_type,&
-                                              qs_ks_qmmm_release
+   USE qs_ks_qmmm_types,                ONLY: qs_ks_qmmm_env_type
 #include "./base/base_uses.f90"
 
    IMPLICIT NONE
@@ -44,7 +42,6 @@ MODULE qs_ks_qmmm_methods
    PRIVATE
 
    CHARACTER(len=*), PARAMETER, PRIVATE :: moduleN = 'qs_ks_qmmm_methods'
-   INTEGER, SAVE, PRIVATE :: last_ks_qmmm_nr = 0
 
    PUBLIC :: ks_qmmm_env_rebuild, qmmm_calculate_energy, &
              qmmm_modify_hartree_pot
@@ -71,10 +68,10 @@ CONTAINS
 
       !   *** allocate the ks_qmmm env if not allocated yet!**
       IF (.NOT. ASSOCIATED(ks_qmmm_env)) THEN
+         ALLOCATE (ks_qmmm_env)
          CALL qs_ks_qmmm_create(ks_qmmm_env=ks_qmmm_env, qs_env=qs_env, &
                                 qmmm_env=qmmm_env)
          CALL set_qs_env(qs_env=qs_env, ks_qmmm_env=ks_qmmm_env)
-         CALL qs_ks_qmmm_release(ks_qmmm_env=ks_qmmm_env)
       END IF
    END SUBROUTINE ks_qmmm_env_rebuild
 
@@ -88,7 +85,7 @@ CONTAINS
 !> \author Teodoro Laino
 ! **************************************************************************************************
    SUBROUTINE qs_ks_qmmm_create(ks_qmmm_env, qs_env, qmmm_env)
-      TYPE(qs_ks_qmmm_env_type), POINTER                 :: ks_qmmm_env
+      TYPE(qs_ks_qmmm_env_type), INTENT(OUT)             :: ks_qmmm_env
       TYPE(qs_environment_type), POINTER                 :: qs_env
       TYPE(qmmm_env_qm_type), POINTER                    :: qmmm_env
 
@@ -101,9 +98,6 @@ CONTAINS
 
       CALL timeset(routineN, handle)
 
-      CPASSERT(.NOT. ASSOCIATED(ks_qmmm_env))
-      ALLOCATE (ks_qmmm_env)
-
       NULLIFY (ks_qmmm_env%pw_env, &
                ks_qmmm_env%cube_info)
       NULLIFY (auxbas_pw_pool)
@@ -114,9 +108,6 @@ CONTAINS
 
       ks_qmmm_env%pc_ener = 0.0_dp
       ks_qmmm_env%n_evals = 0
-      ks_qmmm_env%ref_count = 1
-      last_ks_qmmm_nr = last_ks_qmmm_nr + 1
-      ks_qmmm_env%id_nr = last_ks_qmmm_nr
 
       CALL pw_pool_create_pw(auxbas_pw_pool, ks_qmmm_env%v_qmmm_rspace, &
                              use_data=REALDATA3D, in_space=REALSPACE)
@@ -155,7 +146,7 @@ CONTAINS
 ! **************************************************************************************************
    SUBROUTINE qmmm_calculate_energy(qs_env, rho, v_qmmm, qmmm_energy)
       TYPE(qs_environment_type), POINTER                 :: qs_env
-      TYPE(pw_p_type), DIMENSION(:), POINTER             :: rho
+      TYPE(pw_type), DIMENSION(:), INTENT(IN)            :: rho
       TYPE(pw_type), INTENT(IN)                          :: v_qmmm
       REAL(KIND=dp), INTENT(INOUT)                       :: qmmm_energy
 
@@ -168,7 +159,6 @@ CONTAINS
       TYPE(section_vals_type), POINTER                   :: input
 
       CALL timeset(routineN, handle)
-      CPASSERT(ASSOCIATED(rho))
       NULLIFY (dft_control, input, logger)
       logger => cp_get_default_logger()
 
@@ -183,7 +173,7 @@ CONTAINS
 
       qmmm_energy = 0.0_dp
       DO ispin = 1, dft_control%nspins
-         qmmm_energy = qmmm_energy + pw_integral_ab(rho(ispin)%pw, v_qmmm)
+         qmmm_energy = qmmm_energy + pw_integral_ab(rho(ispin), v_qmmm)
       END DO
       IF (dft_control%qs_control%gapw) THEN
          CALL get_qs_env(qs_env=qs_env, &

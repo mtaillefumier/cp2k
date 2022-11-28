@@ -1,5 +1,10 @@
-# =================================================================================================
-# INCLUDE
+#!-------------------------------------------------------------------------------------------------!
+#!   CP2K: A general program to perform molecular dynamics simulations                             !
+#!   Copyright 2000-2022 CP2K developers group <https://cp2k.org>                                  !
+#!                                                                                                 !
+#!   SPDX-License-Identifier: GPL-2.0-or-later                                                     !
+#!-------------------------------------------------------------------------------------------------!
+
 include(fypp-sources)
 include(GNUInstallDirs) # required to get a proper LIBDIR variable
 include(CMakePackageConfigHelpers)
@@ -570,6 +575,7 @@ list(
   qs_loc_types.F
   qs_loc_utils.F
   qs_matrix_pools.F
+  qs_matrix_w.F
   qs_mixing_utils.F
   qs_mo_io.F
   qs_moments.F
@@ -930,7 +936,8 @@ list(
   fm/cp_fm_struct.F
   fm/cp_fm_types.F
   fm/cp_fm_vect.F
-  fm/cp_linked_list_fm.F)
+  fm/cp_linked_list_fm.F
+  fm/dlaf.F)
 
 if(CP2K_USE_DLAF)
   list(APPEND CP2K_SRCS_F fm/dlaf.F)
@@ -1419,6 +1426,11 @@ include_directories(
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/motion>
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/grid>
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/dbm>)
+
+if(DEFINED ENV{CPATH})
+  string(REPLACE ":" ";" INCLUDE_LIST $ENV{CPATH})
+  include_directories(${INCLUDE_LIST})
+endif()
 
 string(TIMESTAMP CP2K_TIMESTAMP "%Y-%m-%d %H:%M:%S")
 
