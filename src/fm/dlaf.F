@@ -50,12 +50,22 @@ CONTAINS
       INTEGER, DIMENSION(:), TARGET                      :: DESCA
       INTEGER, TARGET                                    :: info
 
+      INTERFACE
+         SUBROUTINE pdpotrf_dlaf(UPLO, N, A, IA, JA, DESCA, INFO) &
+            BIND(C, name='pdpotrf_dlaf')
+            IMPORT :: C_PTR, C_INT, C_DOUBLE, C_CHAR
+            CHARACTER(KIND=C_CHAR), VALUE :: UPLO
+            INTEGER(KIND=C_INT), value      ::        IA, JA, N
+            TYPE(C_PTR), value    ::       INFO
+            TYPE(C_PTR), value      ::        DESCA
+            TYPE(C_PTR), value   ::              A
+         END SUBROUTINE pdpotrf_dlaf
       END INTERFACE
 #if __GNUC__ >= 9
       CPASSERT(IS_CONTIGUOUS(A))
 #endif
       CALL pdpotrf_dlaf(UPLO, N, C_LOC(A(1, 1)), IA, JA, C_LOC(DESCA(1)), C_LOC(INFO))
-      END SUBROUTINE cp_pdpotrf_dlaf
+   END SUBROUTINE cp_pdpotrf_dlaf
 
 ! **************************************************************************************************
 !> \brief ...
@@ -67,7 +77,7 @@ CONTAINS
 !> \param DESCA ...
 !> \param INFO ...
 ! **************************************************************************************************
-      SUBROUTINE cp_pspotrf_dlaf(UPLO, N, A, IA, JA, DESCA, INFO)
+   SUBROUTINE cp_pspotrf_dlaf(UPLO, N, A, IA, JA, DESCA, INFO)
       CHARACTER, INTENT(IN)                              :: UPLO
       INTEGER, INTENT(IN)                                :: N
       REAL, DIMENSION(:, :), TARGET                      :: A
@@ -75,19 +85,18 @@ CONTAINS
       INTEGER, DIMENSION(:), TARGET                      :: DESCA
       INTEGER, TARGET                                    :: INFO
 
-         INTERFACE
-            SUBROUTINE pspotrf_dlaf(UPLO, N, A, IA, JA, DESCA, INFO) &
-               BIND(C, name='pspotrf_dlaf')
-               IMPORT :: C_PTR, C_INT, C_DOUBLE, C_CHAR
-               CHARACTER(KIND=C_CHAR), VALUE :: UPLO
-               INTEGER(KIND=C_INT), value      ::        IA, JA, N
-               TYPE(C_PTR), value    ::       INFO
-               TYPE(C_PTR), value      ::        DESCA
-               TYPE(C_PTR), value   ::              A
-            END SUBROUTINE pspotrf_dlaf
-         END INTERFACE
+      INTERFACE
+         SUBROUTINE pspotrf_dlaf(UPLO, N, A, IA, JA, DESCA, INFO) &
+            BIND(C, name='pspotrf_dlaf')
+            IMPORT :: C_PTR, C_INT, C_DOUBLE, C_CHAR
+            CHARACTER(KIND=C_CHAR), VALUE :: UPLO
+            INTEGER(KIND=C_INT), value      ::        IA, JA, N
+            TYPE(C_PTR), value    ::       INFO
+            TYPE(C_PTR), value      ::        DESCA
+            TYPE(C_PTR), value   ::              A
+         END SUBROUTINE pspotrf_dlaf
+      END INTERFACE
 
-         CALL pspotrf_dlaf(UPLO, N, C_LOC(A(1, 1)), IA, JA, C_LOC(DESCA(1)), C_LOC(INFO))
-      END SUBROUTINE cp_pspotrf_dlaf
-   END MODULE dlaf
-
+      CALL pspotrf_dlaf(UPLO, N, C_LOC(A(1, 1)), IA, JA, C_LOC(DESCA(1)), C_LOC(INFO))
+   END SUBROUTINE cp_pspotrf_dlaf
+END MODULE dlaf
