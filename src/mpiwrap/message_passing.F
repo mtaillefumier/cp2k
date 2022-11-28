@@ -750,11 +750,11 @@ CONTAINS
 !         IF (ierr /= 0) CALL mp_stop(ierr, "mpi_init @ mp_world_init")
 !$    ELSE
 !$OMP MASTER
-      CALL mpi_init_thread(MPI_THREAD_MULTIPLE, provided_tsl, ierr)
-      IF (ierr /= 0) CALL mp_stop(ierr, "mpi_init_thread @ mp_world_init")
-      IF (provided_tsl .LT. MPI_THREAD_MULTIPLE) THEN
-         CALL mp_stop(0, "MPI library does not support the requested level of threading (MPI_THREAD_MULTIPLE).")
-      END IF
+         CALL mpi_init_thread(MPI_THREAD_MULTIPLE, provided_tsl, ierr)
+         IF (ierr /= 0) CALL mp_stop(ierr, "mpi_init_thread @ mp_world_init")
+         IF (provided_tsl .LT. MPI_THREAD_MULTIPLE) THEN
+            CALL mp_stop(0, "MPI library does not support the requested level of threading (MPI_THREAD_MULTIPLE).")
+         END IF
 !$OMP END MASTER
 !$    END IF
 #if __MPI_VERSION > 2

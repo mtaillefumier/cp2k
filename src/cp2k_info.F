@@ -242,6 +242,10 @@ CONTAINS
       flags = TRIM(flags)//" libvdwxc"
 #endif
 
+#if defined(__DLAF)
+      flags = TRIM(flags)//" DLA-Future"
+#endif
+
    END FUNCTION cp2k_flags
 
 ! **************************************************************************************************
