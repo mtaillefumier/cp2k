@@ -70,6 +70,16 @@ CONTAINS
       INTEGER, DIMENSION(:), TARGET                      :: DESCA
       INTEGER, TARGET                                    :: info
 
+      INTERFACE
+        SUBROUTINE pdpotrf_dlaf(UPLO, N, A, IA, JA, DESCA, INFO) &
+            BIND(C, name='pdpotrf_dlaf')
+            IMPORT :: C_PTR, C_INT, C_DOUBLE, C_CHAR
+            CHARACTER(KIND=C_CHAR), VALUE :: UPLO
+            INTEGER(KIND=C_INT), value :: IA, JA, N
+            TYPE(C_PTR), value :: INFO
+            TYPE(C_PTR), value :: DESCA
+            TYPE(C_PTR), value :: A
+        END SUBROUTINE pdpotrf_dlaf
       END INTERFACE
 #if __GNUC__ >= 9
       CPASSERT(IS_CONTIGUOUS(A))
