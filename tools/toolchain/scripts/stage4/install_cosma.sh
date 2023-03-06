@@ -6,8 +6,8 @@
 [ "${BASH_SOURCE[0]}" ] && SCRIPT_NAME="${BASH_SOURCE[0]}" || SCRIPT_NAME=$0
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_NAME")/.." && pwd -P)"
 
-cosma_ver="2.6.2"
-cosma_sha256="2debb5123cc35aeebc5fd2f8a46cfd6356d1e27618c9bb57129ecd09aa400940"
+cosma_ver="2.6.3"
+cosma_sha256="8ca96ca41458f1e9d0da70d524c5a03c677dba7238d23a578f852163b6d45ac9"
 source "${SCRIPT_DIR}"/common_vars.sh
 source "${SCRIPT_DIR}"/tool_kit.sh
 source "${SCRIPT_DIR}"/signal_trap.sh
@@ -129,7 +129,7 @@ case "$with_cosma" in
     COSMA_LDFLAGS="-L'${COSMA_LIBDIR}' -Wl,-rpath,'${COSMA_LIBDIR}'"
     COSMA_CUDA_LIBDIR="${pkg_install_dir}-cuda/lib"
     COSMA_CUDA_LDFLAGS="-L'${COSMA_CUDA_LIBDIR}' -Wl,-rpath,'${COSMA_CUDA_LIBDIR}'"
-    COSMA_HIP_LIBDIR="${pkg_install_dir}-cuda/lib"
+    COSMA_HIP_LIBDIR="${pkg_install_dir}-hip/lib"
     COSMA_HIP_LDFLAGS="-L'${COSMA_HIP_LIBDIR}' -Wl,-rpath,'${COSMA_HIP_LIBDIR}'"
     ;;
   __SYSTEM__)

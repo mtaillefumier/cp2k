@@ -82,3 +82,33 @@ function(cp2k_include_dirs _package_name _library_include_file)
       PARENT_SCOPE)
   unset(CP2K_${_package_name}_INCLUDE_DIRS_TMP CACHE)
 endfunction()
+
+function(cp2k_compare_src_with_list _list_files _extension)
+  file(
+    GLOB_RECURSE _test_list
+    RELATIVE "${CMAKE_SOURCE_DIR}/src"
+    "${_extension}")
+  # message(STATUS "ref : ${_list_files}") message(STATUS "search :
+  # ${_test_list}")
+  list(REMOVE_ITEM _test_list ${_list_files})
+  # message(STATUS "diff: ${_test_list}")
+  list(LENGTH _test_list list_size_)
+  if(list_size_ GREATER 0)
+    message(
+      STATUS
+        "The files registered in CMakeLists.txt and the files found with the extension ${_extension} do not match."
+    )
+    message(
+      STATUS
+        "your src directory likely contains files that were either renamed/added/deleted or forgotten to be deleted."
+    )
+    message(
+      STATUS
+        "The list of files to be added to the CMakeLists.txt or removed is\n\n  ${_test_list}\n\n"
+    )
+    message(
+      FATAL_ERROR "Either add these files to CMakeLists.txt or remove them.")
+  endif()
+  set(_test_list "")
+  set(list_size_ 0)
+endfunction()

@@ -352,7 +352,6 @@ list(
   mp2_ri_libint.F
   mp2_setup.F
   mp2_types.F
-  mpiwrap/message_passing.F
   mscfg_methods.F
   mscfg_types.F
   mulliken.F
@@ -835,6 +834,7 @@ list(APPEND CP2K_SRCS_F base/base_hooks.F base/kinds.F base/machine.F)
 list(
   APPEND
   CP2K_SRCS_F
+  mpiwrap/mp_perf_env.F
   common/bessel_lib.F
   common/bibliography.F
   common/callgraph.F
@@ -846,8 +846,6 @@ list(
   common/cp_iter_types.F
   common/cp_log_handling.F
   common/cp_min_heap.F
-  common/cp_para_env.F
-  common/cp_para_types.F
   common/cp_result_methods.F
   common/cp_result_types.F
   common/cp_units.F
@@ -970,6 +968,9 @@ list(
   input/input_parsing.F
   input/input_section_types.F
   input/input_val_types.F)
+
+list(APPEND CP2K_SRCS_F mpiwrap/mp_perf_env.F mpiwrap/message_passing.F
+     mpiwrap/mp_perf_test.F)
 
 list(
   APPEND
@@ -1308,75 +1309,87 @@ set(CP2K_GRID_SRCS_C
     grid/ref/grid_ref_task_list.c
     grid/grid_replay.c)
 
+set(CP2K_FPGA_SRC_C pw/fpga/fft_fpga.c pw/fpga/opencl_utils.c)
+set(CP2K_PW_SRCS_C pw/gpu/pw_gpu_internal.c)
 set(CP2K_OFFLOAD_SRCS_C offload/offload_buffer.c offload/offload_library.c)
+set(CP2K_SRCS_CPP torch_c_api.cpp)
 
-if(CP2K_USE_LIBTORCH)
-  list(APPEND CP2K_SRCS_CPP torch_c_api.cpp)
-endif()
+list(APPEND CP2K_SRCS_C "${CP2K_OFFLOAD_SRCS_C}")
 
 # ##############################################################################
 # gpu code                                     #
 # ##############################################################################
 
 set(CP2K_SRCS_GPU "")
+
+set(CP2K_GRID_SRCS_GPU
+    grid/gpu/grid_gpu_collocate.cu grid/gpu/grid_gpu_integrate.cu
+    grid/gpu/grid_gpu_task_list.cu)
+
+set(CP2K_GRID_SRCS_HIP
+    grid/hip/grid_hip_collocate.cu grid/hip/grid_hip_integrate.cu
+    grid/hip/grid_hip_context.cu)
+
+set(CP2K_DBM_SRCS_GPU dbm/dbm_multiply_gpu_kernel.cu)
+set(CP2K_DBM_SRCS_GPU_C dbm/dbm_multiply_gpu.c)
+
+set(CP2K_PW_SRCS_GPU pw/gpu/pw_gpu_kernels.cu)
+
+set(CP2K_PROGS_C
+    grid/grid_miniapp.c;grid/grid_unittest.c;dbm/dbm_miniapp.c;start/libcp2k_unittest.c
+)
+set(CP2K_PROGS_F
+    dbt/dbt_unittest.F
+    dbt/tas/dbt_tas_unittest.F
+    start/cp2k.F
+    common/memory_utilities_unittest.F
+    common/parallel_rng_types_unittest.F
+    metadyn_tools/graph.F
+    motion/dumpdcd.F
+    motion/xyz2dcd.F
+    nequip_unittest.F)
+
 if(CP2K_USE_CUDA OR CP2K_USE_HIP)
   if(NOT CP2K_DISABLE_PW_GPU)
-    list(APPEND CP2K_PW_SRCS_GPU pw/gpu/pw_gpu_kernels.cu)
-    list(APPEND CP2K_SRCS_C pw/gpu/pw_gpu_internal.c)
+    list(APPEND CP2K_SRCS_GPU "pw/gpu/pw_gpu_kernels.cu")
+    list(APPEND CP2K_SRCS_C ${CP2K_PW_SRCS_C})
   endif()
 
   if(NOT CP2K_DISABLE_DBM_GPU)
-    list(APPEND CP2K_DBM_SRCS_C dbm/dbm_multiply_gpu.c)
-    list(APPEND CP2K_DBM_SRCS_GPU dbm/dbm_multiply_gpu_kernel.cu)
+    list(APPEND CP2K_DBM_SRCS_C ${CP2K_DBM_SRCS_GPU_C})
+    list(APPEND CP2K_SRCS_GPU ${CP2K_DBM_SRCS_GPU})
   endif()
 
   if(NOT CP2K_DISABLE_GRID_GPU)
-    list(APPEND CP2K_GRID_SRCS_GPU grid/gpu/grid_gpu_collocate.cu
-         grid/gpu/grid_gpu_integrate.cu grid/gpu/grid_gpu_task_list.cu)
     if(CP2K_USE_HIP)
-      list(APPEND CP2K_GRID_SRCS_GPU grid/hip/grid_hip_collocate.cu
-           grid/hip/grid_hip_integrate.cu grid/hip/grid_hip_context.cu)
+      list(APPEND CP2K_SRCS_GPU ${CP2K_GRID_SRCS_HIP})
     endif()
+    list(APPEND CP2K_SRCS_GPU ${CP2K_GRID_SRCS_GPU})
   endif()
-  list(APPEND CP2K_SRCS_GPU ${CP2K_GRID_SRCS_GPU} ${CP2K_DBM_SRCS_GPU}
-       ${CP2K_PW_SRCS_GPU})
   if(CP2K_USE_HIP)
     set_source_files_properties(${CP2K_SRCS_GPU} PROPERTIES LANGUAGE HIP)
   endif()
 endif()
 
-# starting list to compile cp2k without any additional features.
-list(APPEND CP2K_SRCS_C ${CP2K_DBM_SRCS_C} ${CP2K_GRID_SRCS_C}
-     ${CP2K_OFFLOAD_SRCS_C} ${CP2K_PW_SRCS_C})
+list(APPEND CP2K_SRCS_C ${CP2K_DBM_SRCS_C} ${CP2K_GRID_SRCS_C})
 
 # ##############################################################################
-# specific variables for the regtests. Binaries will be created with an
-# extension               #
+#
 # ##############################################################################
 
-set(__cp2k_ext "")
-set(__cp2k_cmake_name "")
+# check that the files registered in CMakeLists.txt are all present and return
+# an error otherwise
 
-if(CP2K_USE_MPI)
-  set(__cp2k_ext "psmp")
-else()
-  set(__cp2k_ext "ssmp")
-endif()
-
-if(CP2K_USE_CUDA)
-  set(__cp2k_cmake_name "cmake_build_cuda")
-endif()
-
-if(CP2K_USE_HIP)
-  set(__cp2k_cmake_name "cmake_build_hip")
-endif()
-
-if(NOT CP2K_USE_HIP AND NOT CP2K_USE_CUDA)
-  set(__cp2k_cmake_name "cmake_build_cpu")
-endif()
-
-if(CP2K_ENABLE_REGTESTS)
-  file(MAKE_DIRECTORY "${PROJECT_SOURCE_DIR}/exe/${__cp2k_cmake_name}")
+if(CP2K_ENABLE_CONSISTENCY_CHECKS)
+  cp2k_compare_src_with_list(
+    "${CP2K_FPGA_SRC_C};${CP2K_SRCS_C};${CP2K_OFFLOAD_SRCS_C};${CP2K_DBM_SRCS_C};${CP2K_GRID_SRCS_C};${CP2K_PW_SRCS_C};${CP2K_DBM_SRCS_GPU_C};${CP2K_PROGS_C}"
+    "*.c")
+  cp2k_compare_src_with_list(
+    "${CP2K_SRCS_F};${CP2K_OFFLOAD_SRCS_F};${CP2K_PROGS_F}" "*.F")
+  cp2k_compare_src_with_list(
+    "${CP2K_GRID_SRCS_GPU};${CP2K_GRID_SRCS_HIP};${CP2K_DBM_SRCS_GPU};${CP2K_PW_SRCS_GPU}"
+    "*.cu")
+  cp2k_compare_src_with_list("${CP2K_SRCS_CPP}" "*.cpp")
 endif()
 
 # ##############################################################################
@@ -1422,8 +1435,12 @@ foreach(cp2k_src ${CP2K_SRCS})
     ${cp2k_src} PROPERTIES COMPILE_DEFINITIONS __SHORT_FILE__="${short_file}")
 endforeach()
 
-add_library(cp2k
-            "${CP2K_SRCS};${CP2K_SRCS_C};${CP2K_SRCS_GPU};${CP2K_SRCS_CPP}")
+if(CP2K_USE_LIBTORCH)
+  add_library(cp2k
+              "${CP2K_SRCS};${CP2K_SRCS_C};${CP2K_SRCS_GPU};${CP2K_SRCS_CPP}")
+else()
+  add_library(cp2k "${CP2K_SRCS};${CP2K_SRCS_C};${CP2K_SRCS_GPU}")
+endif()
 
 target_compile_features(cp2k PUBLIC cxx_std_14)
 target_compile_features(cp2k PUBLIC c_std_99)
@@ -1628,8 +1645,13 @@ else()
 endif()
 
 foreach(__app grid_miniapp grid_unittest)
-  add_executable(${__app} "grid/${__app}.c" ${CP2K_GRID_SRCS_C}
-                          ${CP2K_GRID_SRCS_GPU} ${CP2K_OFFLOAD_SRCS_C})
+  add_executable(
+    ${__app}
+    "grid/${__app}.c"
+    ${CP2K_GRID_SRCS_C}
+    $<$<OR:$<BOOL:${CP2K_USE_CUDA}>,$<BOOL:${CP2K_USE_HIP}>>:${CP2K_GRID_SRCS_GPU}>
+    $<$<BOOL:${CP2K_USE_HIP}>:${CP2K_GRID_SRCS_HIP}>
+    ${CP2K_OFFLOAD_SRCS_C})
   target_compile_definitions(
     ${__app}
     PRIVATE $<$<CONFIG:Release>:NDEBUG>
@@ -1684,14 +1706,12 @@ endforeach()
 # ##############################################################################
 # installation
 # ##############################################################################
-foreach(_app ${__CP2K_APPS} cp2k-bin grid_miniapp grid_unittest dbm_miniapp)
-  install(
-    TARGETS ${__CP2K_APPS}
-    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
-    LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-    INCLUDES
-    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/cp2k")
-endforeach()
+install(
+  TARGETS ${__CP2K_APPS} cp2k-bin grid_miniapp grid_unittest dbm_miniapp
+  RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+  LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+  INCLUDES
+  DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/cp2k")
 
 install(DIRECTORY "${CMAKE_SOURCE_DIR}/data"
         DESTINATION "${CMAKE_INSTALL_FULL_DATAROOTDIR}/cp2k")
@@ -1725,17 +1745,3 @@ install(
   DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/cp2k"
   FILES_MATCHING
   PATTERN "*.mod")
-
-# ##############################################################################
-# copy the executable to exe/cmake_build_target to ease testing with the
-# regtests (less work for the regtests)
-# ##############################################################################
-
-if(CP2K_ENABLE_REGTESTS)
-  file(MAKE_DIRECTORY "${PROJECT_SOURCE_DIR}/exe/${__cp2k_cmake_name}")
-  foreach(__apps ${__CP2K_APPS} grid_miniapp grid_unittest dbm_miniapp)
-    file(COPY "${PROJECT_BINARY_DIR}/bin/${__apps}.${__cp2k_ext}"
-         DESTINATION "${PROJECT_SOURCE_DIR}/exe/${__cp2k_cmake_name}")
-  endforeach()
-  message(INFO "Run the regtests with ....")
-endif()
