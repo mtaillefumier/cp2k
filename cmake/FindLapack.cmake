@@ -20,33 +20,34 @@ include(FindPackageHandleStandardArgs)
 find_package(PkgConfig)
 find_package(Blas REQUIRED)
 
-if(CP2K_BLAS_FOUND)
-  # LAPACK in the Intel MKL 10+ library?
-  if(CP2K_BLAS_VENDOR MATCHES "MKL|OpenBLAS|Armpl|SCI|FlexiBLAS|NVHPC")
-    # we just need to create the interface that's all
-    set(CP2K_LAPACK_FOUND TRUE)
-    get_target_property(CP2K_LAPACK_INCLUDE_DIRS CP2K::BLAS::blas
-                        INTERFACE_INCLUDE_DIRECTORIES)
-    get_target_property(CP2K_LAPACK_LINK_LIBRARIES CP2K::BLAS::blas
-                        INTERFACE_LINK_LIBRARIES)
-  else()
-    # we might get lucky to find a pkgconfig package for lapack (fedora provides
-    # one for instance)
-    if(PKG_CONFIG_FOUND)
-      pkg_check_modules(CP2K_LAPACK lapack)
-    endif()
+if(NOT CP2K_CONFIG_PACKAGE)
+  if(CP2K_BLAS_FOUND)
+    # LAPACK in the Intel MKL 10+ library?
+    if(CP2K_BLAS_VENDOR MATCHES "MKL|OpenBLAS|Armpl|SCI|FlexiBLAS|NVHPC")
+      # we just need to create the interface that's all
+      set(CP2K_LAPACK_FOUND TRUE)
+      get_target_property(CP2K_LAPACK_INCLUDE_DIRS CP2K::BLAS::blas
+                          INTERFACE_INCLUDE_DIRECTORIES)
+      get_target_property(CP2K_LAPACK_LINK_LIBRARIES CP2K::BLAS::blas
+                          INTERFACE_LINK_LIBRARIES)
+    else()
+      # we might get lucky to find a pkgconfig package for lapack (fedora
+      # provides one for instance)
+      if(PKG_CONFIG_FOUND)
+        pkg_check_modules(CP2K_LAPACK lapack)
+      endif()
 
-    if(NOT CP2K_LAPACK_FOUND)
-      find_library(
-        CP2K_LAPACK_LINK_LIBRARIES
-        NAMES "lapack" "lapack64"
-        PATH_SUFFIXES "openblas" "openblas64" "openblas-pthread"
-                      "openblas-openmp" "lib" "lib64"
-        NO_DEFAULT_PATH)
+      if(NOT CP2K_LAPACK_FOUND)
+        find_library(
+          CP2K_LAPACK_LINK_LIBRARIES
+          NAMES "lapack" "lapack64"
+          PATH_SUFFIXES "openblas" "openblas64" "openblas-pthread"
+                        "openblas-openmp" "lib" "lib64"
+          NO_DEFAULT_PATH)
+      endif()
     endif()
   endif()
 endif()
-
 # check if found
 find_package_handle_standard_args(Lapack
                                   REQUIRED_VARS CP2K_LAPACK_LINK_LIBRARIES)

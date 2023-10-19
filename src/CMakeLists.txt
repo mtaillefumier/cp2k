@@ -1555,7 +1555,7 @@ target_compile_definitions(
   cp2k
   PUBLIC $<$<BOOL:${CP2K_USE_MPI}>:__parallel>
          $<$<BOOL:${CP2K_USE_MPI}>:__SCALAPACK>
-         $<$<BOOL:${CP2K_ENABLE_F08_MPI}>:__MPI_08>
+         $<$<BOOL:${CP2K_USE_MPI_F08}>:__MPI_08>
          __COMPILE_DATE=\"${CP2K_TIMESTAMP}\"
          __COMPILE_HOST=\"${CP2K_HOST_NAME}\"
          __COMPILE_REVISION=\"${CP2K_GIT_HASH}\"
@@ -1774,12 +1774,12 @@ install(
   EXPORT cp2k_targets
   FILE cp2kTargets.cmake
   NAMESPACE cp2k::
-  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/cp2k")
+  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}")
 
-install(FILES start/libcp2k.h DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/cp2k")
+install(FILES start/libcp2k.h DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME}")
 
 install(
   DIRECTORY "${PROJECT_BINARY_DIR}/src/mod_files"
-  DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/cp2k"
+  DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME}/${CMAKE_Fortran_COMPILER_ID}-${CMAKE_Fortran_COMPILER_VERSION}"
   FILES_MATCHING
   PATTERN "*.mod")

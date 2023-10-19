@@ -49,7 +49,8 @@ if(NOT DEFINED CMAKE_CUDA_STANDARD)
 endif()
 
 # set language and standard
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_C_STANDARD 11)
 
 find_package(PkgConfig)
 
@@ -115,8 +116,8 @@ cmake_dependent_option(CP2K_ENABLE_FFTW3_OPENMP_SUPPORT
                        "Enable FFTW openmp support" ON "CP2K_USE_FFTW3" OFF)
 cmake_dependent_option(CP2K_ENABLE_FFTW3_THREADS_SUPPORT
                        "Enable FFTW THREADS support" OFF "CP2K_USE_FFTW3" OFF)
-cmake_dependent_option(CP2K_ENABLE_F08_MPI "Enable MPI Fortran 2008 interface"
-                       OFF "CP2K_USE_MPI" OFF)
+cmake_dependent_option(CP2K_USE_MPI_F08 "Enable MPI Fortran 2008 interface" OFF
+                       "CP2K_USE_MPI" OFF)
 
 cmake_dependent_option(
   DBCSR_USE_ACCEL
@@ -748,7 +749,7 @@ add_subdirectory(src)
 include(GNUInstallDirs)
 
 get_target_property(CP2K_LIBS cp2k_link_libs INTERFACE_LINK_LIBRARIES)
-configure_file(cmake/cp2k.pc.in cp2k.pc @ONLY)
+configure_file(cmake/libcp2k.pc.in libcp2k.pc @ONLY)
 
 message(
   STATUS "--------------------------------------------------------------------")
@@ -1038,6 +1039,10 @@ configure_file("${PROJECT_SOURCE_DIR}/cmake/cp2kConfig.cmake.in"
 install(FILES "${PROJECT_BINARY_DIR}/cp2kConfig.cmake"
               "${PROJECT_BINARY_DIR}/cp2kConfigVersion.cmake"
         DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/cp2k")
+
+install(FILES "${PROJECT_BINARY_DIR}/libcp2k.pc"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
+
 
 install(
   DIRECTORY "${PROJECT_SOURCE_DIR}/cmake"
