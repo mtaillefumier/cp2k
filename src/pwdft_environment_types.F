@@ -128,7 +128,6 @@ CONTAINS
 !> \param force_env_input ...
 !> \param xc_input ...
 !> \param dft_plus_u_input ...
-!> \param u_plus_v_input ...
 !> \param cp_subsys ...
 !> \param qs_subsys ...
 !> \param para_env ...
@@ -142,12 +141,12 @@ CONTAINS
 !>      07.2018 initial create
 !> \author JHU
 ! **************************************************************************************************
-   SUBROUTINE pwdft_env_get(pwdft_env, pwdft_input, force_env_input, xc_input, dft_plus_u_input, u_plus_v_input, &
+   SUBROUTINE pwdft_env_get(pwdft_env, pwdft_input, force_env_input, xc_input, dft_plus_u_input, &
                             cp_subsys, qs_subsys, para_env, energy, forces, stress, &
                             sctx, gs_handler, ks_handler)
 
       TYPE(pwdft_environment_type), INTENT(IN)           :: pwdft_env
-      TYPE(section_vals_type), OPTIONAL, POINTER         :: pwdft_input, force_env_input, xc_input, u_plus_v_input, dft_plus_u_input
+      TYPE(section_vals_type), OPTIONAL, POINTER         :: pwdft_input, force_env_input, xc_input, dft_plus_u_input
       TYPE(cp_subsys_type), OPTIONAL, POINTER            :: cp_subsys
       TYPE(qs_subsys_type), OPTIONAL, POINTER            :: qs_subsys
       TYPE(mp_para_env_type), OPTIONAL, POINTER          :: para_env
@@ -169,7 +168,6 @@ CONTAINS
       IF (PRESENT(force_env_input)) force_env_input => pwdft_env%force_env_input
       IF (PRESENT(xc_input)) xc_input => pwdft_env%xc_input
       IF (PRESENT(dft_plus_u_input)) dft_plus_u_input => pwdft_env%dft_plus_u_input
-      IF (PRESENT(u_plus_v_input)) u_plus_v_input => pwdft_env%u_plus_v_input
       IF (PRESENT(qs_subsys)) qs_subsys => pwdft_env%qs_subsys
       IF (PRESENT(cp_subsys)) THEN
          CALL qs_subsys_get(pwdft_env%qs_subsys, cp_subsys=cp_subsys)
@@ -191,7 +189,6 @@ CONTAINS
 !> \param force_env_input ...
 !> \param xc_input ...
 !> \param dft_plus_u_input ...
-!> \param u_plus_v_input ...
 !> \param qs_subsys ...
 !> \param cp_subsys ...
 !> \param para_env ...
@@ -207,12 +204,12 @@ CONTAINS
 !> \note
 !>   For possible missing arguments see the attributes of pwdft_environment_type
 ! **************************************************************************************************
-   SUBROUTINE pwdft_env_set(pwdft_env, pwdft_input, force_env_input, xc_input, dft_plus_u_input, u_plus_v_input, &
+   SUBROUTINE pwdft_env_set(pwdft_env, pwdft_input, force_env_input, xc_input, dft_plus_u_input, &
                             qs_subsys, cp_subsys, para_env, energy, forces, stress, &
                             sctx, gs_handler, ks_handler)
 
       TYPE(pwdft_environment_type), INTENT(INOUT)        :: pwdft_env
-      TYPE(section_vals_type), OPTIONAL, POINTER         :: pwdft_input, force_env_input, xc_input, u_plus_v_input, dft_plus_u_input
+      TYPE(section_vals_type), OPTIONAL, POINTER         :: pwdft_input, force_env_input, xc_input, dft_plus_u_input
       TYPE(qs_subsys_type), OPTIONAL, POINTER            :: qs_subsys
       TYPE(cp_subsys_type), OPTIONAL, POINTER            :: cp_subsys
       TYPE(mp_para_env_type), OPTIONAL, POINTER          :: para_env
@@ -234,7 +231,6 @@ CONTAINS
       IF (PRESENT(pwdft_input)) pwdft_env%pwdft_input => pwdft_input
       IF (PRESENT(force_env_input)) pwdft_env%force_env_input => force_env_input
       IF (PRESENT(xc_input)) pwdft_env%xc_input => xc_input
-      IF (PRESENT(u_plus_v_input)) pwdft_env%u_plus_v_input => u_plus_v_input
       IF (PRESENT(dft_plus_u_input)) pwdft_env%dft_plus_u_input => dft_plus_u_input
 
       IF (PRESENT(qs_subsys)) THEN

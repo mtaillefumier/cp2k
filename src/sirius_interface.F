@@ -69,18 +69,17 @@ MODULE sirius_interface
         SIRIUS_INTEGER_ARRAY_TYPE, SIRIUS_INTEGER_TYPE, SIRIUS_LOGICAL_ARRAY_TYPE, &
         SIRIUS_LOGICAL_TYPE, SIRIUS_NUMBER_ARRAY_TYPE, SIRIUS_NUMBER_TYPE, &
         SIRIUS_STRING_ARRAY_TYPE, SIRIUS_STRING_TYPE, sirius_add_atom, sirius_add_atom_type, &
-        sirius_add_atom_type_radial_function, sirius_add_hubbard_atom_pair, &
-        sirius_add_xc_functional, sirius_context_handler, sirius_create_context, &
-        sirius_create_ground_state, sirius_create_kset_from_grid, sirius_finalize, &
-        sirius_find_ground_state, sirius_get_band_energies, sirius_get_band_occupancies, &
-        sirius_get_energy, sirius_get_forces, sirius_get_kpoint_properties, &
-        sirius_get_num_kpoints, sirius_get_parameters, sirius_get_stress_tensor, &
-        sirius_ground_state_handler, sirius_import_parameters, sirius_initialize, &
-        sirius_initialize_context, sirius_kpoint_set_handler, sirius_option_get_info, &
-        sirius_option_get_section_length, sirius_option_set, sirius_set_atom_position, &
-        sirius_set_atom_type_dion, sirius_set_atom_type_hubbard, sirius_set_atom_type_radial_grid, &
-        sirius_set_lattice_vectors, sirius_set_mpi_grid_dims, sirius_set_parameters, &
-        sirius_update_ground_state
+        sirius_add_atom_type_radial_function, sirius_add_xc_functional, sirius_context_handler, &
+        sirius_create_context, sirius_create_ground_state, sirius_create_kset_from_grid, &
+        sirius_finalize, sirius_find_ground_state, sirius_get_band_energies, &
+        sirius_get_band_occupancies, sirius_get_energy, sirius_get_forces, &
+        sirius_get_kpoint_properties, sirius_get_num_kpoints, sirius_get_parameters, &
+        sirius_get_stress_tensor, sirius_ground_state_handler, sirius_import_parameters, &
+        sirius_initialize, sirius_initialize_context, sirius_kpoint_set_handler, &
+        sirius_option_get_info, sirius_option_get_section_length, sirius_option_set, &
+        sirius_set_atom_position, sirius_set_atom_type_dion, sirius_set_atom_type_hubbard, &
+        sirius_set_atom_type_radial_grid, sirius_set_lattice_vectors, sirius_set_mpi_grid_dims, &
+        sirius_set_parameters, sirius_update_ground_state
 #include "./base/base_uses.f90"
 
    IMPLICIT NONE
@@ -137,17 +136,14 @@ CONTAINS
       INTEGER                                            :: i, iatom, ibeta, ifun, ikind, iwf, j, l, &
                                                             n, natom, nbeta, nkind, nmesh, &
                                                             num_mag_dims, sirius_mpi_comm, vdw_func, nu, &
-                                                            lu, num_links, link, subspace_method
+                                                            lu, subspace_method
       INTEGER, DIMENSION(:), POINTER                     :: mpi_grid_dims
       INTEGER(KIND=C_INT), DIMENSION(3)                  :: k_grid, k_shift
-      INTEGER, DIMENSION(3)                              :: translation
-      INTEGER, DIMENSION(2)                              :: l_pair, n_pair, atom_pair
       INTEGER, DIMENSION(:), POINTER                     :: kk
-      LOGICAL                                            :: up, use_ref_cell, simplified_method
-      LOGICAL(4)                                         :: use_so, use_symmetry, dft_plus_u_atom, use_u_plus_v
+      LOGICAL                                            :: up, use_ref_cell, simplified_method, use_plus_u
+      LOGICAL(4)                                         :: use_so, use_symmetry, dft_plus_u_atom
       REAL(KIND=C_DOUBLE), ALLOCATABLE, DIMENSION(:)     :: fun
       REAL(KIND=C_DOUBLE), ALLOCATABLE, DIMENSION(:, :)  :: dion
-      REAL(KIND=C_DOUBLE)                                :: V_
       REAL(KIND=C_DOUBLE), DIMENSION(3)                  :: a1, a2, a3, v1, v2
       REAL(KIND=dp)                                      :: al, angle1, angle2, cval, focc, &
                                                             magnetization, mass, pf, rl, zeff, alpha_u, beta_u, &
@@ -168,7 +164,7 @@ CONTAINS
       TYPE(qs_kind_type), DIMENSION(:), POINTER          :: qs_kind_set
       TYPE(qs_subsys_type), POINTER                      :: qs_subsys
       TYPE(section_vals_type), POINTER                   :: pwdft_section, pwdft_sub_section, &
-                                                            xc_fun, xc_section, u_plus_v_section, link_section, dft_plus_u_section
+                                                            xc_fun, xc_section, dft_plus_u_section
       TYPE(sirius_context_handler)                       :: sctx
       TYPE(sirius_ground_state_handler)                  :: gs_handler
       TYPE(sirius_kpoint_set_handler)                    :: ks_handler
@@ -183,7 +179,7 @@ CONTAINS
 !     the "fun" starts.
 
       CALL pwdft_env_get(pwdft_env=pwdft_env, pwdft_input=pwdft_section, &
-                         xc_input=xc_section, dft_plus_u_input=dft_plus_u_section, u_plus_v_input=u_plus_v_section)
+                         xc_input=xc_section, dft_plus_u_input=dft_plus_u_section)
 
       ! cp2k should *have* a function that return all xc_functionals. Doing
       ! manually is prone to errors
@@ -483,8 +479,8 @@ CONTAINS
       END DO
 
       IF (ASSOCIATED(dft_plus_u_section)) THEN
-         CALL section_vals_val_get(dft_plus_u_section, keyword_name="_SECTION_PARAMETERS_", l_val=use_u_plus_v)
-         CALL sirius_set_parameters(sctx, hubbard_correction=use_u_plus_v)
+         CALL section_vals_val_get(dft_plus_u_section, keyword_name="_SECTION_PARAMETERS_", l_val=use_plus_u)
+         CALL sirius_set_parameters(sctx, hubbard_correction=use_plus_u)
          CALL section_vals_val_get(dft_plus_u_section, keyword_name="SUBSPACE_METHOD", i_val=subspace_method)
          IF (subspace_method .EQ. SIRIUS_HUBBARD_SUBSPACE_NONE) THEN
             CALL sirius_set_parameters(sctx, hubbard_orbitals="none")
@@ -534,46 +530,6 @@ CONTAINS
          v2(1:3) = vs(1:3)
          CALL sirius_add_atom(sctx, label, v2(1), v1(1))
       END DO
-
-      IF (ASSOCIATED(u_plus_v_section)) THEN
-         CALL section_vals_val_get(u_plus_v_section, keyword_name="_SECTION_PARAMETERS_", l_val=use_u_plus_v)
-         IF (use_u_plus_v) THEN
-            link_section => section_vals_get_subs_vals(u_plus_v_section, "LINK")
-            CALL section_vals_get(link_section, n_repetition=num_links)
-            DO link = 1, num_links
-               CALL section_vals_val_get(link_section, i_rep_section=link, keyword_name="ATOM_PAIR", i_vals=kk)
-               atom_pair(1) = kk(1)
-               atom_pair(2) = kk(2)
-               CALL section_vals_val_get(link_section, i_rep_section=link, keyword_name="TRANSLATION", i_vals=kk)
-               translation(1) = kk(1)
-               translation(2) = kk(2)
-               translation(1) = kk(2)
-               CALL section_vals_val_get(link_section, i_rep_section=link, keyword_name="V", r_val=V_)
-               CALL section_vals_val_get(link_section, i_rep_section=link, keyword_name="ATOMIC_LEVELS", i_vals=kk)
-               n_pair(1) = kk(1)
-               n_pair(2) = kk(2)
-               CALL section_vals_val_get(link_section, i_rep_section=link, keyword_name="ANGULAR_MOMENTUMS", i_vals=kk)
-               l_pair(1) = kk(1)
-               l_pair(2) = kk(2)
-
-               ! check that the two atoms are distinct.
-               IF ((atom_pair(1) .EQ. atom_pair(2)) .AND. &
-                   (translation(1) .EQ. translation(2)) .AND. &
-                   (translation(3) .EQ. translation(2)) .AND. (translation(1) .EQ. 0)) THEN
-                  CALL cp_abort(__LOCATION__, "The two atoms of this link should be distinct.")
-               END IF
-
-               ! check consistancy of the atomic orbital 0 <= l < n
-               IF ((l_pair(1) .GE. n_pair(1)) .OR. (l_pair(2) .GE. n_pair(2))) THEN
-                  CALL cp_abort(__LOCATION__, "CP2K/SIRIUS (hubbard): the angular momentum should be lower than the "// &
-                                "principal quantum number.")
-               END IF
-
-               CALL sirius_add_hubbard_atom_pair(sctx, atom_pair, translation, &
-                                                 n_pair, l_pair, V_)
-            END DO
-         END IF
-      END IF
 
       CALL sirius_set_mpi_grid_dims(sctx, 2, mpi_grid_dims)
 

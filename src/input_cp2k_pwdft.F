@@ -115,9 +115,15 @@ CONTAINS
       ! uncomment these lines when nlcg is officialy supported in cp2k
       !
 
-      !      CALL create_sirius_section(subsection, 'nlcg')
-      !      CALL section_add_subsection(section, subsection)
-      !      CALL section_release(subsection)
+      !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+      ! CALL create_sirius_section(subsection, 'nlcg')   !
+      ! CALL section_add_subsection(section, subsection) !
+      ! CALL section_release(subsection)                 !
+      !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+      CALL create_dft_plus_u_section(subsection)
+      CALL section_add_subsection(section, subsection)
+      CALL section_release(subsection)
 
       CALL create_print_section(subsection)
       CALL section_add_subsection(section, subsection)
@@ -277,6 +283,11 @@ CONTAINS
                      CALL sirius_option_get(section_name, name, ctype, C_LOC(possible_values(j)), max_length=128, enum_idx=j)
                      enum_i_val(j) = j
                      possible_values(j) = TRIM(ADJUSTL(possible_values(j)))
+                     ! fail safe to avoid an enum type with an empty string. Set it to auto.
+                     ! ideally we need to fix that on sirius side
+                     IF (LEN(possible_values(j)) .EQ. 0) THEN
+                        possible_values(j) = "auto"
+                     END IF
                   END DO
 
                   IF (enum_length > 1) THEN
@@ -402,7 +413,6 @@ CONTAINS
       CALL create_dos_section(print_key)
       CALL section_add_subsection(section, print_key)
       CALL section_release(print_key)
-
    END SUBROUTINE create_print_section
 
 ! **************************************************************************************************
@@ -437,6 +447,58 @@ CONTAINS
 
    END SUBROUTINE create_dos_section
 
+! **************************************************************************************************
+!> \brief ...
+!> \param section ...
+! **************************************************************************************************
+   SUBROUTINE create_dft_plus_u_section(section)
+      TYPE(section_type), POINTER                        :: section
+
+      TYPE(keyword_type), POINTER                        :: keyword
+
+      CPASSERT(.NOT. ASSOCIATED(section))
+
+      CALL section_create(section, __LOCATION__, &
+                          name="DFT_PLUS_U", &
+                          description="Define the parameters for the DFT+U correction implemented in the pwdft method", &
+                          n_keywords=4, &
+                          n_subsections=1, &
+                          repeats=.FALSE.)
+      NULLIFY (keyword)
+
+      CALL keyword_create(keyword, __LOCATION__, &
+                          name="_SECTION_PARAMETERS_", &
+                          description="Controls the activation of the DFT+U section", &
+                          usage="&DFT_PLUS_U ON", &
+                          default_l_val=.FALSE., &
+                          lone_keyword_l_val=.TRUE.)
+      CALL section_add_keyword(section, keyword)
+      CALL keyword_release(keyword)
+
+      CALL keyword_create(keyword, __LOCATION__, &
+                          name="SUBSPACE_METHOD", &
+                          description="Select which subspace method to use for generating the hubbard subspace", &
+                    enum_desc=s2a("FULL_ORTHOGONALIZATION : Use all atomic wave functions to orthogonalize the hubbard subspace.", &
+                                     "ORTHOGONALIZATION : Orthogonalize the wave functions contributing to the hubbard subspace.", &
+                                        "NORMALIZATION : Normalize the wave functions contributing to the hubbard subspace.", &
+                                        "NONE : Use bare atomic wave functions "), &
+                          enum_c_vals=s2a("FULL_ORTHOGONALIZATION", "ORTHOGONALIZATION", "NORMALIZATION", "NONE"), &
+                          usage="SUBSPACE_METHOD FULL_ORTHOGONALIZATION", &
+                          enum_i_vals=(/SIRIUS_HUBBARD_SUBSPACE_FULL_ORTHOGONALIZATION, SIRIUS_HUBBARD_SUBSPACE_ORTHOGONALIZATION, &
+                                        SIRIUS_HUBBARD_SUBSPACE_NORMALIZATION, SIRIUS_HUBBARD_SUBSPACE_NONE/), &
+                          default_i_val=SIRIUS_HUBBARD_SUBSPACE_FULL_ORTHOGONALIZATION)
+      CALL section_add_keyword(section, keyword)
+      CALL keyword_release(keyword)
+
+      CALL keyword_create(keyword, __LOCATION__, &
+                          name="SIMPLIFIED", &
+                          description="if on, the dft engine will select a simplified version of the dft+U method ", &
+                          usage="SIMPLIFED true", &
+                          default_l_val=.FALSE., &
+                          lone_keyword_l_val=.TRUE.)
+      CALL section_add_keyword(section, keyword)
+      CALL keyword_release(keyword)
+   END SUBROUTINE create_dft_plus_u_section
 #else
 ! **************************************************************************************************
 !> \brief ...
@@ -454,7 +516,6 @@ CONTAINS
                           repeats=.FALSE.)
 
    END SUBROUTINE create_pwdft_section
-
 #endif
 
 END MODULE input_cp2k_pwdft
