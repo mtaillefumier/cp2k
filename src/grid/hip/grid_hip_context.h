@@ -367,8 +367,9 @@ struct kernel_params {
   char la_max_diff{0};
   char lb_max_diff{0};
   enum grid_func func;
-  double *ptr_dev[7] = {nullptr, nullptr, nullptr, nullptr,
-                        nullptr, nullptr, nullptr};
+  double *ptr_dev[8] = {nullptr, nullptr, nullptr, nullptr,
+                        nullptr, nullptr, nullptr, nullptr};
+  int refCount = 0;
   double **sphi_dev{nullptr};
   int ntasks{0};
   int *task_sorted_by_blocks_dev{nullptr};
@@ -397,6 +398,10 @@ public:
   // from them
   gpu_vector<int> block_offsets_dev;
   gpu_vector<double> coef_dev_;
+
+  // temporary storage for the reduction.
+  gpu_vector<double> blocks_virial_dev;
+  gpu_vector<double> blocks_forces_dev;
   gpu_vector<double> cab_dev_;
   gpu_vector<double> pab_block_;
   gpu_vector<double> hab_block_;
@@ -432,6 +437,8 @@ public:
     cab_dev_.reset();
     task_sorted_by_blocks_dev.reset();
     sorted_blocks_offset_dev.reset();
+    blocks_virial_dev.reset();
+    blocks_forces_dev.reset();
     sphi_dev.reset();
     forces_.reset();
     virial_.reset();

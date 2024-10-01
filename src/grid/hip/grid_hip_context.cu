@@ -312,6 +312,10 @@ extern "C" void grid_hip_create_task_list(
   ctx->task_sorted_by_blocks_dev.resize(sorted_blocks.size());
   ctx->task_sorted_by_blocks_dev.copy_to_gpu(sorted_blocks);
 
+  ctx->blocks_virial_dev.resize(9 * sorted_blocks_offset.size());
+  ctx->blocks_forces_dev.resize(6 * sorted_blocks_offset.size());
+
+  // All of this code is checking setup consistency.
   for (int i = 0; i < (int)sorted_blocks_offset.size(); i++) {
     int num_tasks = 0;
     if (i == (int)sorted_blocks_offset.size() - 1)

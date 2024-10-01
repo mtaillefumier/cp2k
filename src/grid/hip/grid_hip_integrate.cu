@@ -40,6 +40,7 @@ namespace cg = cooperative_groups;
 #endif
 
 namespace rocm_backend {
+
 // do a warp reduction and return the final sum to thread_id = 0
 template <typename T>
 __device__ __inline__ T warp_reduce(T *table, const int tid) {
@@ -65,6 +66,7 @@ __device__ __inline__ T warp_reduce(T *table, const int tid) {
     table[tid] += table[tid + 2];
   }
   __syncthreads();
+  
   return (table[0] + table[1]);
 }
 // #endif
@@ -177,14 +179,19 @@ __global__ __launch_bounds__(64) void compute_hab_v2(const kernel_params dev_) {
 
         // we can use shuffle_down if it exists for T
 
-        // these atomic operations are not needed since the blocks are updated
-        // by one single block thread. However the grid_miniapp will fail if not
-        // there.
+        // Atomic operations are not needed since the blocks are updated
+        // by one single thread block and each of the block updated by one
+        // unique thread.
+        const int index;
         if (task.block_transposed) {
-          atomicAdd(task.hab_block + j * task.nsgfb + i, res);
+          index = j * task.nsgfb + i;
+          //atomicAdd(task.hab_block + j * task.nsgfb + i, res);
         } else {
-          atomicAdd(task.hab_block + i * task.nsgfa + j, res);
+          index = i * task.nsgfa + j;
+          //atomicAdd(task.hab_block + i * task.nsgfa + j, res);
         }
+
+        task.hab_block[index] += res;
       }
     }
     __syncthreads();
@@ -198,8 +205,10 @@ __global__ __launch_bounds__(64) void compute_hab_v2(const kernel_params dev_) {
     T *forces_a = &dev_.ptr_dev[4][3 * iatom];
     T *forces_b = &dev_.ptr_dev[4][3 * jatom];
 
-    T *sum = (T *)shared_memory;
+    extern __shared__ T sum[];
     if (dev_.ptr_dev[5] != nullptr) {
+
+      // we avoid atomicAdd for virial as it is a simple reduction
 
       for (int i = 0; i < 9; i++) {
         sum[tid] = virial[i];
@@ -209,8 +218,44 @@ __global__ __launch_bounds__(64) void compute_hab_v2(const kernel_params dev_) {
         __syncthreads();
 
         if (tid == 0)
-          atomicAdd(dev_.ptr_dev[5] + i, virial[i]);
-        __syncthreads();
+          dev_.ptr_dev[7][i * gridSize.x + blockIdx.x] = virial[i];
+        
+        // if (tid == 0)
+        //   atomicAdd(dev_.ptr_dev[5] + i, virial[i]);
+        // __syncthreads();
+      }
+
+      __threadfences();
+
+      __shared__ bool amLast = 0;
+      if (tid == 0) {
+        const unsigned int ticket = atomicInc(dev_->refCount, gridDim.x);
+        amLast = (ticket == gridDim.x - 1);
+      }
+      __syncthreads();
+      
+      if (amLast) {
+        // do a block reduction. Wish I could use cub for this instead of
+        // writing it myself
+
+        for (int i = 0; i < 9; i++) {
+          T partial_sum = 0.0;
+          int elem = tid;
+
+          while (elem < gridSize.x) {
+            partial_sum += dev_.ptr_dev[7][i * gridSize.x + elem];
+            elem += blockDim.x * blockDim.y * blockDim.z;
+          }
+
+          sum[tid] = partial_sum;
+          __syncthreads();
+
+          // need to check that it does what it should
+
+          partial_sum = warp_reduce(sum, tid);
+          if (tid == 0)
+            dev_.ptr_dev[5][i] = partial_sum;
+        }
       }
     }
 
@@ -652,7 +697,9 @@ context_info::set_kernel_parameters(const int level,
   params.ptr_dev[4] = forces_.data();
   params.ptr_dev[5] = virial_.data();
   params.ptr_dev[6] = this->cab_dev_.data();
+  params.ptr_dev[7] = this->ctx->sorted_blocks_virial_dev.data();
   params.sphi_dev = this->sphi_dev.data();
+  params.refCount = 0;
   return params;
 }
 
@@ -709,10 +756,11 @@ void context_info::compute_hab_coefficients() {
 
   assert(!calculate_virial || calculate_forces);
 
+  hipMemset(&refCounter, 0, sizeof(int), this->main_stream);
   // Compute max angular momentum.
   const ldiffs_value ldiffs =
       process_get_ldiffs(calculate_forces, calculate_virial, compute_tau);
-
+  
   smem_parameters smem_params(ldiffs, lmax());
   init_constant_memory();
 
