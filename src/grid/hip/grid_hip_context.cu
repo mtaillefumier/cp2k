@@ -476,8 +476,6 @@ extern "C" void grid_hip_integrate_task_list(
   // Select GPU device.
   ctx->set_device();
 
-  // ctx->coef_dev_.zero(ctx->level_streams[0]);
-
   for (int level = 0; level < ctx->nlevels; level++) {
     if (ctx->number_of_tasks_per_level_[level]) {
       ctx->grid_[level].associate(grids[level]->host_buffer,
@@ -517,7 +515,6 @@ extern "C" void grid_hip_integrate_task_list(
 
   // we can actually treat the full task list without bothering about the level
   // at that stage. This can be taken care of inside the kernel.
-
   for (int level = 0; level < ctx->nlevels; level++) {
     // launch kernel, but only after grid has arrived
     ctx->integrate_one_grid_level(level, &lp_diff);
@@ -544,7 +541,6 @@ extern "C" void grid_hip_integrate_task_list(
     if (ctx->number_of_tasks_per_level_[level])
       ctx->synchronize(ctx->level_streams[level]);
   }
-
   // computing the hab coefficients does not depend on the number of grids so we
   // can run these calculations on the main stream
   ctx->compute_hab_coefficients();

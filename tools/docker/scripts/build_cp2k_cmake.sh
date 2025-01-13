@@ -123,6 +123,7 @@ elif [[ "${PROFILE}" == "toolchain" ]] && [[ "${VERSION}" == "sdbg" ]]; then
     -DCP2K_USE_FFTW3=ON \
     -DCP2K_USE_SPGLIB=ON \
     -DCP2K_USE_VORI=ON \
+    -DCP2K_USE_TREXIO=ON \
     -DCP2K_USE_MPI=OFF \
     -DCP2K_USE_MPI_F08=OFF \
     -DCP2K_USE_COSMA=OFF \
@@ -174,6 +175,7 @@ elif [[ "${PROFILE}" == "toolchain" ]] && [[ "${VERSION}" == "pdbg" ]]; then
     -DCP2K_USE_MPI_F08=ON \
     -DCP2K_USE_SPGLIB=ON \
     -DCP2K_USE_VORI=ON \
+    -DCP2K_USE_TREXIO=ON \
     -DCP2K_USE_COSMA=OFF \
     -DCP2K_USE_DLAF=OFF \
     -DCP2K_USE_LIBTORCH=OFF \
@@ -193,6 +195,7 @@ elif [[ "${PROFILE}" == "ubuntu" ]] && [[ "${VERSION}" == "ssmp" ]]; then
     -DCP2K_USE_FFTW3=ON \
     -DCP2K_USE_LIBXC=OFF \
     -DCP2K_USE_LIBXSMM=ON \
+    -DCP2K_USE_TREXIO=ON \
     -DCP2K_USE_SPGLIB=OFF \
     -DCP2K_USE_MPI=OFF \
     -DCP2K_USE_MPI_F08=OFF \
@@ -213,6 +216,7 @@ elif [[ "${PROFILE}" == "ubuntu_i386" ]] && [[ "${VERSION}" == "ssmp" ]]; then
     -DCP2K_USE_LIBINT2=ON \
     -DCP2K_USE_LIBXC=ON \
     -DCP2K_USE_FFTW3=ON \
+    -DCP2K_USE_TREXIO=OFF \
     -DCP2K_USE_LIBXSMM=OFF \
     -DCP2K_USE_SPGLIB=OFF \
     -DCP2K_USE_MPI=OFF \
@@ -241,6 +245,7 @@ elif [[ "${PROFILE}" == "minimal" ]] && [[ "${VERSION}" == "ssmp" ]]; then
     -DCP2K_USE_DLAF=OFF \
     -DCP2K_USE_SPGLIB=OFF \
     -DCP2K_USE_LIBTORCH=OFF \
+    -DCP2K_USE_TREXIO=OFF \
     .. |& tee ./cmake.log
   CMAKE_EXIT_CODE=$?
 

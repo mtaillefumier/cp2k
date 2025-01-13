@@ -541,10 +541,13 @@ if(CP2K_USE_ACCEL MATCHES "CUDA")
 elseif(CP2K_USE_ACCEL MATCHES "HIP")
   enable_language(HIP)
   # Find hip
+
   find_package(hipfft REQUIRED IMPORTED CONFIG)
   find_package(hipblas REQUIRED IMPORTED CONFIG)
 
-  set(CMAKE_HIP_ARCHITECTURES gfx801 gfx900 gfx90a)
+  if(CMAKE_HIP_PLATFORM MATCHES "nvidia")
+    find_package(CUDAToolkit)
+  endif()
   if(NOT CMAKE_BUILD_TYPE)
     set(HIP_RELEASE_OPTIONS "-O3 --std=c++11")
   elseif(${CMAKE_BUILD_TYPE} STREQUAL "RelWithDebInfo")
@@ -589,6 +592,10 @@ endif()
 
 if(CP2K_USE_LIBXC)
   find_package(Libxc 7 REQUIRED CONFIG)
+endif()
+
+if(CP2K_USE_TREXIO)
+  find_package(TrexIO REQUIRED)
 endif()
 
 # uncomment this when libgrpp cmake support is complete
@@ -903,6 +910,12 @@ if(CP2K_USE_DLAF)
           "   - libraries           :  ${CP2K_DLAF_LINK_LIBRARIES}\n\n")
 endif()
 
+if(CP2K_USE_TREXIO)
+  message(" - TREXIO\n"
+          "   - include directories : ${CP2K_TREXIO_INCLUDE_DIRS}\n"
+          "   - libraries           : ${CP2K_TREXIO_LINK_LIBRARIES}\n\n")
+endif()
+
 message(
   "--------------------------------------------------------------------\n"
   "-                                                                  -\n"
@@ -976,6 +989,10 @@ endif()
 
 if(NOT CP2K_USE_LIBTORCH)
   message("   - libtorch")
+endif()
+
+if(NOT CP2K_USE_TREXIO)
+  message("   - TREXIO")
 endif()
 
 message("\n\n" "To run the regtests you need to run the following commands\n"
