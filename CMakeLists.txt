@@ -105,6 +105,7 @@ option(CP2K_USE_FFTW3 "Use fftw3 for the calculating fast fourier transforms"
 option(CP2K_USE_MPI "Enable MPI support" ON)
 option(CP2K_USE_ELPA "Enable elpa support" OFF)
 option(CP2K_USE_PEXSI "Enable pexsi support" OFF)
+option(CP2K_USE_TREXIO "Enable trexio support" OFF)
 option(CP2K_USE_SUPERLU "Enable superlu support" OFF)
 option(CP2K_USE_COSMA "COSMA is a drop in replacement of scalapack dgemm" OFF)
 option(CP2K_USE_LIBINT2 "Enable libint2 support" OFF)
@@ -203,6 +204,7 @@ if(${cp2k_build_options_up} STREQUAL "FULL")
   set(CP2K_USE_QUIP ON)
   set(CP2K_USE_PEXSI ON)
   set(CP2K_USE_SUPERLU ON)
+  set(CP2K_USE_TREXIO ON)
   # set(CP@K_USE_LIBGRPP ON)
 endif()
 
@@ -616,6 +618,10 @@ if(CP2K_USE_LIBXC)
   find_package(LibXC 7 REQUIRED)
 endif()
 
+if(CP2K_USE_TREXIO)
+  find_package(TrexIO REQUIRED)
+endif()
+
 # uncomment this when libgrpp cmake support is complete
 
 # if (CP2K_USE_LIBGRPP) find_package(libgrpp REQUIRED) endif()
@@ -946,6 +952,12 @@ if(CP2K_USE_SUPERLU)
           "   - libraries           : ${CP2K_SUPERLU_LINK_LIBRARIES}\n\n")
 endif()
 
+if(CP2K_USE_TREXIO)
+  message(" - TREXIO\n"
+          "   - include directories : ${CP2K_TREXIO_INCLUDE_DIRS}\n"
+          "   - libraries           : ${CP2K_TREXIO_LINK_LIBRARIES}\n\n")
+endif()
+
 message(
   "--------------------------------------------------------------------\n"
   "-                                                                  -\n"
@@ -1027,6 +1039,10 @@ endif()
 
 if(NOT CP2K_USE_LIBTORCH)
   message("   - libtorch")
+endif()
+
+if(NOT CP2K_USE_TREXIO)
+  message("   - TREXIO")
 endif()
 
 message("\n\n" "To run the regtests you need to run the following commands\n"
