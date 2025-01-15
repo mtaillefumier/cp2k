@@ -119,7 +119,10 @@ option(CP2K_USE_LIBTORCH "Enable libtorch support" OFF)
 option(CP2K_USE_STATIC_BLAS "Link against static version of BLAS/LAPACK" OFF)
 option(CP2K_USE_SPLA
        "Use SPLA offloading gemm feature to the GPU if it is beneficial. " OFF)
-option(CP2K_USE_METIS "enable metis library support" OFF)
+option(CP2K_USE_METIS "Enable metis library support" OFF)
+option(CP2K_USE_HDF5 "Enable hdf5 support" OFF)
+option(CP2K_USE_DEEPMD "Enable deepmd potentials support" OFF)
+option(CP2K_USE_GRPP "Enable libgrpp support" OFF)
 option(
   CP2K_USE_DLAF
   "Use DLA-Future for Cholesky decompositions and the solution of eigenvalue problems"
@@ -205,6 +208,8 @@ if(${cp2k_build_options_up} STREQUAL "FULL")
   set(CP2K_USE_PEXSI ON)
   set(CP2K_USE_SUPERLU ON)
   set(CP2K_USE_TREXIO ON)
+  set(CP2K_USE_HDF5 ON)
+  set(CP2K_USE_DEEPMD ON)
   # set(CP@K_USE_LIBGRPP ON)
 endif()
 
@@ -226,6 +231,7 @@ if(${cp2k_build_options_up} STREQUAL "SERIAL")
   set(CP2K_USE_QUIP ON)
   set(CP2K_USE_PEXSI ON)
   set(CP2K_USE_SUPERLU ON)
+  set(CP2K_USE_HDF5 ON)
 endif()
 
 if(${cp2k_build_options_up} STREQUAL "DEFAULT")
@@ -237,6 +243,7 @@ if(${cp2k_build_options_up} STREQUAL "DEFAULT")
   set(CP2K_USE_LIBXC ON)
   set(CP2K_USE_LIBINT2 ON)
   set(CP2K_USE_SPGLIB ON)
+  set(CP2K_USE_HDF5 ON)
 endif()
 
 # ##############################################################################
@@ -622,6 +629,14 @@ if(CP2K_USE_TREXIO)
   find_package(TrexIO REQUIRED)
 endif()
 
+if(CP2K_USE_DEEPMD)
+  find_package(DeePMD REQUIRED)
+endif()
+
+if(CP2K_USE_LIBGRPP)
+  find_package(GRPP REQUIRED)
+endif()
+
 # uncomment this when libgrpp cmake support is complete
 
 # if (CP2K_USE_LIBGRPP) find_package(libgrpp REQUIRED) endif()
@@ -742,6 +757,10 @@ endif()
 
 if(CP2K_USE_PLUMED)
   find_package(Plumed REQUIRED)
+endif()
+
+if(CP2K_USE_HDF5)
+  find_package(HDF5 REQUIRED)
 endif()
 
 if(CP2K_USE_LIBTORCH)
