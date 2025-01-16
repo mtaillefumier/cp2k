@@ -11,9 +11,8 @@ include(cp2k_utils)
 
 cp2k_set_default_paths(GRPP "LIBGRPP")
 
-#if(PKG_CONFIG_FOUND)
-#  pkg_check_modules(CP2K_GRPP IMPORTED_TARGET GLOBAL grpp)
-#endif()
+# if(PKG_CONFIG_FOUND) pkg_check_modules(CP2K_GRPP IMPORTED_TARGET GLOBAL grpp)
+# endif()
 
 if(NOT CP2K_TREXIO_FOUND)
   cp2k_find_libraries(GRPP "grpp")
@@ -31,9 +30,8 @@ if(CP2K_GRPP_FOUND)
 
   set_target_properties(
     cp2k::grpp::grpp PROPERTIES INTERFACE_INCLUDE_DIRECTORIES
-                                    "${CP2K_GRPP_INCLUDE_DIRS}")
-  target_link_libraries(cp2k::grpp::grpp
-                        INTERFACE ${CP2K_GRPP_LINK_LIBRARIES})
+                                "${CP2K_GRPP_INCLUDE_DIRS}")
+  target_link_libraries(cp2k::grpp::grpp INTERFACE ${CP2K_GRPP_LINK_LIBRARIES})
 endif()
 
 mark_as_advanced(CP2K_GRPP_FOUND CP2K_GRPP_LINK_LIBRARIES
