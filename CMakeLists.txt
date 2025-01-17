@@ -873,7 +873,7 @@ endif()
 
 if(CP2K_USE_LIBXC)
   message(
-    "  - LIBXC (note to package managers : libxc can be build with cmake as well)"
+    "  - LIBXC (note to package managers : libxc can be build with cmake as well)\n"
     "   - include directories : ${CP2K_LIBXC_INCLUDE_DIRS}\n"
     "   - libraries : ${CP2K_LIBXC_LINK_LIBRARIES}\n\n")
 endif()
@@ -977,6 +977,18 @@ if(CP2K_USE_TREXIO)
           "   - libraries           : ${CP2K_TREXIO_LINK_LIBRARIES}\n\n")
 endif()
 
+if(CP2K_USE_GRPP)
+  message(" - GRPP\n" "   - include directories : ${CP2K_GRPP_INCLUDE_DIRS}\n"
+          "   - libraries           : ${CP2K_GRPP_LINK_LIBRARIES}\n\n")
+endif()
+
+if(CP2K_USE_HDF5)
+  message(" - HDF5:\n\n")
+endif()
+
+if(CP2K_USE_SPGLIB)
+  message(" - spglib:\n\n")
+endif()
 message(
   "--------------------------------------------------------------------\n"
   "-                                                                  -\n"
@@ -1062,6 +1074,14 @@ endif()
 
 if(NOT CP2K_USE_TREXIO)
   message("   - TREXIO")
+endif()
+
+if(NOT CP2K_USE_GRPP)
+  message("   - GRPP")
+endif()
+
+if(NOT CP2K_USE_HDF5)
+  message("   - HDF5")
 endif()
 
 message("\n\n" "To run the regtests you need to run the following commands\n"
