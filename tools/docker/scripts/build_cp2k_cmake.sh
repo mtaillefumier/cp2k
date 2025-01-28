@@ -74,6 +74,9 @@ if [[ "${PROFILE}" == "spack" ]] && [[ "${VERSION}" == "psmp" ]]; then
     -DCP2K_USE_FFTW3=ON \
     -DCP2K_USE_SPGLIB=ON \
     -DCP2K_USE_VORI=ON \
+    -DCP2K_USE_TREXIO=ON \
+    -DCP2K_USE_GRPP=ON \
+    -DCP2K_USE_HDF5=ON \
     -DCP2K_USE_MPI=ON \
     -DCP2K_USE_MPI_F08=ON \
     -DCP2K_USE_LIBXSMM=ON \
@@ -102,6 +105,10 @@ elif [[ "${PROFILE}" == "toolchain" ]] && [[ "${VERSION}" == "ssmp" ]]; then
     -DCP2K_USE_LIBTORCH=ON \
     -DCP2K_USE_LIBXC=ON \
     -DCP2K_USE_LIBXSMM=ON \
+    -DCP2K_USE_VORI=ON \
+    -DCP2K_USE_TREXIO=ON \
+    -DCP2K_USE_GRPP=ON \
+    -DCP2K_USE_HDF5=ON \
     -DCP2K_USE_MPI=OFF \
     -DCP2K_USE_MPI_F08=OFF \
     -DCP2K_USE_SPGLIB=ON \
@@ -122,6 +129,9 @@ elif [[ "${PROFILE}" == "toolchain" ]] && [[ "${VERSION}" == "sdbg" ]]; then
     -DCP2K_USE_FFTW3=ON \
     -DCP2K_USE_SPGLIB=ON \
     -DCP2K_USE_VORI=ON \
+    -DCP2K_USE_TREXIO=ON \
+    -DCP2K_USE_GRPP=ON \
+    -DCP2K_USE_HDF5=ON \
     -DCP2K_USE_MPI=OFF \
     -DCP2K_USE_MPI_F08=OFF \
     -DCP2K_USE_COSMA=OFF \
@@ -139,21 +149,24 @@ elif [[ "${PROFILE}" == "toolchain" ]] && [[ "${VERSION}" == "psmp" ]]; then
     -DCMAKE_INSTALL_LIBDIR=lib \
     -DCP2K_BLAS_VENDOR=OpenBLAS \
     -DCP2K_USE_COSMA=ON \
-    -DCP2K_USE_DFTD4=ON \
-    -DCP2K_USE_DLAF=OFF \
-    -DCP2K_USE_ELPA=ON \
-    -DCP2K_USE_FFTW3=ON \
     -DCP2K_USE_LIBINT2=ON \
-    -DCP2K_USE_LIBTORCH=ON \
     -DCP2K_USE_LIBXC=ON \
-    -DCP2K_USE_LIBXSMM=ON \
+    -DCP2K_USE_FFTW3=ON \
+    -DCP2K_USE_SPGLIB=ON \
+    -DCP2K_USE_VORI=ON \
     -DCP2K_USE_MPI=ON \
     -DCP2K_USE_MPI_F08=ON \
+    -DCP2K_USE_LIBXSMM=ON \
     -DCP2K_USE_PLUMED=ON \
-    -DCP2K_USE_SIRIUS=OFF \
-    -DCP2K_USE_SPGLIB=ON \
     -DCP2K_USE_SPLA=ON \
-    -DCP2K_USE_VORI=ON \
+    -DCP2K_USE_TREXIO=ON \
+    -DCP2K_USE_GRPP=ON \
+    -DCP2K_USE_HDF5=ON \
+    -DCP2K_USE_ELPA=OFF \
+    -DCP2K_USE_COSMA=OFF \
+    -DCP2K_USE_SIRIUS=OFF \
+    -DCP2K_USE_LIBTORCH=ON \
+    -DCP2K_USE_SPGLIB=ON \
     -Werror=dev \
     .. |& tee ./cmake.log
   CMAKE_EXIT_CODE=$?
@@ -172,6 +185,9 @@ elif [[ "${PROFILE}" == "toolchain" ]] && [[ "${VERSION}" == "pdbg" ]]; then
     -DCP2K_USE_MPI_F08=ON \
     -DCP2K_USE_SPGLIB=ON \
     -DCP2K_USE_VORI=ON \
+    -DCP2K_USE_TREXIO=ON \
+    -DCP2K_USE_GRPP=ON \
+    -DCP2K_USE_HDF5=ON \
     -DCP2K_USE_COSMA=OFF \
     -DCP2K_USE_DLAF=OFF \
     -DCP2K_USE_LIBTORCH=OFF \
@@ -189,6 +205,9 @@ elif [[ "${PROFILE}" == "ubuntu" ]] && [[ "${VERSION}" == "ssmp" ]]; then
     -DCP2K_USE_LIBXC=ON \
     -DCP2K_USE_FFTW3=ON \
     -DCP2K_USE_LIBXSMM=ON \
+    -DCP2K_USE_TREXIO=ON \
+    -DCP2K_USE_GRPP=ON \
+    -DCP2K_USE_HDF5=ON \
     -DCP2K_USE_SPGLIB=OFF \
     -DCP2K_USE_MPI=OFF \
     -DCP2K_USE_MPI_F08=OFF \
@@ -209,6 +228,7 @@ elif [[ "${PROFILE}" == "ubuntu_i386" ]] && [[ "${VERSION}" == "ssmp" ]]; then
     -DCP2K_USE_LIBINT2=ON \
     -DCP2K_USE_LIBXC=ON \
     -DCP2K_USE_FFTW3=ON \
+    -DCP2K_USE_TREXIO=OFF \
     -DCP2K_USE_LIBXSMM=OFF \
     -DCP2K_USE_SPGLIB=OFF \
     -DCP2K_USE_MPI=OFF \
@@ -237,6 +257,7 @@ elif [[ "${PROFILE}" == "minimal" ]] && [[ "${VERSION}" == "ssmp" ]]; then
     -DCP2K_USE_DLAF=OFF \
     -DCP2K_USE_SPGLIB=OFF \
     -DCP2K_USE_LIBTORCH=OFF \
+    -DCP2K_USE_TREXIO=OFF \
     .. |& tee ./cmake.log
   CMAKE_EXIT_CODE=$?
 

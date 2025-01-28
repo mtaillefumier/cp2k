@@ -1616,11 +1616,16 @@ target_link_libraries(
     $<$<AND:$<BOOL:${CP2K_USE_FFTW3_}>,$<BOOL:${CP2K_ENABLE_FFTW3_OPENMP_SUPPORT}>>:cp2k::FFTW3::fftw3_omp>
     $<$<BOOL:${CP2K_USE_SPLA}>:SPLA::spla>
     $<$<BOOL:${CP2K_USE_LIBINT2}>:cp2k::Libint2::int2>
+    $<$<BOOL:${CP2K_USE_TREXIO}>:cp2k::trexio::trexio>
+    $<$<BOOL:${CP2K_USE_DEEPMD}>:DeepMD::deepmd>
+    $<$<BOOL:${CP2K_USE_GRPP}>:cp2k::grpp::grpp>
     $<$<BOOL:${CP2K_USE_LIBTORCH}>:${TORCH_LIBRARIES}>
     $<$<BOOL:${CP2K_USE_COSMA}>:cosma::cosma_prefixed_pxgemm>
     $<$<BOOL:${CP2K_USE_COSMA}>:cosma::cosma>
     $<$<BOOL:${CP2K_USE_DLAF}>:DLAF::Fortran>
     DBCSR::dbcsr
+    $<$<BOOL:${CP2K_USE_HDF5}>:HDF5::HDF5
+    hdf5::hdf5_fortran>
     $<$<BOOL:${CP2K_USE_MPI}>:cp2k::SCALAPACK::scalapack>
     cp2k_linalg_libs
     $<$<AND:$<CONFIG:COVERAGE>,$<Fortran_COMPILER_ID:GNU>>:gcov>)
@@ -1663,6 +1668,10 @@ target_compile_definitions(
     $<$<BOOL:${CP2K_USE_LIBTORCH}>:__LIBTORCH>
     $<$<BOOL:${CP2K_USE_COSMA}>:__COSMA>
     $<$<BOOL:${CP2K_USE_LIBXSMM}>:__LIBXSMM>
+    $<$<BOOL:${CP2K_USE_TREXIO}>:__TREXIO>
+    $<$<BOOL:${CP2K_USE_HDF5}>:__HDF5>
+    $<$<BOOL:${CP2K_USE_DEEPMD}>:__DEEPMD>
+    $<$<BOOL:${CP2K_USE_GRPP}>:__LIBGRPP>
     $<$<STREQUAL:${CP2K_BLAS_VENDOR},MKL>:__MKL>
     $<$<STREQUAL:${CP2K_BLAS_VENDOR},Apple>:__ACCELERATE>
     $<$<BOOL:${CP2K_USE_CUSOLVER_MP}>:__CUSOLVERMP>

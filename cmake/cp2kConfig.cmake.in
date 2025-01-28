@@ -99,6 +99,22 @@ if(NOT TARGET cp2k::cp2k)
     find_dependency(Torch REQUIRED)
   endif()
 
+  if(@CP2K_USE_GRPP@)
+    find_dependency(GRPP REQUIRED)
+  endif()
+
+  if(@CP2K_USE_HDF5@)
+    find_dependency(HDF5 REQUIRED)
+  endif()
+
+  if(@CP2K_USE_TREXIO@)
+    find_dependency(TrexIO REQUIRED)
+  endif()
+
+  if(@CP2K_USE_DEEPMD@)
+    find_dependency(DeepMD REQUIRED)
+  endif()
+
   include("${CMAKE_CURRENT_LIST_DIR}/cp2kTargets.cmake")
 
   # Clean-up module path.

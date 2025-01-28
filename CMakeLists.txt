@@ -5,7 +5,7 @@
 #!   SPDX-License-Identifier: GPL-2.0-or-later                                                     !
 #!-------------------------------------------------------------------------------------------------!
 
-cmake_minimum_required(VERSION 3.22)
+cmake_minimum_required(VERSION 3.28)
 
 # include our cmake snippets
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
@@ -27,10 +27,7 @@ include(GitSubmodule)
 include(CustomTargets)
 
 cmake_policy(SET CMP0048 NEW)
-
-if(POLICY CMP0144)
-  cmake_policy(SET CMP0144 NEW)
-endif()
+cmake_policy(SET CMP0144 NEW)
 
 # !!! Keep version in sync with cp2k_info.F !!!
 project(
@@ -69,7 +66,7 @@ string(REPLACE "-DNDEBUG" "" CMAKE_CXX_FLAGS_MINSIZEREL
 string(REPLACE "-DNDEBUG" "" CMAKE_Fortran_FLAGS_MINSIZEREL
                ${CMAKE_Fortran_FLAGS_MINSIZEREL})
 
-find_package(PkgConfig)
+find_package(PkgConfig REQUIRED)
 
 # ##############################################################################
 # Define the paths for static libraries and executables
@@ -104,6 +101,7 @@ option(CP2K_USE_FFTW3 "Use fftw3 for the calculating fast fourier transforms"
        ON)
 option(CP2K_USE_MPI "Enable MPI support" ON)
 option(CP2K_USE_ELPA "Enable elpa support" OFF)
+option(CP2K_USE_TREXIO "Enable trexio support" OFF)
 option(CP2K_USE_COSMA "COSMA is a drop in replacement of scalapack dgemm" OFF)
 option(CP2K_USE_LIBINT2 "Enable libint2 support" OFF)
 option(CP2K_USE_PLUMED "Enable plumed2 support" OFF)
@@ -114,6 +112,9 @@ option(CP2K_USE_LIBTORCH "Enable libtorch support" OFF)
 option(CP2K_USE_STATIC_BLAS "Link against static version of BLAS/LAPACK" OFF)
 option(CP2K_USE_SPLA
        "Use SPLA offloading gemm feature to the GPU if it is beneficial. " OFF)
+option(CP2K_USE_HDF5 "Enable hdf5 support" OFF)
+option(CP2K_USE_DEEPMD "Enable deepmd potentials support" OFF)
+option(CP2K_USE_GRPP "Enable libgrpp support" OFF)
 option(
   CP2K_USE_DLAF
   "Use DLA-Future for Cholesky decompositions and the solution of eigenvalue problems"
@@ -194,7 +195,10 @@ if(${cp2k_build_options_up} STREQUAL "FULL")
   set(CP2K_USE_ELPA ON)
   set(CP2K_USE_SPGLIB ON)
   set(CP2K_USE_LIBTORCH ON)
-  # set(CP@K_USE_LIBGRPP ON)
+  set(CP2K_USE_TREXIO ON)
+  set(CP2K_USE_HDF5 ON)
+  set(CP2K_USE_DEEPMD ON)
+  set(CP2K_USE_GRPP ON)
 endif()
 
 if(${cp2k_build_options_up} STREQUAL "SERIAL")
@@ -210,6 +214,7 @@ if(${cp2k_build_options_up} STREQUAL "SERIAL")
   set(CP2K_USE_ELPA ON)
   set(CP2K_USE_SPGLIB ON)
   set(CP2K_USE_LIBTORCH ON)
+  set(CP2K_USE_HDF5 ON)
 endif()
 
 if(${cp2k_build_options_up} STREQUAL "DEFAULT")
@@ -221,6 +226,7 @@ if(${cp2k_build_options_up} STREQUAL "DEFAULT")
   set(CP2K_USE_LIBXC ON)
   set(CP2K_USE_LIBINT2 ON)
   set(CP2K_USE_SPGLIB ON)
+  set(CP2K_USE_HDF5 ON)
 endif()
 
 # ##############################################################################
@@ -436,7 +442,6 @@ else()
   if(CP2K_USE_SIRIUS
      OR CP2K_USE_COSMA
      OR CP2K_USE_SPLA
-     OR CP2K_USE_ELPA
      OR CP2K_USE_PLUMED)
     message(
       WARNING
@@ -590,6 +595,19 @@ if(CP2K_USE_LIBXC)
   find_package(LibXC 7 REQUIRED)
 endif()
 
+if(CP2K_USE_TREXIO)
+  find_package(TrexIO REQUIRED)
+endif()
+
+if(CP2K_USE_DEEPMD)
+  find_package(DeePMD REQUIRED)
+endif()
+
+if(CP2K_USE_GRPP OR CP2K_USE_TREXIO)
+  # we need grpp when TREXIO is on
+  find_package(GRPP REQUIRED)
+endif()
+
 # uncomment this when libgrpp cmake support is complete
 
 # if (CP2K_USE_LIBGRPP) find_package(libgrpp REQUIRED) endif()
@@ -603,8 +621,7 @@ if(CP2K_USE_COSMA)
                       INTERFACE_LINK_LIBRARIES)
 
   # check that cosma::cosma_pxgemm_cpp and cosma::cosma_prefixed_pxgemm exist
-  if(NOT TARGET cosma::cosma_pxgemm_cpp OR NOT TARGET
-                                           cosma::cosma_prefixed_pxgemm)
+  if(NOT TARGET cosma::cosma_pxgemm_pxgemm)
     message(
       FATAL_ERROR
         " COSMA needs to be build with scalapack offloading support. COSTA_SCALAPACK and COSMA_SCALAPACK should probably be set properly"
@@ -706,6 +723,14 @@ endif()
 
 if(CP2K_USE_PLUMED)
   find_package(Plumed REQUIRED)
+endif()
+
+if(CP2K_USE_HDF5)
+  find_package(HDF5 REQUIRED COMPONENTS C Fortran)
+endif()
+
+if(CP2K_USE_GRPP)
+  find_package(GRPP REQUIRED)
 endif()
 
 if(CP2K_USE_LIBTORCH)
@@ -820,7 +845,8 @@ if(CP2K_USE_LIBXC)
   message(
     "  - LIBXC (note to package managers : libxc can be build with cmake as well)"
     "   - include directories : ${CP2K_LIBXC_INCLUDE_DIRS}\n"
-    "   - libraries : ${CP2K_LIBXC_LINK_LIBRARIES}\n\n")
+    "   - libraries : ${CP2K_LIBXCF03_LINK_LIBRARIES} ${CP2K_LIBXC_LINK_LIBRARIES}\n\n"
+  )
 endif()
 
 if(CP2K_USE_LIBTORCH)
@@ -892,7 +918,16 @@ if(CP2K_USE_DLAF)
           "   - include directories : ${CP2K_DLAF_INCLUDE_DIRS}\n"
           "   - libraries           :  ${CP2K_DLAF_LINK_LIBRARIES}\n\n")
 endif()
+if(CP2K_USE_TREXIO)
+  message(" - TREXIO\n"
+          "   - include directories : ${CP2K_TREXIO_INCLUDE_DIRS}\n"
+          "   - libraries           : ${CP2K_TREXIO_LINK_LIBRARIES}\n\n")
+endif()
 
+if(CP2K_USE_GRPP)
+  message(" - GRPP\n" "   - include directories : ${CP2K_GRPP_INCLUDE_DIRS}\n"
+          "   - libraries           : ${CP2K_GRPP_LINK_LIBRARIES}\n\n")
+endif()
 message(
   "--------------------------------------------------------------------\n"
   "-                                                                  -\n"
@@ -962,6 +997,14 @@ endif()
 
 if(NOT CP2K_USE_LIBTORCH)
   message("   - libtorch")
+endif()
+
+if(NOT CP2K_USE_TREXIO)
+  message("   - TREXIO")
+endif()
+
+if(NOT CP2K_USE_GRPP)
+  message("   - GRPP")
 endif()
 
 message("\n\n" "To run the regtests you need to run the following commands\n"
