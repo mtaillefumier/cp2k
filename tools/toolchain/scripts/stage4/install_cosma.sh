@@ -70,7 +70,7 @@ case "$with_cosma" in
       [ -d build-cpu ] && rm -Rf build-cpu
       mkdir build-cpu && cd build-cpu
       cmake \
-        -DCMAKE_INSTALL_PREFIX="${pkg_install_dir}" \
+        -DCMAKE_INSTALL_PREFIX="${pkg_install_dir}/cpu" \
         -DCMAKE_INSTALL_LIBDIR=lib \
         -DCMAKE_BUILD_TYPE="RelWithDebInfo" \
         -DBUILD_SHARED_LIBS=NO \
@@ -84,7 +84,7 @@ case "$with_cosma" in
         [ -d build-cuda ] && rm -Rf build-cuda
         mkdir build-cuda && cd build-cuda
         cmake \
-          -DCMAKE_INSTALL_PREFIX="${pkg_install_dir}-cuda" \
+          -DCMAKE_INSTALL_PREFIX="${pkg_install_dir}/cuda" \
           -DCMAKE_INSTALL_LIBDIR=lib \
           -DCMAKE_BUILD_TYPE="RelWithDebInfo" \
           -DBUILD_SHARED_LIBS=NO \
@@ -99,7 +99,7 @@ case "$with_cosma" in
         [ -d build-hip ] && rm -Rf build-hip
         mkdir build-hip && cd build-hip
         cmake \
-          -DCMAKE_INSTALL_PREFIX="${pkg_install_dir}-hip" \
+          -DCMAKE_INSTALL_PREFIX="${pkg_install_dir}/hip" \
           -DCMAKE_INSTALL_LIBDIR=lib \
           -DCMAKE_BUILD_TYPE="RelWithDebInfo" \
           -DBUILD_SHARED_LIBS=NO \
@@ -116,7 +116,7 @@ case "$with_cosma" in
       if [ "$ENABLE_CUDA" = "__TRUE__" ]; then
         mkdir build-cuda && cd build-cuda
         cmake \
-          -DCMAKE_INSTALL_PREFIX="${pkg_install_dir}-cuda" \
+          -DCMAKE_INSTALL_PREFIX="${pkg_install_dir}/cuda" \
           -DCMAKE_INSTALL_LIBDIR=lib \
           -DCMAKE_BUILD_TYPE="RelWithDebInfo" \
           -DBUILD_SHARED_LIBS=NO \
@@ -132,7 +132,7 @@ case "$with_cosma" in
       if [ "$ENABLE_HIP" = "__TRUE__" ]; then
         mkdir build-hip && cd build-hip
         cmake \
-          -DCMAKE_INSTALL_PREFIX="${pkg_install_dir}-hip" \
+          -DCMAKE_INSTALL_PREFIX="${pkg_install_dir}/hip" \
           -DCMAKE_INSTALL_LIBDIR=lib \
           -DCMAKE_BUILD_TYPE="RelWithDebInfo" \
           -DBUILD_SHARED_LIBS=NO \
@@ -148,7 +148,7 @@ case "$with_cosma" in
 
       cd COSMA-${cosma_ver} && mkdir build-cpu && cd build-cpu
       cmake \
-        -DCMAKE_INSTALL_PREFIX="${pkg_install_dir}" \
+        -DCMAKE_INSTALL_PREFIX="${pkg_install_dir}/cpu" \
         -DCMAKE_INSTALL_LIBDIR=lib \
         -DCMAKE_VERBOSE_MAKEFILE=ON \
         -DCMAKE_BUILD_TYPE="RelWithDebInfo" \
@@ -169,7 +169,7 @@ case "$with_cosma" in
         mkdir build-cuda
         cd build-cuda
         cmake \
-          -DCMAKE_INSTALL_PREFIX="${pkg_install_dir}-cuda" \
+          -DCMAKE_INSTALL_PREFIX="${pkg_install_dir}/cuda" \
           -DCMAKE_INSTALL_LIBDIR=lib \
           -DCMAKE_VERBOSE_MAKEFILE=ON \
           -DCMAKE_BUILD_TYPE="RelWithDebInfo" \
@@ -191,7 +191,7 @@ case "$with_cosma" in
         mkdir build-hip
         cd build-hip
         cmake \
-          -DCMAKE_INSTALL_PREFIX="${pkg_install_dir}-hip" \
+          -DCMAKE_INSTALL_PREFIX="${pkg_install_dir}/hip" \
           -DCMAKE_INSTALL_LIBDIR=lib \
           -DCMAKE_VERBOSE_MAKEFILE=ON \
           -DCMAKE_BUILD_TYPE="RelWithDebInfo" \
@@ -209,16 +209,6 @@ case "$with_cosma" in
 
       write_checksums "${install_lock_file}" "${SCRIPT_DIR}/stage4/$(basename ${SCRIPT_NAME})"
     fi
-    COSMA_ROOT="${pkg_install_dir}"
-    COSMA_CFLAGS="-I'${pkg_install_dir}/include'"
-
-    # Check if COSMA is compiled with 64bits and set up COSMA_LIBDIR accordingly.
-    COSMA_LIBDIR="${pkg_install_dir}/lib"
-    COSMA_LDFLAGS="-L'${COSMA_LIBDIR}' -Wl,-rpath,'${COSMA_LIBDIR}'"
-    COSMA_CUDA_LIBDIR="${pkg_install_dir}-cuda/lib"
-    COSMA_CUDA_LDFLAGS="-L'${COSMA_CUDA_LIBDIR}' -Wl,-rpath,'${COSMA_CUDA_LIBDIR}'"
-    COSMA_HIP_LIBDIR="${pkg_install_dir}-hip/lib"
-    COSMA_HIP_LDFLAGS="-L'${COSMA_HIP_LIBDIR}' -Wl,-rpath,'${COSMA_HIP_LIBDIR}'"
     ;;
   __SYSTEM__)
     echo "==================== Finding COSMA from system paths ===================="
@@ -227,7 +217,6 @@ case "$with_cosma" in
     add_lib_from_paths COSMA_LDFLAGS "libcosma.*" $LIB_PATHS
     ;;
   __DONTUSE__) ;;
-
   *)
     echo "==================== Linking COSMA to user paths ===================="
     pkg_install_dir="$with_cosma"
@@ -238,8 +227,6 @@ case "$with_cosma" in
 
     check_dir "$pkg_install_dir/lib"
     check_dir "$pkg_install_dir/include"
-
-    COSMA_CFLAGS="-I'${pkg_install_dir}/include'"
     COSMA_LDFLAGS="-L'${COSMA_LIBDIR}' -Wl,-rpath,'${COSMA_LIBDIR}'"
     ;;
 esac
@@ -250,30 +237,39 @@ if [ "$with_cosma" != "__DONTUSE__" ]; then
   fi
   if [ "$with_cosma" != "__SYSTEM__" ]; then
     cat << EOF > "${BUILDDIR}/setup_cosma"
-prepend_path LD_LIBRARY_PATH "${COSMA_LIBDIR}"
-prepend_path LD_RUN_PATH "${COSMA_LIBDIR}"
-prepend_path LIBRARY_PATH "${COSMA_LIBDIR}"
-prepend_path CPATH "$pkg_install_dir/include"
-export COSMA_INCLUDE_DIR="$pkg_install_dir/include"
-export COSMA_ROOT="${pkg_install_dir}"
-export PKG_CONFIG_PATH="$PKG_CONFIG_PATH:${COSMA_LIBDIR}/pkgconfig"
-prepend_path PKG_CONFIG_PATH "$pkg_install_dir/lib/pkgconfig"
-prepend_path CMAKE_PREFIX_PATH "$pkg_install_dir"
+export COSMA_ROOT_CUDA=${pkg_install_dir}/cuda
+export COSMA_ROOT_HIP=${pkg_install_dir}/hip
+export COSMA_ROOT_CPU=${pkg_install_dir}/cpu
+export COSMA_ROOT="IF_CUDA(\${COSMA_ROOT_CUDA}|IF_HIP(\${COSMA_ROOT_HIP}|\${COSMA_ROOT_CPU}))"
+prepend_path LD_LIBRARY_PATH "\${COSMA_ROOT}/lib"
+prepend_path LD_RUN_PATH "\${COSMA_ROOT}/lib"
+prepend_path LIBRARY_PATH "\${COSMA_ROOT}/lib"
+export COSMA_INCLUDE_DIR="\${COSMA_ROOT}/include/cosma"
+export COSMA_LIBS="-lcosma -lcosta IF_CUDA(-lTiled-MM|IF_HIP(-lTiled-MM|))"
+prepend_path PKG_CONFIG_PATH "\${COSMA_ROOT}/lib/pkgconfig"
+prepend_path CMAKE_PREFIX_PATH "\${COSMA_ROOT}"
+EOF
+  else
+    cat << EOF > "${BUILDDIR}/setup_cosma"
+export COSMA_ROOT="$pkg_install_dir"
+export COSMA_ROOT_HIP="$pkg_install_dir"
+export COSMA_ROOT_CUDA="$pkg_install_dir"
+export COSMA_ROOT_CPU="$pkg_install_dir"
 EOF
   fi
   cat << EOF >> "${BUILDDIR}/setup_cosma"
 export COSMA_VER="${cosma_ver}"
-export COSMA_CFLAGS="${COSMA_CFLAGS}"
-export COSMA_LDFLAGS="${COSMA_LDFLAGS}"
+export COSMA_CFLAGS="IF_MPI(-I\${COSMA_ROOT}/include/cosma|)"
+export COSMA_CPU_LDFLAGS="${COSMA_CPU_LDFLAGS}"
 export COSMA_CUDA_LDFLAGS="${COSMA_CUDA_LDFLAGS}"
 export COSMA_HIP_LDFLAGS="${COSMA_HIP_LDFLAGS}"
+export COSMA_LDFLAGS="-L'\${COSMA_ROOT}/cpu/lib' -Wl,-rpath,'\${COSMA_ROOT}/cpu/lib'"
 export CP_DFLAGS="\${CP_DFLAGS} IF_MPI(-D__COSMA|)"
-export CP_CFLAGS="\${CP_CFLAGS} ${COSMA_CFLAGS}"
-export CP_LDFLAGS="\${CP_LDFLAGS} IF_CUDA(${COSMA_CUDA_LDFLAGS}|IF_HIP(${COSMA_HIP_LDFLAGS}|${COSMA_LDFLAGS}))"
+export CP_CFLAGS="\${CP_CFLAGS} IF_MPI(\${COSMA_CFLAGS}|)"
+export COSMA_LDFLAGS="IF_CUDA(\$COSMA_CUDA_LDFLAGS|IF_HIP(\$COSMA_HIP_LDFLAGS|\$COSMA_CPU_LDFLAGS))"
+export CP_LDFLAGS="\${CP_LDFLAGS} IF_MPI(\$COSMA_LDFLAGS|)"
 export COSMA_LIBS="${COSMA_LIBS}"
-export COSMA_ROOT="$pkg_install_dir"
-export COSMA_INCLUDE_DIR="$pkg_install_dir/include"
-export PKG_CONFIG_PATH="$PKG_CONFIG_PATH:${COSMA_LIBDIR}/pkgconfig"
+export COSMA_INCLUDE_DIR="\${COSMA_ROOT}/include"
 export CP_LIBS="IF_MPI(${COSMA_LIBS}|) \${CP_LIBS}"
 EOF
   cat "${BUILDDIR}/setup_cosma" >> $SETUPFILE

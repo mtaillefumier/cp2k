@@ -608,10 +608,6 @@ if(CP2K_USE_GRPP OR CP2K_USE_TREXIO)
   find_package(GRPP REQUIRED)
 endif()
 
-# uncomment this when libgrpp cmake support is complete
-
-# if (CP2K_USE_LIBGRPP) find_package(libgrpp REQUIRED) endif()
-
 if(CP2K_USE_COSMA)
   find_package(cosma REQUIRED)
 
@@ -727,10 +723,6 @@ endif()
 
 if(CP2K_USE_HDF5)
   find_package(HDF5 REQUIRED COMPONENTS C Fortran)
-endif()
-
-if(CP2K_USE_GRPP)
-  find_package(GRPP REQUIRED)
 endif()
 
 if(CP2K_USE_LIBTORCH)
@@ -887,13 +879,12 @@ if(CP2K_USE_DFTD4)
 endif()
 
 if(CP2K_USE_SIRIUS)
-  message(" - SIRIUS")
+  message(" - SIRIUS\n" "   - include directories : ${SIRIUS_INCLUDE_DIRS}\n"
+          "   - lbraries : ${SIRIUS_LIBRARIES}\n\n")
 endif()
 
 if(CP2K_USE_COSMA)
-  message(" - COSMA\n"
-          "   - include directories : ${CP2K_COSMA_INCLUDE_DIRS}\n"
-          "   - libraries           : ${CP2K_COSMA_LINK_LIBRARIES}\n\n")
+  message(" - COSMA")
 endif()
 
 if(CP2K_USE_LIBINT2)

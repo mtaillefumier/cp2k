@@ -15,9 +15,6 @@ if(PKG_CONFIG_FOUND)
   pkg_check_modules(CP2K_GRPP IMPORTED_TARGET GLOBAL libgrpp)
 endif()
 
-# cp2k_find_libraries(GRPP "grpp") cp2k_include_dirs(GRPP "libgrpp/libgrpp.h")
-
-message("GRPP: ${CP2K_GRPP_FOUND}")
 find_package_handle_standard_args(GRPP DEFAULT_MSG CP2K_GRPP_INCLUDE_DIRS
                                   CP2K_GRPP_FOUND CP2K_GRPP_LINK_LIBRARIES)
 

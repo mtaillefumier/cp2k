@@ -45,7 +45,7 @@ case "${with_spfft}" in
       mkdir build-cpu
       cd build-cpu
       cmake \
-        -DCMAKE_INSTALL_PREFIX="${pkg_install_dir}" \
+        -DCMAKE_INSTALL_PREFIX="${pkg_install_dir}/cpu" \
         -DCMAKE_INSTALL_LIBDIR=lib \
         -DCMAKE_CXX_COMPILER="${MPICXX}" \
         -DCMAKE_VERBOSE_MAKEFILE=ON \
@@ -68,7 +68,7 @@ case "${with_spfft}" in
         mkdir build-cuda
         cd build-cuda
         cmake \
-          -DCMAKE_INSTALL_PREFIX="${pkg_install_dir}" \
+          -DCMAKE_INSTALL_PREFIX="${pkg_install_dir}/cuda" \
           -DCMAKE_INSTALL_LIBDIR=lib \
           -DCMAKE_CXX_COMPILER="${MPICXX}" \
           -DCMAKE_CUDA_FLAGS="-std=c++14 -allow-unsupported-compiler" \
@@ -83,9 +83,7 @@ case "${with_spfft}" in
           -DSPFFT_GPU_BACKEND=CUDA \
           ${EXTRA_CMAKE_FLAGS} .. > cmake.log 2>&1 || tail -n ${LOG_LINES} cmake.log
         make -j $(get_nprocs) > make.log 2>&1 || tail -n ${LOG_LINES} make.log
-        install -d ${pkg_install_dir}/lib/cuda
-        [ -f src/libspfft.a ] && install -m 644 src/*.a ${pkg_install_dir}/lib/cuda >> install.log 2>&1
-        [ -f src/libspfft.so ] && install -m 644 src/*.so ${pkg_install_dir}/lib/cuda >> install.log 2>&1
+        make -j $(get_nprocs) install > install.log 2>&1 || tail -n ${LOG_LINES} install.log
       fi
       write_checksums "${install_lock_file}" "${SCRIPT_DIR}/stage8/$(basename ${SCRIPT_NAME})"
 
@@ -96,7 +94,7 @@ case "${with_spfft}" in
             mkdir build-cuda
             cd build-cuda
             cmake \
-              -DCMAKE_INSTALL_PREFIX="${pkg_install_dir}" \
+              -DCMAKE_INSTALL_PREFIX="${pkg_install_dir}/hip" \
               -DCMAKE_INSTALL_LIBDIR=lib \
               -DCMAKE_CXX_COMPILER="${MPICXX}" \
               -DCMAKE_CUDA_FLAGS="-std=c++14 -allow-unsupported-compiler" \
@@ -110,16 +108,14 @@ case "${with_spfft}" in
               -DSPFFT_GPU_BACKEND=CUDA \
               ${EXTRA_CMAKE_FLAGS} .. > cmake.log 2>&1 || tail -n ${LOG_LINES} cmake.log
             make -j $(get_nprocs) > make.log 2>&1 || tail -n ${LOG_LINES} make.log
-            install -d ${pkg_install_dir}/lib/cuda
-            [ -f src/libspfft.a ] && install -m 644 src/*.a ${pkg_install_dir}/lib/cuda >> install.log 2>&1
-            [ -f src/libspfft.so ] && install -m 644 src/*.so ${pkg_install_dir}/lib/cuda >> install.log 2>&1
+            make -j $(get_nprocs) install > install.log 2>&1 || tail -n ${LOG_LINES} install.log
             ;;
           Mi50 | Mi100 | Mi200 | Mi250)
             [ -d build-hip ] && rm -rf "build-hip"
             mkdir build-hip
             cd build-hip
             cmake \
-              -DCMAKE_INSTALL_PREFIX="${pkg_install_dir}" \
+              -DCMAKE_INSTALL_PREFIX="${pkg_install_dir}/hip" \
               -DCMAKE_INSTALL_LIBDIR=lib \
               -DCMAKE_VERBOSE_MAKEFILE=ON \
               -DCMAKE_BUILD_TYPE="RelWithDebInfo" \
@@ -131,9 +127,7 @@ case "${with_spfft}" in
               ${EXTRA_CMAKE_FLAGS} .. \
               > cmake.log 2>&1 || tail -n ${LOG_LINES} cmake.log
             make -j $(get_nprocs) > make.log 2>&1 || tail -n ${LOG_LINES} make.log
-            install -d ${pkg_install_dir}/lib/rocm
-            [ -f src/libspla.a ] && install -m 644 src/*.a ${pkg_install_dir}/lib/rocm >> install.log 2>&1
-            [ -f src/libspla.so ] && install -m 644 src/*.so ${pkg_install_dir}/lib/rocm >> install.log 2>&1
+            make -j $(get_nprocs) install > install.log 2>&1 || tail -n ${LOG_LINES} install.log
             ;;
           *) ;;
 
@@ -143,8 +137,9 @@ case "${with_spfft}" in
     fi
     SPFFT_ROOT="${pkg_install_dir}"
     SPFFT_CFLAGS="-I'${pkg_install_dir}/include'"
-    SPFFT_LDFLAGS="-L'${pkg_install_dir}/lib' -Wl,-rpath,'${pkg_install_dir}/lib'"
-    SPFFT_CUDA_LDFLAGS="-L'${pkg_install_dir}/lib/cuda' -Wl,-rpath,'${pkg_install_dir}/lib/cuda'"
+    SPFFT_CPU_LDFLAGS="-L'${pkg_install_dir}/cpu/lib' -Wl,-rpath,'${pkg_install_dir}/cpu/lib'"
+    SPFFT_CUDA_LDFLAGS="-L'${pkg_install_dir}/cuda/lib' -Wl,-rpath,'${pkg_install_dir}/cuda/lib'"
+    SPFFT_HIP_LDFLAGS="-L'${pkg_install_dir}/hip/lib' -Wl,-rpath,'${pkg_install_dir}/hip/lib'"
     ;;
   __SYSTEM__)
     echo "==================== Finding spfft from system paths ===================="
@@ -173,28 +168,36 @@ if [ "$with_spfft" != "__DONTUSE__" ]; then
   SPFFT_LIBS="-lspfft"
   if [ "$with_spfft" != "__SYSTEM__" ]; then
     cat << EOF > "${BUILDDIR}/setup_spfft"
-prepend_path LD_LIBRARY_PATH "$pkg_install_dir/lib"
-prepend_path LD_RUN_PATH "$pkg_install_dir/lib"
-prepend_path LIBRARY_PATH "$pkg_install_dir/lib"
-prepend_path CPATH "$pkg_install_dir/include"
-export SPFFT_INCLUDE_DIR="$pkg_install_dir/include"
 export SPFFT_LIBS="-lspfft"
-export SPFFT_ROOT="${pkg_install_dir}"
-prepend_path PKG_CONFIG_PATH "${pkg_install_dir}/lib/pkgconfig"
-prepend_path CMAKE_PREFIX_PATH "${pkg_install_dir}"
+export SPFFT_ROOT_CUDA=${pkg_install_dir}/cuda
+export SPFFT_ROOT_HIP=${pkg_install_dir}/hip
+export SPFFT_ROOT_CPU=${pkg_install_dir}/cpu
+export SPFFT_ROOT="IF_CUDA(\${SPFFT_ROOT_CUDA}|IF_HIP(\${SPFFT_ROOT_HIP}|\${SPFFT_ROOT_CPU}))"
+export SPFFT_INCLUDE_DIR=\${SPFFT_ROOT}/include/spfft
+prepend_path PKG_CONFIG_PATH "\${SPFFT_ROOT}/lib/pkgconfig"
+prepend_path CMAKE_PREFIX_PATH "\${SPFFT_ROOT}"
+prepend_path LD_LIBRARY_PATH "\${SPFFT_ROOT}/lib"
+prepend_path LD_RUN_PATH "\${SPFFT_ROOT}/lib"
+prepend_path LIBRARY_PATH "\${SPFFT_ROOT}/lib"
+prepend_path CPATH "\${SPFFT_ROOT}/include"
+EOF
+  else
+    cat << EOF > "${BUILDDIR}/setup_spfft"
+export SPFFT_ROOT=${pkg_install_dir}
+export SPFFT_ROOT_CUDA=${pkg_install_dir}
+export SPFFT_ROOT_HIP=${pkg_install_dir}
+export SPFFT_ROOT_CPU=${pkg_install_dir}
 EOF
   fi
   cat << EOF >> "${BUILDDIR}/setup_spfft"
 export SPFFT_VER="${spfft_ver}"
-export SPFFT_CFLAGS="${SPFFT_CFLAGS}"
-export SPFFT_LDFLAGS="${SPFFT_LDFLAGS}"
+export SPFFT_HIP_LDFLAGS="${SPFFT_HIP_LDFLAGS}"
+export SPFFT_CPU_LDFLAGS="${SPFFT_CPU_LDFLAGS}"
 export SPFFT_CUDA_LDFLAGS="${SPFFT_CUDA_LDFLAGS}"
 export CP_DFLAGS="\${CP_DFLAGS} IF_MPI(-D__SPFFT|)"
-export CP_CFLAGS="\${CP_CFLAGS} ${SPFFT_CFLAGS}"
-export CP_LDFLAGS="\${CP_LDFLAGS} IF_CUDA(${SPFFT_CUDA_LDFLAGS}|${SPFFT_LDFLAGS})"
+export CP_CFLAGS="\${CP_CFLAGS} IF_MPI(-I\${SPFFT_ROOT}/include/spfft|)"
+export CP_LDFLAGS="\${CP_LDFLAGS} IF_MPI(IF_CUDA(\${SPFFT_CUDA_LDFLAGS}|IF_HIP(\${SPFFT_HIP_LDFLAGS}|\${SPFFT_CPU_LDFLAGS}))|)"
 export SPFFT_LIBRARY="-lspfft"
-export SPFFT_ROOT="${pkg_install_dir}"
-export SPFFT_INCLUDE_DIR="${pkg_install_dir}/include"
 export CP_LIBS="IF_MPI(${SPFFT_LIBS}|) \${CP_LIBS}"
 EOF
   cat "${BUILDDIR}/setup_spfft" >> $SETUPFILE

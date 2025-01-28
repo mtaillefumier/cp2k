@@ -258,8 +258,8 @@ ifneq ($(USE_SIRIUS),)
    LIBVDWXC_INC   := $(INSTALL_PATH)/libvdwxc-$(LIBVDWXC_VER)/include
    LIBVDWXC_LIB   := $(INSTALL_PATH)/libvdwxc-$(LIBVDWXC_VER)/lib
    PUGIXML_LIB    := $(INSTALL_PATH)/pugixml-$(PUGIXML_VER)/lib
-   SIRIUS_INC     := $(INSTALL_PATH)/sirius-$(USE_SIRIUS)/include/sirius
-   SIRIUS_LIB     := $(INSTALL_PATH)/sirius-$(USE_SIRIUS)/lib
+   SIRIUS_INC     := $(INSTALL_PATH)/sirius-$(USE_SIRIUS)/cpu/include/sirius
+   SIRIUS_LIB     := $(INSTALL_PATH)/sirius-$(USE_SIRIUS)/cpu/lib
    CFLAGS         += -I$(LIBVDWXC_INC)
    CFLAGS         += -I$(SIRIUS_INC)
    DFLAGS         += -D__LIBVDWXC
@@ -278,8 +278,8 @@ endif
 
 ifneq ($(USE_SPFFT),)
    USE_SPFFT      := $(strip $(USE_SPFFT))
-   SPFFT_INC      := $(INSTALL_PATH)/SpFFT-$(USE_SPFFT)/include
-   SPFFT_LIB      := $(INSTALL_PATH)/SpFFT-$(USE_SPFFT)/lib
+   SPFFT_INC      := $(INSTALL_PATH)/SpFFT-$(USE_SPFFT)/cpu/include
+   SPFFT_LIB      := $(INSTALL_PATH)/SpFFT-$(USE_SPFFT)/cpu/lib
    CFLAGS         += -I$(SPFFT_INC)
    DFLAGS         += -D__SPFFT
    ifeq ($(SHARED), yes)
@@ -291,8 +291,8 @@ endif
 
 ifneq ($(USE_SPLA),)
    USE_SPLA       := $(strip $(USE_SPLA))
-   SPLA_INC       := $(INSTALL_PATH)/SpLA-$(USE_SPLA)/include/spla
-   SPLA_LIB       := $(INSTALL_PATH)/SpLA-$(USE_SPLA)/lib
+   SPLA_INC       := $(INSTALL_PATH)/SpLA-$(USE_SPLA)/cpu/include/spla
+   SPLA_LIB       := $(INSTALL_PATH)/SpLA-$(USE_SPLA)/cpu/lib
    CFLAGS         += -I$(SPLA_INC)
    DFLAGS         += -D__SPLA
    ifeq ($(SHARED), yes)
@@ -319,8 +319,8 @@ endif
 
 ifneq ($(USE_COSMA),)
    USE_COSMA      := $(strip $(USE_COSMA))
-   COSMA_INC      := $(INSTALL_PATH)/COSMA-$(USE_COSMA)/include
-   COSMA_LIB      := $(INSTALL_PATH)/COSMA-$(USE_COSMA)/lib
+   COSMA_INC      := $(INSTALL_PATH)/COSMA-$(USE_COSMA)/cpu/include
+   COSMA_LIB      := $(INSTALL_PATH)/COSMA-$(USE_COSMA)/cpu/lib
    CFLAGS         += -I$(COSMA_INC)
    DFLAGS         += -D__COSMA
    ifeq ($(SHARED), yes)

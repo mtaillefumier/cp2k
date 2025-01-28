@@ -92,6 +92,10 @@ if [[ "${PROFILE}" == "spack" ]] && [[ "${VERSION}" == "psmp" ]]; then
   CMAKE_EXIT_CODE=$?
 
 elif [[ "${PROFILE}" == "toolchain" ]] && [[ "${VERSION}" == "ssmp" ]]; then
+  cp /opt/cp2k-toolchain/install/setup{,-ssmp.sh}
+  /opt/cp2k-toolchain/scripts/parse_if.py -i -f /opt/cp2k-toolchain/install/setup-ssmp.sh
+  # shellcheck disable=SC1091
+  source /opt/cp2k-toolchain/install/setup-ssmp.sh
   cmake \
     -GNinja \
     -DCMAKE_INSTALL_PREFIX="${INSTALL_PREFIX}" \
@@ -143,6 +147,14 @@ elif [[ "${PROFILE}" == "toolchain" ]] && [[ "${VERSION}" == "sdbg" ]]; then
 elif [[ "${PROFILE}" == "toolchain" ]] && [[ "${VERSION}" == "psmp" ]]; then
   # TODO Fix SIRIUS.
   # https://github.com/cp2k/cp2k/issues/3416
+  cp /opt/cp2k-toolchain/install/setup{,-psmp.sh}
+  /opt/cp2k-toolchain/scripts/parse_if.py -i -f /opt/cp2k-toolchain/install/setup-psmp.sh
+  # shellcheck disable=SC1091
+  source /opt/cp2k-toolchain/install/setup-psmp.sh
+  unset SPFFT_ROOT
+  unset SPLA_ROOT
+  unset COSMA_ROOT
+  unset SIRIUS_ROOT
   cmake \
     -GNinja \
     -DCMAKE_INSTALL_PREFIX="${INSTALL_PREFIX}" \
@@ -164,7 +176,6 @@ elif [[ "${PROFILE}" == "toolchain" ]] && [[ "${VERSION}" == "psmp" ]]; then
     -DCP2K_USE_HDF5=ON \
     -DCP2K_USE_ELPA=OFF \
     -DCP2K_USE_COSMA=OFF \
-    -DCP2K_USE_SIRIUS=OFF \
     -DCP2K_USE_LIBTORCH=ON \
     -DCP2K_USE_SPGLIB=ON \
     -Werror=dev \

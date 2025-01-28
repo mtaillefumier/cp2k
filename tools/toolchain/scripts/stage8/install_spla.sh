@@ -40,7 +40,7 @@ case "${with_spla}" in
       mkdir -p build-cpu
       cd build-cpu
       cmake \
-        -DCMAKE_INSTALL_PREFIX="${pkg_install_dir}" \
+        -DCMAKE_INSTALL_PREFIX="${pkg_install_dir}/cpu" \
         -DCMAKE_INSTALL_LIBDIR=lib \
         -DCMAKE_VERBOSE_MAKEFILE=ON \
         -DCMAKE_BUILD_TYPE="RelWithDebInfo" \
@@ -59,7 +59,7 @@ case "${with_spla}" in
         mkdir build-cuda
         cd build-cuda
         cmake \
-          -DCMAKE_INSTALL_PREFIX="${pkg_install_dir}" \
+          -DCMAKE_INSTALL_PREFIX="${pkg_install_dir}/cuda" \
           -DCMAKE_INSTALL_LIBDIR=lib \
           -DCMAKE_VERBOSE_MAKEFILE=ON \
           -DCMAKE_BUILD_TYPE="RelWithDebInfo" \
@@ -71,20 +71,17 @@ case "${with_spla}" in
           .. \
           > cmake.log 2>&1 || tail -n ${LOG_LINES} cmake.log
         make -j $(get_nprocs) > make.log 2>&1 || tail -n ${LOG_LINES} make.log
-        install -d ${pkg_install_dir}/lib/cuda
-        [ -f src/libspla.a ] && install -m 644 src/*.a ${pkg_install_dir}/lib/cuda >> install.log 2>&1
-        [ -f src/libspla.so ] && install -m 644 src/*.so ${pkg_install_dir}/lib/cuda >> install.log 2>&1
+        make install > make.log 2>&1 || tail -n ${LOG_LINES} make.log
       fi
 
       if [ "$ENABLE_HIP" = "__TRUE__" ]; then
-
         case "${GPUVER}" in
           K20X | K40 | K80 | P100 | V100 | A100 | A40 | H100)
             [ -d build-cuda ] && rm -rf "build-cuda"
             mkdir build-cuda
             cd build-cuda
             cmake \
-              -DCMAKE_INSTALL_PREFIX="${pkg_install_dir}" \
+              -DCMAKE_INSTALL_PREFIX="${pkg_install_dir}/hip" \
               -DCMAKE_INSTALL_LIBDIR=lib \
               -DCMAKE_VERBOSE_MAKEFILE=ON \
               -DCMAKE_BUILD_TYPE="RelWithDebInfo" \
@@ -96,16 +93,14 @@ case "${with_spla}" in
               .. \
               > cmake.log 2>&1 || tail -n ${LOG_LINES} cmake.log
             make -j $(get_nprocs) > make.log 2>&1 || tail -n ${LOG_LINES} make.log
-            install -d ${pkg_install_dir}/lib/hip
-            [ -f src/libspla.a ] && install -m 644 src/*.a ${pkg_install_dir}/lib/hip >> install.log 2>&1
-            [ -f src/libspla.so ] && install -m 644 src/*.so ${pkg_install_dir}/lib/hip >> install.log 2>&1
+            make install > make.log 2>&1 || tail -n ${LOG_LINES} make.log
             ;;
           Mi50 | Mi100 | Mi200 | Mi250)
             [ -d build-hip ] && rm -rf "build-hip"
             mkdir build-hip
             cd build-hip
             cmake \
-              -DCMAKE_INSTALL_PREFIX="${pkg_install_dir}" \
+              -DCMAKE_INSTALL_PREFIX="${pkg_install_dir}/hip" \
               -DCMAKE_INSTALL_LIBDIR=lib \
               -DCMAKE_VERBOSE_MAKEFILE=ON \
               -DCMAKE_BUILD_TYPE="RelWithDebInfo" \
@@ -117,20 +112,16 @@ case "${with_spla}" in
               .. \
               > cmake.log 2>&1 || tail -n ${LOG_LINES} cmake.log
             make -j $(get_nprocs) > make.log 2>&1 || tail -n ${LOG_LINES} make.log
-            install -d ${pkg_install_dir}/lib/hip
-            [ -f src/libspla.a ] && install -m 644 src/*.a ${pkg_install_dir}/lib/hip >> install.log 2>&1
-            [ -f src/libspla.so ] && install -m 644 src/*.so ${pkg_install_dir}/lib/hip >> install.log 2>&1
+            make install > make.log 2>&1 || tail -n ${LOG_LINES} make.log
             ;;
           *) ;;
         esac
       fi
       write_checksums "${install_lock_file}" "${SCRIPT_DIR}/stage8/$(basename ${SCRIPT_NAME})"
     fi
-    SPLA_ROOT="${pkg_install_dir}"
-    SPLA_CFLAGS="-I'${pkg_install_dir}/include/spla'"
-    SPLA_LDFLAGS="-L'${pkg_install_dir}/lib' -Wl,-rpath,'${pkg_install_dir}/lib'"
-    SPLA_CUDA_LDFLAGS="-L'${pkg_install_dir}/lib/cuda' -Wl,-rpath,'${pkg_install_dir}/lib/cuda'"
-    SPLA_HIP_LDFLAGS="-L'${pkg_install_dir}/lib/hip' -Wl,-rpath,'${pkg_install_dir}/lib/hip'"
+    SPLA_CPU_LDFLAGS="-L'${pkg_install_dir}/cpu/lib' -Wl,-rpath,'${pkg_install_dir}/cpu/lib'"
+    SPLA_CUDA_LDFLAGS="-L'${pkg_install_dir}/cuda/lib' -Wl,-rpath,'${pkg_install_dir}/cuda/lib'"
+    SPLA_HIP_LDFLAGS="-L'${pkg_install_dir}/hip/lib' -Wl,-rpath,'${pkg_install_dir}/hip/lib'"
     ;;
   __SYSTEM__)
     echo "==================== Finding spla from system paths ===================="
@@ -159,43 +150,38 @@ if [ "$with_spla" != "__DONTUSE__" ]; then
   SPLA_LIBS="-lspla"
   if [ "$with_spla" != "__SYSTEM__" ]; then
     cat << EOF > "${BUILDDIR}/setup_spla"
-prepend_path LD_LIBRARY_PATH "$pkg_install_dir/lib"
-prepend_path LD_RUN_PATH "$pkg_install_dir/lib"
-prepend_path LIBRARY_PATH "$pkg_install_dir/lib"
-prepend_path CPATH "$pkg_install_dir/include/spla"
-export SPLA_INCLUDE_DIR="$pkg_install_dir/include/spla"
+export SPLA_ROOT_CUDA=${pkg_install_dir}/cuda
+export SPLA_ROOT_HIP=${pkg_install_dir}/hip
+export SPLA_ROOT_CPU=${pkg_install_dir}/cpu
+export SPLA_ROOT="IF_CUDA(\${SPLA_ROOT_CUDA}|IF_HIP(\${SPLA_ROOT_HIP}|\${SPLA_ROOT_CPU}))"
+prepend_path LD_LIBRARY_PATH "\$SPLA_ROOT/lib"
+prepend_path LD_RUN_PATH "\$SPLA_ROOT/lib"
+prepend_path LIBRARY_PATH "\$SPLA_ROOT/lib"
+export SPLA_INCLUDE_DIR="\$SPLA_ROOT/include/spla"
 export SPLA_LIBS="-lspla"
-export SPLA_ROOT="${pkg_install_dir}"
-prepend_path PKG_CONFIG_PATH "$pkg_install_dir/lib/pkgconfig"
-prepend_path CMAKE_PREFIX_PATH "$pkg_install_dir"
+prepend_path PKG_CONFIG_PATH "\${SPLA_ROOT}/lib/pkgconfig"
+prepend_path CMAKE_PREFIX_PATH "\${SPLA_ROOT}"
+EOF
+  else
+    cat << EOF > "${BUILDDIR}/setup_spla"
+export SPLA_ROOT=${pkg_install_dir}
+export SPLA_ROOT_CUDA=${pkg_install_dir}
+export SPLA_ROOT_HIP=${pkg_install_dir}
+export SPLA_ROOT_CPU=${pkg_install_dir}
 EOF
   fi
   cat << EOF >> "${BUILDDIR}/setup_spla"
 export SPLA_VER="${spla_ver}"
-export SPLA_CFLAGS="${SPLA_CFLAGS}"
-export SPLA_LDFLAGS="${SPLA_LDFLAGS}"
+export SPLA_CFLAGS="-I\${SPLA_ROOT}/include/spla"
 export SPLA_CUDA_LDFLAGS="${SPLA_CUDA_LDFLAGS}"
 export SPLA_HIP_LDFLAGS="${SPLA_HIP_LDFLAGS}"
+export SPLA_CPU_LDFLAGS="${SPLA_CPU_LDFLAGS}"
 export CP_DFLAGS="\${CP_DFLAGS} IF_HIP(-D__OFFLOAD_GEMM|) IF_CUDA(-D__OFFLOAD_GEMM|) ${OFFLOAD_DFLAGS} IF_MPI(-D__SPLA|)"
-export CP_CFLAGS="\${CP_CFLAGS} ${SPLA_CFLAGS}"
+export CP_CFLAGS="\${CP_CFLAGS} \${SPLA_CFLAGS}"
 export SPLA_LIBRARY="-lspla"
-export SPLA_ROOT="${pkg_install_dir}"
-export SPLA_INCLUDE_DIR="${pkg_install_dir}/include/spla"
 export CP_LIBS="IF_MPI(${SPLA_LIBS}|) \${CP_LIBS}"
+export CP_LDFLAGS="\${CP_LDFLAGS} IF_HIP(\${SPLA_HIP_LDFLAGS}|IF_CUDA(\${SPLA_CUDA_LDFLAGS}|\${SPLA_CPU_LDFLAGS}))"
 EOF
-  if [ "$ENABLE_HIP" = "__TRUE__" ]; then
-    cat << EOF >> "${BUILDDIR}/setup_spla"
-export CP_LDFLAGS="\${CP_LDFLAGS} IF_HIP(${SPLA_HIP_LDFLAGS}|${SPLA_LDFLAGS})"
-EOF
-  elif [ "$ENABLE_CUDA" = "__TRUE__" ]; then
-    cat << EOF >> "${BUILDDIR}/setup_spla"
-export CP_LDFLAGS="\${CP_LDFLAGS} IF_CUDA(${SPLA_CUDA_LDFLAGS}|${SPLA_LDFLAGS})"
-EOF
-  else
-    cat << EOF >> "${BUILDDIR}/setup_spla"
-export CP_LDFLAGS="\${CP_LDFLAGS} ${SPLA_LDFLAGS}"
-EOF
-  fi
   cat "${BUILDDIR}/setup_spla" >> $SETUPFILE
 fi
 
