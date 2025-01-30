@@ -156,6 +156,7 @@ elif [[ "${PROFILE}" == "toolchain" ]] && [[ "${VERSION}" == "psmp" ]]; then
     -DCP2K_USE_SPGLIB=ON \
     -DCP2K_USE_SPLA=ON \
     -DCP2K_USE_VORI=ON \
+    -DCP2K_USE_HDF5=ON \
     -Werror=dev \
     .. |& tee ./cmake.log
   CMAKE_EXIT_CODE=$?
@@ -191,6 +192,7 @@ elif [[ "${PROFILE}" == "ubuntu" ]] && [[ "${VERSION}" == "ssmp" ]]; then
     -DCP2K_USE_LIBXC=ON \
     -DCP2K_USE_FFTW3=ON \
     -DCP2K_USE_LIBXSMM=ON \
+    -DCP2K_USE_HDF5=ON \
     -DCP2K_USE_SPGLIB=OFF \
     -DCP2K_USE_MPI=OFF \
     -DCP2K_USE_MPI_F08=OFF \
