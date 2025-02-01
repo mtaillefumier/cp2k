@@ -414,15 +414,17 @@ extern "C" void grid_hip_collocate_task_list(const void *ptr,
     ctx->grid_[level].zero(ctx->level_streams[level]);
   }
 
-  ctx->pab_block_.associate(pab_blocks->host_buffer, pab_blocks->device_buffer,
-                            pab_blocks->size / sizeof(double));
-
   int lp_diff = -1;
 
   ctx->synchronize(ctx->main_stream);
 
   for (int level = 0; level < ctx->nlevels; level++) {
     ctx->collocate_one_grid_level(level, func, &lp_diff);
+  }
+
+  // download result from device to host.
+  for (int level = 0; level < ctx->nlevels; level++) {
+    ctx->grid_[level].copy_to_host(ctx->level_streams[level]);
   }
 
   // update counters while we wait for kernels to finish. It is not thread safe
@@ -444,11 +446,6 @@ extern "C" void grid_hip_collocate_task_list(const void *ptr,
         }
       }
     }
-  }
-
-  // download result from device to host.
-  for (int level = 0; level < ctx->nlevels; level++) {
-    ctx->grid_[level].copy_to_host(ctx->level_streams[level]);
   }
 
   // need to wait for all streams to finish
