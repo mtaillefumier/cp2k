@@ -15,10 +15,9 @@
 #ifndef LIBGRPP_OVERLAP_GRADIENT_H
 #define LIBGRPP_OVERLAP_GRADIENT_H
 
-#include "libgrpp.h"
-
-void libgrpp_overlap_integrals_gradient(libgrpp_shell_t *shell_A,
-                                        libgrpp_shell_t *shell_B,
-                                        double *point_3d, double **grad);
+extern void libgrpp_overlap_integrals_gradient(libgrpp_shell_t *shell_A,
+                                               libgrpp_shell_t *shell_B,
+                                               double *point_3d, double **grad);
+extern int libgrpp_nlm_to_linear(int *nlm);
 
 #endif // LIBGRPP_OVERLAP_GRADIENT_H
