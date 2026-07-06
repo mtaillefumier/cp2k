@@ -118,6 +118,11 @@ option(CP2K_ENABLE_CONSISTENCY_CHECKS
        "Check that the list of compiled files and files contained in src match"
        OFF)
 
+option(
+  CP2K_ENABLE_REGTESTS
+  "Register the regression test suite (tests/TEST_DIRS, tests/UNIT_TESTS) as native CTest tests"
+  OFF)
+
 option(CP2K_USE_EVERYTHING
        "Enable all dependencies. They can be individually turned off again."
        OFF)
@@ -395,6 +400,11 @@ if(NOT Python_EXECUTABLE)
     Python
     COMPONENTS Interpreter
     REQUIRED)
+endif()
+
+if(CP2K_ENABLE_REGTESTS)
+  enable_testing()
+  add_subdirectory(tests)
 endif()
 
 # The git hash (__COMPILE_REVISION) is refreshed at *build* time rather than
@@ -1376,6 +1386,13 @@ message(
   "After building and installing CP2K, run the regtests with:\n"
   "  ${PROJECT_SOURCE_DIR}/tests/do_regtest.py ${CMAKE_INSTALL_PREFIX}/bin ${__cp2k_ext}\n"
 )
+
+if(CP2K_ENABLE_REGTESTS)
+  message(
+    "After building, the same regression test suite is also available as\n"
+    "native CTest tests, e.g.:\n"
+    "  ctest --test-dir ${PROJECT_BINARY_DIR} --output-on-failure -R QS/\n")
+endif()
 
 # files needed for cmake
 
